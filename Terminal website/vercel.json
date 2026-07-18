@@ -1,0 +1,15 @@
+{
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/gsi/:path*",
+      "destination": "https://accounts.google.com/gsi/:path*"
+    },
+    {
+      "source": "/api/auth/userinfo",
+      "destination": "https://www.googleapis.com/oauth2/v3/userinfo"
+    }
+  ]
+}

@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Terminal — Your AI Flight Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: #050505;
+  color: #e2e2e2;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+html, body { scrollbar-width: none; -ms-overflow-style: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+
+.dot-grid-container {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background-color: #050505;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dot-grid-container::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-image: radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);
+  background-size: 20px 20px;
+  -webkit-mask-image: radial-gradient(circle 400px at var(--mouse-x, 50%) var(--mouse-y, 50%), black 0%, transparent 100%);
+  mask-image: radial-gradient(circle 400px at var(--mouse-x, 50%) var(--mouse-y, 50%), black 0%, transparent 100%);
+}
+
+.page {
+  position: relative;
+  z-index: 10;
+}
+
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 60px;
+  background: rgba(5,5,5,0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.nav-brand {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  color: #e2e2e2;
+  letter-spacing: -0.02em;
+}
+.nav-brand span { color: #4ade80; }
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.nav-links a {
+  font-size: 0.875rem;
+  color: rgba(226,226,226,0.6);
+  text-decoration: none;
+  font-weight: 400;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #e2e2e2; }
+.nav-cta {
+  background: #fff;
+  color: #050505;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.nav-cta:hover { background: rgba(255,255,255,0.88); transform: scale(1.02); }
+.nav-sign-in {
+  background: transparent;
+  color: rgba(226,226,226,0.7);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.nav-sign-in:hover { border-color: rgba(255,255,255,0.3); color: #e2e2e2; }
+.nav-sign-in svg { flex-shrink: 0; }
+.nav-name-input {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: #e2e2e2;
+  outline: none;
+  width: 140px;
+  caret-color: #4ade80;
+  display: none;
+}
+.nav-name-input::placeholder { color: rgba(226,226,226,0.3); }
+.nav-name-input:focus { border-color: rgba(74,222,128,0.4); }
+.nav-user {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: #4ade80;
+  display: none;
+}
+.nav-profile { position: relative; display: none; }
+.nav-profile-icon {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid rgba(74,222,128,0.45);
+  background: rgba(74,222,128,0.08);
+  color: #4ade80;
+  font-family: 'Courier New', monospace;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+.nav-profile-icon:hover { border-color: #4ade80; background: rgba(74,222,128,0.15); }
+.nav-profile-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #0a0a0a;
+  border: 1px solid rgba(74,222,128,0.22);
+  border-radius: 8px;
+  padding: 12px 16px;
+  min-width: 130px;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 200;
+}
+.nav-profile-dropdown.open { display: flex; }
+.nav-profile-dropdown-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: #4ade80;
+}
+.nav-profile-dropdown-logout {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: rgba(226,226,226,0.45);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  transition: color 0.2s;
+}
+.nav-profile-dropdown-logout:hover { color: #e2e2e2; }
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120px 60px 80px;
+  text-align: center;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.logo-container {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(3rem, 8vw, 5rem);
+  color: #e2e2e2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 6rem;
+  letter-spacing: -0.04em;
+  margin-bottom: 8px;
+}
+.logo-cursor {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 20px;
+  height: 1em;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: blink 1s step-end infinite;
+  position: relative;
+}
+.logo-cursor::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 3px;
+  background-color: #4ade80;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.logo-cursor::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  background-color: #4ade80;
+  border-radius: 0;
+}
+.logo-cursor-bottom {
+  display: block;
+  width: 20px;
+  height: 3px;
+  background-color: #4ade80;
+  border-radius: 1px;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.hero-tagline {
+  font-size: clamp(0.95rem, 2vw, 1.1rem);
+  color: rgba(226,226,226,0.5);
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.hero-headline {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 600;
+  color: #e2e2e2;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  max-width: 700px;
+  margin: 0 auto 20px;
+}
+.hero-headline em {
+  font-style: normal;
+  color: #4ade80;
+}
+
+.hero-sub {
+  font-size: 1rem;
+  color: rgba(226,226,226,0.55);
+  font-weight: 300;
+  line-height: 1.7;
+  max-width: 480px;
+  margin: 0 auto 48px;
+}
+
+.terminal-window {
+  width: 660px;
+  max-width: 90vw;
+  margin: 0 auto 32px;
+  background-color: rgba(10,10,12,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  transition: box-shadow 0.3s ease;
+}
+.terminal-window:focus-within {
+  box-shadow: 0 28px 70px rgba(0,0,0,0.7), 0 0 0 1px rgba(74,222,128,0.25);
+}
+.terminal-header {
+  background-color: rgba(255,255,255,0.04);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.window-controls { display: flex; gap: 8px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; cursor: default; }
+.dot.red    { background-color: #ff5f56; }
+.dot.yellow { background-color: #ffbd2e; }
+.dot.green  { background-color: #27c93f; }
+.terminal-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: rgba(226,226,226,0.35);
+  flex: 1;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
+.terminal-body {
+  padding: 20px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px;
+  color: #e2e2e2;
+  min-height: 180px;
+  text-align: left;
+}
+
+.output-line {
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+.output-line.dim   { color: rgba(226,226,226,0.4); }
+.output-line.green { color: #4ade80; }
+.output-line.blue  { color: #60a5fa; }
+.output-line.warn  { color: #fbbf24; }
+
+.prompt-line {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.user {
+  flex-shrink: 0 !important;
+  white-space: nowrap;
+  padding-right: 10px;
+  margin: 0;
+  line-height: 1.5;
+  color: #4ade80;
+  font-size: 13.5px;
+}
+.input-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.input-area,
+.fake-placeholder {
+  grid-area: 1 / 1;
+}
+.input-area {
+  flex-grow: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  line-height: 1.5;
+  vertical-align: middle;
+  color: #e2e2e2;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px;
+  width: 100%;
+  min-width: 0;
+  caret-color: #4ade80;
+  caret-shape: auto;
+  cursor: text;
+  position: relative;
+  z-index: 1;
+}
+.input-area::placeholder {
+  line-height: 1.5;
+  color: transparent;
+}
+.fake-placeholder {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(226,226,226,0.25);
+  word-break: break-word;
+  pointer-events: none;
+  align-self: center;
+  position: relative;
+  top: -1px;
+}
+
+.hero-cta-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.btn-primary {
+  background: #4ade80;
+  color: #050505;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 28px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-primary:hover { background: #86efac; transform: scale(1.02); }
+.btn-ghost {
+  background: transparent;
+  color: rgba(226,226,226,0.7);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 12px 28px;
+  font-size: 0.9rem;
+  font-weight: 400;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.btn-ghost:hover { border-color: rgba(255,255,255,0.28); color: #e2e2e2; }
+
+.scroll-hint {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: rgba(226,226,226,0.3);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.1em;
+  animation: scrollBounce 2s ease-in-out infinite;
+}
+@keyframes scrollBounce {
+  0%,100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(6px); }
+}
+.scroll-hint svg { opacity: 0.4; }
+
+.features {
+  position: relative;
+  z-index: 10;
+  padding: 120px 60px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+@media(min-width:768px) { .features { padding: 140px 80px; } }
+
+.section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: #4ade80;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.section-heading {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 600;
+  color: #e2e2e2;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 16px;
+  max-width: 600px;
+}
+.section-sub {
+  font-size: 1rem;
+  color: rgba(226,226,226,0.5);
+  font-weight: 300;
+  line-height: 1.72;
+  max-width: 480px;
+  margin-bottom: 72px;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media(min-width:768px) { .features-grid { grid-template-columns: repeat(3,1fr); } }
+
+.feature-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 28px;
+  transition: background 0.3s, border-color 0.3s, transform 0.3s;
+}
+.feature-card:hover {
+  background: rgba(255,255,255,0.055);
+  border-color: rgba(74,222,128,0.2);
+  transform: translateY(-4px);
+}
+.feature-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: rgba(74,222,128,0.1);
+  border: 1px solid rgba(74,222,128,0.2);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.feature-icon svg { width: 20px; height: 20px; stroke: #4ade80; fill: none; }
+.feature-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e2e2;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+.feature-body {
+  font-size: 0.875rem;
+  color: rgba(226,226,226,0.5);
+  font-weight: 300;
+  line-height: 1.65;
+}
+
+.how-it-works {
+  position: relative; z-index: 10;
+  padding: 120px 60px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+@media(min-width:768px) { .how-it-works { padding: 140px 80px; } }
+
+.steps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+  margin-top: 64px;
+  max-width: 900px;
+}
+@media(min-width:768px) { .steps { grid-template-columns: repeat(3,1fr); align-items: start; } }
+
+.step { display: flex; flex-direction: column; gap: 14px; }
+.step-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: rgba(74,222,128,0.6);
+  letter-spacing: 0.12em;
+}
+.step-title { font-size: 1.05rem; font-weight: 600; color: #e2e2e2; letter-spacing: -0.01em; }
+.step-body { font-size: 0.875rem; color: rgba(226,226,226,0.48); font-weight: 300; line-height: 1.65; }
+
+.commands-section {
+  position: relative; z-index: 10;
+  padding: 120px 60px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+@media(min-width:768px) { .commands-section { padding: 140px 80px; } }
+
+.commands-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+  margin-top: 64px;
+  align-items: center;
+}
+@media(min-width:1024px) { .commands-grid { grid-template-columns: 1fr 1fr; gap: 80px; } }
+
+.commands-text p {
+  font-size: 0.9rem;
+  color: rgba(226,226,226,0.5);
+  line-height: 1.72;
+  font-weight: 300;
+  margin-bottom: 28px;
+}
+.command-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: #4ade80;
+  background: rgba(74,222,128,0.08);
+  border: 1px solid rgba(74,222,128,0.18);
+  border-radius: 6px;
+  padding: 6px 14px;
+  transition: background 0.2s;
+}
+.chip:hover { background: rgba(74,222,128,0.14); }
+
+.commands-terminal {
+  background: rgba(10,10,12,0.85);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+.cmd-header {
+  background: rgba(255,255,255,0.04);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.cmd-dot { width: 10px; height: 10px; border-radius: 50%; }
+.cmd-dot.r { background: #ff5f56; }
+.cmd-dot.y { background: #ffbd2e; }
+.cmd-dot.g { background: #27c93f; }
+.cmd-body {
+  padding: 20px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.cmd-line { margin-bottom: 4px; }
+.cmd-line .p  { color: #4ade80; }
+.cmd-line .c  { color: #e2e2e2; }
+.cmd-line .o  { color: rgba(226,226,226,0.45); padding-left: 16px; }
+.cmd-line .hl { color: #60a5fa; }
+.cmd-line .wn { color: #fbbf24; }
+.cmd-blank { height: 10px; }
+
+.cta-final {
+  position: relative; z-index: 10;
+  padding: 140px 60px 100px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  text-align: center;
+}
+.cta-final h2 {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 700;
+  color: #e2e2e2;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 20px;
+}
+.cta-final h2 em { font-style: normal; color: #4ade80; }
+.cta-final p {
+  font-size: 1rem;
+  color: rgba(226,226,226,0.5);
+  font-weight: 300;
+  line-height: 1.68;
+  max-width: 440px;
+  margin: 0 auto 40px;
+}
+.cta-final-btns {
+  display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+  margin-bottom: 100px;
+}
+
+footer {
+  position: relative; z-index: 10;
+  padding: 36px 60px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center;
+  justify-content: space-between; flex-wrap: wrap; gap: 16px;
+}
+.footer-brand { font-family: 'JetBrains Mono', monospace; color: rgba(226,226,226,0.4); font-size: 0.9rem; }
+.footer-brand span { color: #4ade80; }
+.footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+.footer-links a { font-size: 0.78rem; color: rgba(226,226,226,0.3); text-decoration: none; transition: color 0.2s; }
+.footer-links a:hover { color: rgba(226,226,226,0.7); }
+.footer-copy { font-size: 0.72rem; color: rgba(226,226,226,0.2); }
+
+.sr {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.sr.on { opacity: 1; transform: none; }
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background:
+    linear-gradient(to right,  rgba(5,5,5,0.55) 0%, transparent 14%),
+    linear-gradient(to left,   rgba(5,5,5,0.55) 0%, transparent 14%),
+    linear-gradient(to bottom, rgba(5,5,5,0.55) 0%, transparent 12%),
+    linear-gradient(to top,    rgba(5,5,5,0.55) 0%, transparent 12%);
+}
+
+/* ── Hamburger button ───────────────────────────────── */
+.nav-hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+}
+.nav-hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: #e2e2e2;
+  border-radius: 2px;
+  transition: transform 0.25s, opacity 0.25s;
+}
+.nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.nav-hamburger.open span:nth-child(2) { opacity: 0; }
+.nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* ── Mobile drawer ──────────────────────────────────── */
+.nav-drawer {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 99;
+  background: rgba(5,5,5,0.97);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  padding: 80px 32px 40px;
+  flex-direction: column;
+  gap: 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.nav-drawer.open { display: flex; }
+.nav-drawer a {
+  font-size: 1.1rem;
+  color: rgba(226,226,226,0.7);
+  text-decoration: none;
+  font-weight: 400;
+  transition: color 0.2s;
+}
+.nav-drawer a:hover { color: #e2e2e2; }
+.nav-drawer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+
+/* ── Mobile breakpoint ──────────────────────────────── */
+@media (max-width: 767px) {
+  nav {
+    padding: 16px 20px;
+  }
+  .nav-links { display: none; }
+  .nav-actions { display: none; }
+  .nav-hamburger { display: flex; }
+
+  .hero {
+    padding: 100px 20px 60px;
+  }
+  .hero-tagline {
+    font-size: 0.72rem;
+  }
+  .hero-headline {
+    font-size: clamp(1.6rem, 7vw, 2.4rem);
+  }
+  .hero-sub {
+    font-size: 0.875rem;
+    margin-bottom: 32px;
+  }
+
+  .terminal-window {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 10px;
+  }
+  .terminal-body {
+    padding: 16px;
+    font-size: 12px;
+  }
+  .input-area {
+    font-size: 16px; /* prevents iOS zoom on focus */
+    line-height: 1.5;
+    padding: 0;
+    margin: 0;
+  }
+  .fake-placeholder {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .input-wrapper {
+    min-height: 44px;
+    align-content: center;
+  }
+  .prompt-line {
+    align-items: center;
+    gap: 6px;
+  }
+  .user {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .scroll-hint { display: none; }
+
+  .features { padding: 80px 20px; }
+  .how-it-works { padding: 80px 20px; }
+  .commands-section { padding: 80px 20px; }
+  .cta-final { padding: 80px 20px 60px; }
+  footer { padding: 28px 20px; flex-direction: column; align-items: flex-start; }
+
+  .section-heading { font-size: clamp(1.6rem, 7vw, 2.2rem); }
+  .cta-final h2 { font-size: clamp(1.8rem, 8vw, 2.8rem); }
+}
+  </style>
+</head>
+<body>
+
+<div class="dot-grid-container" id="dot-grid"></div>
+<div class="vignette"></div>
+
+<div class="page">
+
+  <nav>
+    <div class="nav-brand"><canvas id="terminalLogo" width="110" height="24" style="display:block;"></canvas></div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#commands">Commands</a>
+    </div>
+    <button type="button" class="nav-hamburger" id="navHamburger" aria-label="Open menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="nav-actions">
+      <button type="button" class="nav-sign-in" id="googleSignInBtn">
+        <svg width="16" height="16" viewBox="0 0 48 48" fill="none">
+          <path d="M44.5 20H24v8.5h11.8C34.7 33.9 30 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.5 20-21 0-1.4-.1-2.7-.5-4z" fill="#FFC107"/>
+          <path d="M6.3 14.7l7 5.1C15.1 16.1 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3c-7.7 0-14.4 4.4-17.7 11.7z" fill="#FF3D00"/>
+          <path d="M24 45c5.5 0 10.5-1.9 14.3-5.1l-6.6-5.6C29.8 35.8 27 37 24 37c-5.9 0-10.9-4-12.7-9.5l-7 5.4C7.8 40.5 15.3 45 24 45z" fill="#4CAF50"/>
+          <path d="M44.5 20H24v8.5h11.8c-.9 2.8-2.8 5.1-5.3 6.6l6.6 5.6C41.3 37.3 45 31.1 45 24c0-1.4-.1-2.7-.5-4z" fill="#1976D2"/>
+        </svg>
+        Sign in
+      </button>
+      <input type="text" id="nameInput" class="nav-name-input" placeholder="enter name..." maxlength="30" autocomplete="off" spellcheck="false" />
+      <div class="nav-profile" id="navProfile">
+        <button class="nav-profile-icon" id="navProfileBtn" aria-label="Profile menu">
+          <span id="navProfileInitial"></span>
+        </button>
+        <div class="nav-profile-dropdown" id="navProfileDropdown">
+          <span class="nav-profile-dropdown-name" id="navProfileName"></span>
+          <button class="nav-profile-dropdown-logout" onclick="localStorage.removeItem('username'); location.reload();">[ log out ]</button>
+        </div>
+      </div>
+      <button type="button" class="nav-cta" onclick="window.open('https://flight-tracker-navy-eight.vercel.app','_blank')">Get Early Access</button>
+    </div>
+  </nav>
+
+  <div class="nav-drawer" id="navDrawer">
+    <a href="#features"    id="drawerFeatures">Features</a>
+    <a href="#how-it-works" id="drawerHowItWorks">How it works</a>
+    <a href="#commands"    id="drawerCommands">Commands</a>
+    <div class="nav-drawer-actions">
+      <button type="button" class="nav-sign-in" id="googleSignInBtnDrawer">
+        <svg width="16" height="16" viewBox="0 0 48 48" fill="none">
+          <path d="M44.5 20H24v8.5h11.8C34.7 33.9 30 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.5 20-21 0-1.4-.1-2.7-.5-4z" fill="#FFC107"/>
+          <path d="M6.3 14.7l7 5.1C15.1 16.1 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3c-7.7 0-14.4 4.4-17.7 11.7z" fill="#FF3D00"/>
+          <path d="M24 45c5.5 0 10.5-1.9 14.3-5.1l-6.6-5.6C29.8 35.8 27 37 24 37c-5.9 0-10.9-4-12.7-9.5l-7 5.4C7.8 40.5 15.3 45 24 45z" fill="#4CAF50"/>
+          <path d="M44.5 20H24v8.5h11.8c-.9 2.8-2.8 5.1-5.3 6.6l6.6 5.6C41.3 37.3 45 31.1 45 24c0-1.4-.1-2.7-.5-4z" fill="#1976D2"/>
+        </svg>
+        Sign in with Google
+      </button>
+      <button type="button" class="nav-cta" onclick="window.open('https://flight-tracker-navy-eight.vercel.app','_blank')">Get Early Access</button>
+    </div>
+  </div>
+
+  <section class="hero" style="position:relative;">
+
+    <h1 class="logo-container">
+      <span id="logo-text">T</span>
+      <span class="logo-cursor"><span class="logo-cursor-bottom"></span></span>
+    </h1>
+
+    <h2 class="hero-headline">
+      Your flight data,<br/>answered in <em>plain English</em>
+    </h2>
+    <p class="hero-sub">
+      Type a flight number. Ask about delays, gates, altitude, or weather. Terminal pulls live data and answers instantly — no dashboards, no noise.
+    </p>
+
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="window-controls">
+          <div class="dot red"></div>
+          <div class="dot yellow"></div>
+          <div class="dot green"></div>
+        </div>
+        <div class="terminal-title">terminal — flight-assistant</div>
+      </div>
+      <div class="terminal-body">
+        <div class="prompt-line">
+          <span class="user">guest@terminal:~$</span>
+          <div class="input-wrapper">
+            <input type="text" class="input-area" id="terminalInput" aria-label="Flight query input" autocomplete="off" spellcheck="false"/>
+            <div class="fake-placeholder" id="fakePlaceholder"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-cta-row">
+      <button type="button" class="btn-primary" onclick="window.open('https://flight-tracker-navy-eight.vercel.app','_blank')">
+        Get Early Access
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </button>
+      <button type="button" class="btn-ghost">
+        View Demo
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+      </button>
+    </div>
+
+    <div class="scroll-hint">
+      <span>scroll</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <p class="section-label sr">// Features</p>
+    <h2 class="section-heading sr" style="transition-delay:.1s">Everything you need.<br/>Nothing you don't.</h2>
+    <p class="section-sub sr" style="transition-delay:.2s">Terminal strips away the complexity of flight tracking and gives you a single, fast, conversational interface.</p>
+    <div class="features-grid">
+      <div class="feature-card sr" style="transition-delay:.1s">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <div class="feature-title">Real-Time Status</div>
+        <div class="feature-body">Live ADS-B data updated every 5 seconds. Gate changes, delays, and diversions surface instantly before the board flips.</div>
+      </div>
+      <div class="feature-card sr" style="transition-delay:.22s">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="feature-title">Natural Language</div>
+        <div class="feature-body">Ask anything. "Is AI101 on time?" or "What gate is EK202 at?" Terminal understands plain English and returns precise answers.</div>
+      </div>
+      <div class="feature-card sr" style="transition-delay:.34s">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg></div>
+        <div class="feature-title">Smart Alerts</div>
+        <div class="feature-body">Set a watch on any flight. Terminal notifies you the moment something changes — delay, gate swap, or early arrival.</div>
+      </div>
+      <div class="feature-card sr" style="transition-delay:.46s">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5z"/></svg></div>
+        <div class="feature-title">Route History</div>
+        <div class="feature-body">Query historical routes, on-time performance, and typical delay patterns for any airline or aircraft tail number.</div>
+      </div>
+      <div class="feature-card sr" style="transition-delay:.58s">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <div class="feature-title">Multi-Platform</div>
+        <div class="feature-body">Web, mobile, and API access. Embed Terminal in your own app or use it standalone — your choice.</div>
+      </div>
+      <div class="feature-card sr" style="transition-delay:.7s">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <div class="feature-title">Itinerary Parsing</div>
+        <div class="feature-body">Paste a booking confirmation. Terminal extracts every flight and builds a live-updating itinerary automatically.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works" id="how-it-works">
+    <p class="section-label sr">// How it works</p>
+    <h2 class="section-heading sr" style="transition-delay:.1s">Three steps.<br/>Instant answers.</h2>
+    <div class="steps">
+      <div class="step sr" style="transition-delay:.15s">
+        <div class="step-num">01 —</div>
+        <div class="step-title">Type your question</div>
+        <div class="step-body">Use the terminal prompt to ask anything about a flight — status, gate, delay, altitude, or historical data.</div>
+      </div>
+      <div class="step sr" style="transition-delay:.28s">
+        <div class="step-num">02 —</div>
+        <div class="step-title">Terminal queries live data</div>
+        <div class="step-body">Your query hits AviationStack, FlightAware, and OpenSky simultaneously. The freshest data wins.</div>
+      </div>
+      <div class="step sr" style="transition-delay:.41s">
+        <div class="step-num">03 —</div>
+        <div class="step-title">Get a plain answer</div>
+        <div class="step-body">No raw JSON, no cluttered dashboards. Just the exact answer you asked for, in plain English.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="commands-section" id="commands">
+    <div class="commands-grid">
+      <div class="commands-text sr">
+        <p class="section-label">// Commands</p>
+        <h2 class="section-heading" style="margin-bottom:16px;">Powerful queries.<br/>Simple syntax.</h2>
+        <p>Every question you'd type into a search bar works here — but Terminal actually understands context, so you can ask follow-ups without repeating the flight number.</p>
+        <div class="command-chips">
+          <span class="chip">status AI101</span>
+          <span class="chip">gate EK202</span>
+          <span class="chip">delay history LH740</span>
+          <span class="chip">altitude SQ317</span>
+          <span class="chip">track BA178</span>
+          <span class="chip">itinerary [paste]</span>
+          <span class="chip">alerts on AI101</span>
+          <span class="chip">weather ORD</span>
+        </div>
+      </div>
+      <div class="commands-terminal sr" style="transition-delay:.2s">
+        <div class="cmd-header">
+          <div class="cmd-dot r"></div>
+          <div class="cmd-dot y"></div>
+          <div class="cmd-dot g"></div>
+        </div>
+        <div class="cmd-body">
+          <div class="cmd-line"><span class="p">guest@terminal:~$</span> <span class="c">delay history LH740</span></div>
+          <div class="cmd-blank"></div>
+          <div class="cmd-line"><span class="o">Fetching 30-day history for LH740 (FRA→ORD)...</span></div>
+          <div class="cmd-blank"></div>
+          <div class="cmd-line"><span class="hl">On-time rate:&nbsp;&nbsp;&nbsp;</span><span class="c">68%</span></div>
+          <div class="cmd-line"><span class="hl">Avg delay:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="wn">22 minutes</span></div>
+          <div class="cmd-line"><span class="hl">Worst delay:&nbsp;&nbsp;&nbsp;</span><span class="c">4h 12m (weather)</span></div>
+          <div class="cmd-line"><span class="hl">Best recent:&nbsp;&nbsp;&nbsp;</span><span class="c">+3 min (yesterday)</span></div>
+          <div class="cmd-blank"></div>
+          <div class="cmd-line"><span class="o">Tip: set alert → alerts on LH740</span></div>
+          <div class="cmd-blank"></div>
+          <div class="cmd-line"><span class="p">guest@terminal:~$</span> <span class="c" id="demoTyping"></span><span style="display:inline-block;width:2px;height:13px;background:#4ade80;animation:blink 1s step-end infinite;vertical-align:middle;margin-left:1px;"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <p class="section-label sr">// Get started</p>
+    <h2 class="sr" style="transition-delay:.1s">Stop checking apps.<br/>Start <em>asking</em>.</h2>
+    <p class="sr" style="transition-delay:.2s">Terminal is in early access. Join the waitlist and be first to track flights the way they should be tracked.</p>
+    <div class="cta-final-btns sr" style="transition-delay:.3s;">
+      <button type="button" class="btn-primary">
+        Join the Waitlist
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </button>
+      <button type="button" class="btn-ghost">View on GitHub</button>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-brand"><span>▶</span> Terminal</div>
+    <div class="footer-links">
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">API Docs</a>
+      <a href="#">Status</a>
+      <a href="#">GitHub</a>
+    </div>
+    <div class="footer-copy">© 2026 Terminal. All rights reserved.</div>
+  </footer>
+
+</div>
+
+<script>
+const dotGrid = document.getElementById('dot-grid');
+window.addEventListener('mousemove', (e) => {
+  dotGrid.style.setProperty('--mouse-x', `${e.clientX}px`);
+  dotGrid.style.setProperty('--mouse-y', `${e.clientY}px`);
+});
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function runLogoAnimation() {
+  const el = document.getElementById('logo-text');
+  const word = "Terminal";
+  while (true) {
+    el.innerText = "T";
+    await sleep(2000);
+    el.innerText = "";
+    await sleep(800);
+    for (let i = 1; i <= word.length; i++) {
+      el.innerText = word.substring(0, i);
+      await sleep(Math.random() * 100 + 90);
+    }
+    await sleep(3000);
+    for (let i = word.length; i >= 1; i--) {
+      el.innerText = word.substring(0, i);
+      await sleep(75);
+    }
+    await sleep(1000);
+  }
+}
+runLogoAnimation();
+
+async function runDemoTyping() {
+  const el = document.getElementById('demoTyping');
+  const commands = ['alerts on LH740', 'status EK202', 'gate BA178 LHR', 'altitude SQ317'];
+  let ci = 0;
+  while (true) {
+    const cmd = commands[ci % commands.length];
+    for (let i = 0; i <= cmd.length; i++) {
+      el.textContent = cmd.substring(0, i);
+      await sleep(Math.random() * 80 + 80);
+    }
+    await sleep(2500);
+    for (let i = cmd.length; i >= 0; i--) {
+      el.textContent = cmd.substring(0, i);
+      await sleep(50);
+    }
+    await sleep(600);
+    ci++;
+  }
+}
+runDemoTyping();
+
+async function runPlaceholderAnimation() {
+  const input = document.getElementById('terminalInput');
+  const fp    = document.getElementById('fakePlaceholder');
+  const prompts = [
+    'what is the status of EK500?',
+    'is my flight on time?',
+    'when does the next flight to New York leave?',
+    'what gate is BA178 at?',
+    'is there a delay on my LA flight?',
+    'track my connecting flight to Chicago.',
+    'when does the next flight to Dubai leave?',
+    'is my Mumbai flight delayed?',
+    'what time does AA101 land in JFK?',
+  ];
+
+  const isActive = () => document.activeElement === input || input.value.length > 0;
+
+  input.addEventListener('focus',  () => { fp.textContent = ''; });
+  input.addEventListener('blur',   () => { if (!input.value) fp.textContent = fp.dataset.current || ''; });
+  input.addEventListener('input',  () => { fp.textContent = input.value ? '' : (fp.dataset.current || ''); });
+
+  let pi = 0;
+  while (true) {
+    if (isActive()) { await sleep(500); continue; }
+    const prompt = prompts[pi % prompts.length];
+    for (let i = 1; i <= prompt.length; i++) {
+      if (isActive()) break;
+      fp.dataset.current = prompt.substring(0, i);
+      fp.textContent     = fp.dataset.current;
+      await sleep(Math.random() * 60 + 60);
+    }
+    await sleep(2000);
+    for (let i = prompt.length; i >= 0; i--) {
+      if (isActive()) break;
+      fp.dataset.current = prompt.substring(0, i);
+      fp.textContent     = fp.dataset.current;
+      await sleep(40);
+    }
+    await sleep(500);
+    pi++;
+  }
+}
+runPlaceholderAnimation();
+
+document.getElementById('terminalInput').addEventListener('keydown', async function(e) {
+  if (e.key !== 'Enter') return;
+  const val = this.value.trim();
+  if (!val) return;
+  this.value = '';
+
+  const body = this.closest('.terminal-body');
+  const promptLine = this.closest('.prompt-line');
+
+  function addLine(html, cls = '') {
+    const div = document.createElement('div');
+    div.className = 'output-line' + (cls ? ' ' + cls : '');
+    div.innerHTML = html;
+    body.insertBefore(div, promptLine);
+    body.scrollTop = body.scrollHeight;
+    return div;
+  }
+
+  async function typeLine(text, cls = '') {
+    const div = document.createElement('div');
+    div.className = 'output-line' + (cls ? ' ' + cls : '');
+    div.textContent = '';
+    body.insertBefore(div, promptLine);
+    for (const ch of `>> ${text}`) {
+      div.textContent += ch;
+      body.scrollTop = body.scrollHeight;
+      await sleep(20);
+    }
+  }
+
+  addLine(`<span style="color:#4ade80">guest@terminal:~$</span> ${val}`);
+
+  const cleaned = val.trim().toUpperCase().replace(/\s/g, '');
+
+  if (/^[A-Z]{2}\d{2,4}$/.test(cleaned)) {
+    const loading = addLine(`>> Fetching data for ${cleaned}...`, 'dim');
+    let data;
+    try {
+      const resp = await fetch(`https://flight-tracker-970706733452.asia-south1.run.app/flight/${cleaned}`);
+      data = await resp.json();
+    } catch {
+      loading.remove();
+      addLine(`>> Network error — could not reach the flight data service.`, 'warn');
+      return;
+    }
+    loading.remove();
+    if (data.error || data.message) {
+      addLine(`>> ${data.error || data.message}`, 'warn');
+      return;
+    }
+    const dep = data.departure || {};
+    const arr = data.arrival || {};
+    const depAirport = dep.airport ? `${dep.airport}${dep.iata ? ` (${dep.iata})` : ''}` : '—';
+    const arrAirport = arr.airport ? `${arr.airport}${arr.iata ? ` (${arr.iata})` : ''}` : '—';
+    await typeLine(`${data.airline || ''} ${data.flight_number || cleaned} — ${data.status || 'Unknown'}`, 'green');
+    await typeLine(`From: ${depAirport}`, 'blue');
+    if (dep.terminal) await typeLine(`Terminal: ${dep.terminal}`, 'blue');
+    if (dep.gate)     await typeLine(`Gate: ${dep.gate}`, 'blue');
+    await typeLine(`Departs: ${dep.time || dep.scheduled || '—'}`, 'blue');
+    if (dep.delay)    await typeLine(`Delay: ${dep.delay} min`, 'blue');
+    await typeLine(`To: ${arrAirport}`, 'blue');
+    if (arr.terminal) await typeLine(`Terminal: ${arr.terminal}`, 'blue');
+    if (arr.gate)     await typeLine(`Gate: ${arr.gate}`, 'blue');
+    await typeLine(`Arrives: ${arr.time || arr.scheduled || '—'}`, 'blue');
+    if (arr.delay)    await typeLine(`Delay: ${arr.delay} min`, 'blue');
+  } else {
+    const loading = addLine(`>> thinking...`, 'dim');
+    try {
+      const resp = await fetch('https://flight-tracker-970706733452.asia-south1.run.app/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: val }),
+      });
+      const data = await resp.json();
+      loading.remove();
+      if (!resp.ok) {
+        addLine(`>> ${data.error || 'Something went wrong.'}`, 'warn');
+        return;
+      }
+      await typeLine(data.response);
+    } catch {
+      loading.remove();
+      addLine(`>> Network error — could not reach the flight data service.`, 'warn');
+    }
+  }
+});
+
+const sels = document.querySelectorAll('.sr');
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('on'); obs.unobserve(e.target); } });
+}, { threshold: 0.08 });
+sels.forEach(el => obs.observe(el));
+
+const hamburger = document.getElementById('navHamburger');
+const drawer    = document.getElementById('navDrawer');
+
+hamburger.addEventListener('click', () => {
+  const open = drawer.classList.toggle('open');
+  hamburger.classList.toggle('open', open);
+  hamburger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+});
+
+drawer.querySelectorAll('a').forEach(link => {
+  link.addEventListener('click', () => {
+    drawer.classList.remove('open');
+    hamburger.classList.remove('open');
+    hamburger.setAttribute('aria-label', 'Open menu');
+  });
+});
+
+const CLIENT_ID = '970706733452-8l7q1le53maepekgl5u3t1np118n1p0h.apps.googleusercontent.com';
+let tokenClient;
+
+function applyUsername(username) {
+  document.querySelectorAll('.user').forEach(el => {
+    el.textContent = `${username}@terminal:~$`;
+  });
+  ['googleSignInBtn', 'googleSignInBtnDrawer', 'nameInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const navProfile = document.getElementById('navProfile');
+  if (navProfile) navProfile.style.display = 'block';
+  const navProfileInitial = document.getElementById('navProfileInitial');
+  if (navProfileInitial) navProfileInitial.textContent = username[0].toUpperCase();
+  const navProfileName = document.getElementById('navProfileName');
+  if (navProfileName) navProfileName.textContent = username;
+}
+
+function handleCredential(response) {
+  try {
+    const base64 = response.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const { email } = JSON.parse(atob(base64));
+    const username = (email.split('@')[0].match(/^[a-zA-Z]+/) || ['user'])[0];
+    localStorage.setItem('username', username);
+    applyUsername(username);
+  } catch { /* silently ignore malformed credential */ }
+}
+
+async function handleRedirectCallback() {
+  // Check for google.accounts.id credential in URL query params (redirect mode)
+  const queryParams = new URLSearchParams(window.location.search);
+  const credential = queryParams.get('credential');
+  if (credential) {
+    history.replaceState(null, '', window.location.pathname);
+    handleCredential({ credential });
+    return true;
+  }
+
+  // Check for OAuth 2.0 implicit flow access token in URL hash
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessToken = hashParams.get('access_token');
+  if (!accessToken) return false;
+  history.replaceState(null, '', window.location.pathname);
+  try {
+    const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const { email } = await res.json();
+    const username = (email.split('@')[0].match(/^[a-zA-Z]+/) || ['user'])[0];
+    localStorage.setItem('username', username);
+    applyUsername(username);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function triggerGoogleSignIn() {
+  if (tokenClient) {
+    tokenClient.requestAccessToken();
+  } else {
+    activateNameFallback();
+  }
+}
+
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+function initGoogleSignIn() {
+  // auto_select uses cross-site cookies that Safari/ITP blocks — skip it on WebKit
+  if (!isSafari) {
+    google.accounts.id.initialize({
+      client_id: CLIENT_ID,
+      callback: handleCredential,
+      auto_select: true,
+      cancel_on_tap_outside: false,
+    });
+  }
+
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'email profile',
+    ux_mode: 'popup',
+    callback: async (tokenResponse) => {
+      if (!tokenResponse.access_token) return;
+      try {
+        const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        });
+        const { email } = await res.json();
+        const username = (email.split('@')[0].match(/^[a-zA-Z]+/) || ['user'])[0];
+        localStorage.setItem('username', username);
+        applyUsername(username);
+      } catch { /* silently ignore fetch errors */ }
+    },
+  });
+
+  document.getElementById('googleSignInBtn').addEventListener('click', triggerGoogleSignIn);
+}
+
+function activateNameFallback() {
+  document.getElementById('googleSignInBtn').style.display = 'none';
+  const input = document.getElementById('nameInput');
+  input.style.display = 'inline';
+  input.focus();
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const name = (input.value.trim().match(/^[a-zA-Z]+/) || ['user'])[0].toLowerCase();
+    applyUsername(name);
+  });
+}
+
+document.getElementById('navProfileBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('navProfileDropdown').classList.toggle('open');
+});
+document.addEventListener('click', () => {
+  document.getElementById('navProfileDropdown').classList.remove('open');
+});
+document.getElementById('navProfileDropdown').addEventListener('click', (e) => {
+  e.stopPropagation();
+});
+
+document.getElementById('googleSignInBtnDrawer').addEventListener('click', () => {
+  drawer.classList.remove('open');
+  hamburger.classList.remove('open');
+  hamburger.setAttribute('aria-label', 'Open menu');
+  triggerGoogleSignIn();
+});
+
+window.addEventListener('load', async () => {
+  const signedIn = await handleRedirectCallback();
+  if (signedIn) return;
+
+  const savedUsername = localStorage.getItem('username');
+  if (savedUsername) { applyUsername(savedUsername); return; }
+
+  if (typeof google !== 'undefined') {
+    initGoogleSignIn();
+    return;
+  }
+  let resolved = false;
+  const interval = setInterval(() => {
+    if (typeof google !== 'undefined') {
+      clearInterval(interval);
+      resolved = true;
+      initGoogleSignIn();
+    }
+  }, 100);
+  setTimeout(() => {
+    if (!resolved) {
+      clearInterval(interval);
+      activateNameFallback();
+    }
+  }, 3000);
+});
+</script>
+<script>
+document.fonts.ready.then(() => {
+  const c = document.getElementById('terminalLogo');
+  const ctx = c.getContext('2d');
+  const DPR = Math.max(window.devicePixelRatio || 1, 3);
+  const W_CSS = 110, H_CSS = 24;
+  c.width  = W_CSS * DPR;
+  c.height = H_CSS * DPR;
+  c.style.width  = W_CSS + 'px';
+  c.style.height = H_CSS + 'px';
+  ctx.scale(DPR, DPR);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const W = W_CSS, H = H_CSS;
+  const CY = H / 2;
+  const GREEN = '#4ade80';
+  const WHITE = '#e2e2e2';
+  const FS = 17.6;
+  const FONT = `bold ${FS}px "JetBrains Mono", monospace`;
+  ctx.font = FONT;
+  const CHAR_W = ctx.measureText('>').width;
+  const PX = 2;
+  const TX = PX + CHAR_W + 3;
+  const US_X = TX;
+  const BASE_Y = CY + FS * 0.36;
+  const US_H = 2;
+  const RUNWAY_W = CHAR_W * 2;
+  const LIFTOFF_X = US_X + CHAR_W + CHAR_W * 0.65;
+  const WORD = 'Terminal';
+  const D_BEFORE = 300;
+  const D_TYPE = WORD.length * 80;
+  const D_PAUSE = 700;
+  const D_DELETE = WORD.length * 55;
+  const D_WAIT = 350;
+  const D_EXTEND = 500;
+  const D_SLIDE = 520;
+  const D_TAKEOFF = 1800;
+  const D_GAP = 500;
+  const TOTAL = D_BEFORE+D_TYPE+D_PAUSE+D_DELETE+D_WAIT+D_EXTEND+D_SLIDE+D_TAKEOFF+D_GAP;
+  let t0 = null;
+  let cursorOn = true;
+  setInterval(() => cursorOn = !cursorOn, 530);
+  const drawU = (alpha, w) => { ctx.globalAlpha = alpha; ctx.fillStyle = GREEN; ctx.fillRect(US_X, BASE_Y, (w || CHAR_W) - 3, US_H); ctx.globalAlpha = 1; };
+  const drawGT = (x, y, alpha) => { ctx.globalAlpha = alpha; ctx.font = FONT; ctx.fillStyle = GREEN; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('>', x, y); ctx.globalAlpha = 1; };
+  function animate(ts) {
+    if (!t0) t0 = ts;
+    const el = (ts - t0) % TOTAL;
+    ctx.clearRect(0, 0, W, H);
+    const e1=D_BEFORE,e2=e1+D_TYPE,e3=e2+D_PAUSE,e4=e3+D_DELETE,e5=e4+D_WAIT,e6=e5+D_EXTEND,e7=e6+D_SLIDE,e8=e7+D_TAKEOFF;
+    let phase,pt=0,chars=0;
+    if(el<e1){phase='before';}
+    else if(el<e2){phase='type';chars=Math.floor((el-e1)/80);}
+    else if(el<e3){phase='pause';chars=WORD.length;}
+    else if(el<e4){phase='delete';chars=WORD.length-Math.floor((el-e3)/55);}
+    else if(el<e5){phase='wait';}
+    else if(el<e6){phase='extend';pt=(el-e5)/D_EXTEND;}
+    else if(el<e7){phase='slide';pt=(el-e6)/D_SLIDE;}
+    else if(el<e8){phase='takeoff';pt=(el-e7)/D_TAKEOFF;}
+    else{phase='gap';}
+    ctx.font=FONT;ctx.textAlign='left';ctx.textBaseline='middle';
+    if(phase==='before'){drawGT(PX,CY,1);if(cursorOn)drawU(1,CHAR_W);}
+    else if(phase==='type'){drawGT(PX,CY,1);ctx.fillStyle=WHITE;ctx.fillText(WORD.substring(0,chars),TX,CY);const ax=TX+ctx.measureText(WORD.substring(0,chars)).width;if(cursorOn){ctx.fillStyle=GREEN;ctx.fillRect(ax,BASE_Y,CHAR_W-3,US_H);}}
+    else if(phase==='pause'){drawGT(PX,CY,1);ctx.fillStyle=WHITE;ctx.fillText(WORD,TX,CY);const ax=TX+ctx.measureText(WORD).width;if(cursorOn){ctx.fillStyle=GREEN;ctx.fillRect(ax,BASE_Y,CHAR_W-3,US_H);}}
+    else if(phase==='delete'){drawGT(PX,CY,1);if(chars>0){ctx.fillStyle=WHITE;ctx.fillText(WORD.substring(0,chars),TX,CY);}const ax=chars>0?TX+ctx.measureText(WORD.substring(0,chars)).width:TX;if(cursorOn){ctx.fillStyle=GREEN;ctx.fillRect(ax,BASE_Y,CHAR_W-3,US_H);}}
+    else if(phase==='wait'){drawGT(PX,CY,1);drawU(1,CHAR_W);}
+    else if(phase==='extend'){const easeT=pt<0.5?2*pt*pt:-1+(4-2*pt)*pt;const currentW=CHAR_W+(RUNWAY_W-CHAR_W)*easeT;drawGT(PX,CY,1);drawU(1,currentW);}
+    else if(phase==='slide'){const gx=PX+pt*(LIFTOFF_X-PX);drawU(1,RUNWAY_W);drawGT(gx,CY,1);}
+    else if(phase==='takeoff'){
+      const vx0=60,ax=20,lift=16;
+      const gx=LIFTOFF_X+vx0*pt+0.5*ax*pt*pt;
+      const gy=CY-lift*pt*pt;
+      const alpha=Math.max(1-(pt-0.75)/0.25,0);
+      const liftAmt=Math.max((CY-gy)/(H*0.5),0);
+      drawU(Math.max(1-liftAmt*3,0),RUNWAY_W);
+      if(pt>0.05&&alpha>0){const prevT=Math.max(pt-0.05,0);const prevX=LIFTOFF_X+vx0*prevT+0.5*ax*prevT*prevT;const prevY=CY-lift*prevT*prevT;const grad=ctx.createLinearGradient(prevX,prevY,gx,gy);grad.addColorStop(0,'rgba(74,222,128,0)');grad.addColorStop(1,`rgba(74,222,128,${0.25*alpha})`);ctx.beginPath();ctx.moveTo(prevX,prevY);ctx.lineTo(gx,gy);ctx.strokeStyle=grad;ctx.lineWidth=2;ctx.stroke();}
+      drawGT(gx,gy,alpha);
+    }
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+FlightTrackerApp/node_modules
+__pycache__
+*.pyc
+*.pyo
+.env
+.git
