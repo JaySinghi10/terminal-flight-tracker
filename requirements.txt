@@ -3,4 +3,5 @@ python-dotenv
 fastapi
 uvicorn[standard]
 anthropic
-mcp
+mcp==1.27.1
+tzdata

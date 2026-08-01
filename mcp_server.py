@@ -3,6 +3,7 @@ import os
 import re
 from dotenv import load_dotenv
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from mcp.server.fastmcp import FastMCP
 
 load_dotenv()
@@ -15,15 +16,36 @@ mcp = FastMCP("Flight Tracker")
 # ──────────────────────────────────────────────
 # FORMAT TIME
 # ──────────────────────────────────────────────
-def format_time(time_str):
+def format_time(time_str, tz_name=None):
     if not time_str:
         return "N/A"
-    dt = datetime.fromisoformat(time_str)
+    try:
+        dt = datetime.fromisoformat(time_str).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return "N/A"
+
     period = "AM" if dt.hour < 12 else "PM"
     display_hour = dt.hour if dt.hour <= 12 else dt.hour - 12
     if display_hour == 0:
         display_hour = 12
-    return f"{display_hour}:{dt.minute:02d} {period} IST"
+    time_part = f"{display_hour}:{dt.minute:02d} {period}"
+
+    label = None
+    if tz_name:
+        try:
+            abbr = dt.replace(tzinfo=ZoneInfo(tz_name)).tzname()
+        except Exception:
+            abbr = None
+        if abbr:
+            if abbr[0].isalpha():
+                label = abbr
+            else:
+                m = re.match(r'^([+-])(\d{1,2})(?::?(\d{2}))?$', abbr)
+                if m:
+                    sign, hh, mm = m.group(1), int(m.group(2)), m.group(3)
+                    label = f"GMT{sign}{hh}:{mm}" if mm and int(mm) != 0 else f"GMT{sign}{hh}"
+
+    return f"{time_part} {label}" if label else time_part
 
 # ──────────────────────────────────────────────
 # EXTRACT FLIGHT NUMBER FROM TEXT USING REGEX
@@ -36,7 +58,7 @@ def extract_flight_number(text: str):
 # ──────────────────────────────────────────────
 # FETCH FLIGHT STATUS FROM AVIATIONSTACK
 # ──────────────────────────────────────────────
-def fetch_flight(flight_number: str) -> str:
+def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
     url = "http://api.aviationstack.com/v1/flights"
     params = {
         "access_key": AVIATIONSTACK_KEY,
@@ -49,7 +71,7 @@ def fetch_flight(flight_number: str) -> str:
     data = response.json()
 
     if "data" not in data or len(data["data"]) == 0:
-        return f"No flight found for {flight_number.upper()}. Make sure it is operating today."
+        return (f"No flight found for {flight_number.upper()}. Make sure it is operating today.", None)
 
     flight = data["data"][0]
     dep = flight["departure"]
@@ -66,18 +88,22 @@ STATUS: {status}
 DEPARTURE
 Airport  : {dep['airport']} ({dep['iata']})
 Terminal : {dep.get('terminal') or 'N/A'} | Gate: {dep.get('gate') or 'N/A'}
-Scheduled: {format_time(dep.get('scheduled'))}
-Actual   : {format_time(dep.get('actual'))}
+Scheduled: {format_time(dep.get('scheduled'), dep.get('timezone'))}
+Actual   : {format_time(dep.get('actual'), dep.get('timezone'))}
 {f"⚠ Delay: {dep_delay} minutes" if dep_delay else ""}
 
 ARRIVAL
 Airport  : {arr['airport']} ({arr['iata']})
 Terminal : {arr.get('terminal') or 'N/A'}
-Scheduled: {format_time(arr.get('scheduled'))}
-Actual   : {format_time(arr.get('actual'))}
+Scheduled: {format_time(arr.get('scheduled'), arr.get('timezone'))}
+Actual   : {format_time(arr.get('actual'), arr.get('timezone'))}
 {f"⚠ Delay: {arr_delay} minutes" if arr_delay else ""}
 """
-    return result.strip()
+    return (result.strip(), flight)
+
+
+def fetch_flight(flight_number: str) -> str:
+    return fetch_flight_full(flight_number)[0]
 
 # ──────────────────────────────────────────────
 # SEARCH GMAIL FOR FLIGHT BOOKING EMAILS
