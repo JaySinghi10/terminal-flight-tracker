@@ -30,6 +30,9 @@ web-build/
 *.so
 *.dylib
 
+# Provider API fixtures (raw responses; regenerate rather than commit)
+samples/
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
