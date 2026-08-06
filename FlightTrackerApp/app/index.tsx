@@ -57,19 +57,20 @@ type FlightData = {
   toCity: string;
   dep: string;
   arr: string;
-  depActual: string;
-  arrEstimated: string;
-  duration: string;
+  depTimeLabel: string;
+  depTimeValue: string;
+  arrTimeLabel: string;
+  arrTimeValue: string;
+  duration: string | null;
   terminal: string;
   gate: string;
-  seat: string;
-  class: string;
-  aircraft: string;
-  registration: string;
+  checkinDesk: string | null;
+  aircraft: string | null;
+  registration: string | null;
   baggage: string;
-  delay: string | null;
+  delayLabel: string | null;
+  delayValue: string | null;
   date: string;
-  progress: number;
 };
 
 function getStatusColor(status: string) {
@@ -77,6 +78,7 @@ function getStatusColor(status: string) {
     case "landed": return "#8e8e93";
     case "active": return "#30d158";
     case "scheduled": return "#4ade80";
+    case "delayed": return "#ff9f0a";
     default: return "#ff9f0a";
   }
 }
@@ -86,22 +88,105 @@ function getStatusBg(status: string) {
     case "landed": return "#8e8e9312";
     case "active": return "#30d15812";
     case "scheduled": return "#4ade8012";
+    case "delayed": return "#ff9f0a12";
     default: return "#ff9f0a12";
   }
 }
 
-function getProgress(status: string) {
-  switch (status) {
-    case "landed": return 1;
-    case "active": return 0.5;
-    default: return 0;
+// The backend uses "N/A" for a time that does not exist yet, and saved records
+// default to the same string, so neither may be treated as a real value.
+function hasTime(v: string | null | undefined): v is string {
+  return typeof v === 'string' && v.trim() !== '' && v !== 'N/A';
+}
+
+type TimeCell = { label: string; value: string };
+
+// Decides the "what happened / what is expected" row for one movement. Shared by
+// the fresh-search card and the saved-record card so the two cannot drift.
+function movementTimeCell(
+  actual: string | null | undefined,
+  estimated: string | null | undefined,
+  actualSource: string | null | undefined,
+  estimatedSource: string | null | undefined,
+  isDeparture: boolean,
+): TimeCell {
+  const noun = isDeparture ? 'Departure' : 'Arrival';
+  if (hasTime(actual)) {
+    const suffix = actualSource === 'runway'
+      ? (isDeparture ? ' (wheels up)' : ' (touchdown)')
+      : '';
+    return { label: `Actual ${noun}`, value: `${actual}${suffix}` };
   }
+  if (hasTime(estimated)) {
+    const suffix = estimatedSource === 'predicted' ? ' (predicted)' : '';
+    return { label: `Estimated ${noun}`, value: `${estimated}${suffix}` };
+  }
+  return {
+    label: `Actual ${noun}`,
+    value: isDeparture ? 'Not departed yet' : 'Not arrived yet',
+  };
+}
+
+// Signed minutes -> row label and value. Zero and null hide the row entirely.
+function delayCell(delay: number | null | undefined): { label: string | null; value: string | null } {
+  if (typeof delay !== 'number' || delay === 0) return { label: null, value: null };
+  const magnitude = Math.abs(delay);
+  const unit = magnitude === 1 ? 'minute' : 'minutes';
+  return delay > 0
+    ? { label: 'Delay', value: `${magnitude} ${unit}` }
+    : { label: 'Early', value: `${magnitude} ${unit}` };
+}
+
+// A not-yet-departed flight already running late reads better as "delayed" than
+// as "scheduled". Display only — the stored status vocabulary is unchanged.
+function displayStatus(status: string, departureDelay: number | null | undefined): string {
+  if (status === 'scheduled' && typeof departureDelay === 'number' && departureDelay > 0) {
+    return 'delayed';
+  }
+  return status;
+}
+
+// Scheduled block time, from the two scheduled ISO values in their own zones.
+function scheduledDuration(
+  depIso: string | null,
+  depTz: string | null,
+  arrIso: string | null,
+  arrTz: string | null,
+): string | null {
+  const dep = zonedIsoToTs(depIso, depTz);
+  const arr = zonedIsoToTs(arrIso, arrTz);
+  if (dep == null || arr == null) return null;
+  const totalMin = Math.round((arr - dep) / 60000);
+  if (totalMin <= 0) return null;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+// Fraction of the flight elapsed, or null meaning "do not draw the bar at all".
+// Called at render time from the live `now` so it advances with the clock.
+function computeProgress(f: SavedFlight | null, now: number): number | null {
+  if (!f) return null;
+  const s = f.status.toLowerCase();
+  if (s === 'landed') return 1;
+  if (s === 'scheduled') return 0;
+  if (s !== 'active') return null; // cancelled, diverted, unknown, anything else
+  const depIso = f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso;
+  const arrIso = f.to.estimatedIso ?? f.to.scheduledIso;
+  const dep = zonedIsoToTs(depIso, f.from.timezone);
+  const arr = zonedIsoToTs(arrIso, f.to.timezone);
+  if (dep == null || arr == null || arr <= dep) return null;
+  return Math.min(0.98, Math.max(0.02, (now - dep) / (arr - dep)));
 }
 
 function flightDataFromApi(data: any): FlightData {
   const dep = data?.departure ?? {};
   const arr = data?.arrival ?? {};
-  const status = (data?.status || "unknown").toLowerCase();
+  const status = displayStatus((data?.status || "unknown").toLowerCase(), dep.delay);
+  const depCell = movementTimeCell(dep.actual, dep.estimated, dep.actual_source, dep.estimated_source, true);
+  const arrCell = movementTimeCell(arr.actual, arr.estimated, arr.actual_source, arr.estimated_source, false);
+  const delay = delayCell(dep.delay);
   return {
     flight: data?.flight_number || "—",
     airline: data?.airline || "—",
@@ -116,19 +201,20 @@ function flightDataFromApi(data: any): FlightData {
     toCity: arr.airport || "—",
     dep: dep.scheduled || "N/A",
     arr: arr.scheduled || "N/A",
-    depActual: dep.actual || "Not departed yet",
-    arrEstimated: arr.actual || "Not arrived yet",
-    duration: "—",
+    depTimeLabel: depCell.label,
+    depTimeValue: depCell.value,
+    arrTimeLabel: arrCell.label,
+    arrTimeValue: arrCell.value,
+    duration: scheduledDuration(dep.scheduled_iso ?? null, dep.timezone ?? null, arr.scheduled_iso ?? null, arr.timezone ?? null),
     terminal: dep.terminal || "N/A",
     gate: dep.gate || "N/A",
-    seat: "—",
-    class: "—",
-    aircraft: "—",
-    registration: "—",
+    checkinDesk: dep.checkin_desk ?? null,
+    aircraft: data?.aircraft_model ?? null,
+    registration: data?.aircraft_registration ?? null,
     baggage: arr.baggage || "N/A",
-    delay: dep.delay ? `${dep.delay} minutes` : null,
+    delayLabel: delay.label,
+    delayValue: delay.value,
     date: data?.flight_date || "N/A",
-    progress: getProgress(status),
   };
 }
 
@@ -336,7 +422,9 @@ function ProgressBar({ progress, color, from, to }: { progress: number; color: s
   const anim = useRef(new Animated.Value(0)).current;
   const planeAnim = useRef(new Animated.Value(0)).current;
 
-  useState(() => {
+  // Keyed on `progress` so the bar re-animates as the flight advances. The old
+  // useState-callback form ran once and never again.
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(anim, {
         toValue: progress,
@@ -353,7 +441,7 @@ function ProgressBar({ progress, color, from, to }: { progress: number; color: s
         useNativeDriver: false,
       }),
     ]).start();
-  });
+  }, [progress]);
 
   return (
     <View style={pg.wrap}>
@@ -962,12 +1050,16 @@ export default function Index() {
     setSaveError("");
     setChatResponse(null);
     setFlightRecord(saved);
+    const savedStatus = displayStatus(saved.status.toLowerCase(), saved.from.delay);
+    const depCell = movementTimeCell(saved.from.actual, saved.from.estimated, saved.from.actualSource, saved.from.estimatedSource, true);
+    const arrCell = movementTimeCell(saved.to.actual, saved.to.estimated, saved.to.actualSource, saved.to.estimatedSource, false);
+    const savedDelay = delayCell(saved.from.delay);
     setFlight({
       flight: saved.flightNumber,
       airline: saved.airline,
-      status: saved.status.toUpperCase(),
-      statusColor: getStatusColor(saved.status),
-      statusBg: getStatusBg(saved.status),
+      status: savedStatus.toUpperCase(),
+      statusColor: getStatusColor(savedStatus),
+      statusBg: getStatusBg(savedStatus),
       from: saved.from.iata,
       fromFull: saved.from.airport,
       fromCity: saved.from.airport,
@@ -976,19 +1068,20 @@ export default function Index() {
       toCity: saved.to.airport,
       dep: saved.from.scheduled || "N/A",
       arr: saved.to.scheduled || "N/A",
-      depActual: saved.from.actual || "Not departed yet",
-      arrEstimated: saved.to.actual || "Not arrived yet",
-      duration: "—",
+      depTimeLabel: depCell.label,
+      depTimeValue: depCell.value,
+      arrTimeLabel: arrCell.label,
+      arrTimeValue: arrCell.value,
+      duration: scheduledDuration(saved.from.scheduledIso, saved.from.timezone, saved.to.scheduledIso, saved.to.timezone),
       terminal: saved.from.terminal || "N/A",
       gate: saved.from.gate || "N/A",
-      seat: "—",
-      class: "—",
-      aircraft: "—",
-      registration: "—",
-      baggage: "N/A",
-      delay: saved.from.delay ? `${saved.from.delay} minutes` : null,
+      checkinDesk: saved.from.checkinDesk ?? null,
+      aircraft: saved.aircraftModel ?? null,
+      registration: saved.aircraftRegistration ?? null,
+      baggage: saved.to.baggage ?? "N/A",
+      delayLabel: savedDelay.label,
+      delayValue: savedDelay.value,
       date: saved.flightDate === 'unknown' ? "N/A" : saved.flightDate,
-      progress: getProgress(saved.status),
     });
     setLastUpdated(saved.updatedAt);
     showResult();
@@ -1177,6 +1270,8 @@ export default function Index() {
   };
 
   const isSaved = !!flightRecord && savedFlights.some(f => f.id === flightRecord.id);
+  // Recomputed every render, so the bar tracks the ticking `now` state.
+  const progressValue = computeProgress(flightRecord, now);
 
   const handleToggleSave = async () => {
     if (!flightRecord) return;
@@ -1462,7 +1557,7 @@ export default function Index() {
                   <Text style={s.routeTime}>{flight.dep}</Text>
                 </View>
                 <View style={s.routeMid}>
-                  <Text style={s.routeDuration}>{flight.duration}</Text>
+                  {flight.duration !== null && <Text style={s.routeDuration}>{flight.duration}</Text>}
                   <Text style={s.routeArrow}>· ✈ ·</Text>
                   <Text style={s.routeDirect}>Direct</Text>
                 </View>
@@ -1473,26 +1568,33 @@ export default function Index() {
                 </View>
               </View>
 
-              {/* Progress bar */}
-              <ProgressBar
-                progress={flight.progress}
-                color={flight.statusColor}
-                from={flight.from}
-                to={flight.to}
-              />
+              {/* Progress bar — hidden entirely when the flight state cannot place it */}
+              {progressValue !== null && (
+                <ProgressBar
+                  progress={progressValue}
+                  color={flight.statusColor}
+                  from={flight.from}
+                  to={flight.to}
+                />
+              )}
 
               {/* Flight details */}
               <View style={s.detailsCard}>
                 <Text style={s.detailsTitle}>Flight Details</Text>
                 <InfoRow label="Date" value={flight.date} />
                 <InfoRow label="Scheduled Departure" value={flight.dep} highlight />
-                <InfoRow label="Actual Departure" value={flight.depActual} />
+                <InfoRow label={flight.depTimeLabel} value={flight.depTimeValue} />
                 <InfoRow label="Scheduled Arrival" value={flight.arr} highlight />
-                <InfoRow label="Estimated Arrival" value={flight.arrEstimated} />
+                <InfoRow label={flight.arrTimeLabel} value={flight.arrTimeValue} />
                 <InfoRow label="Terminal" value={flight.terminal} />
                 <InfoRow label="Gate" value={flight.gate} highlight />
-                {flight.delay && <InfoRow label="Delay" value={flight.delay} />}
+                {flight.checkinDesk !== null && <InfoRow label="Check-in Desk" value={flight.checkinDesk} />}
+                {flight.delayLabel !== null && flight.delayValue !== null && (
+                  <InfoRow label={flight.delayLabel} value={flight.delayValue} />
+                )}
                 <InfoRow label="Baggage Belt" value={flight.baggage} />
+                {flight.aircraft !== null && <InfoRow label="Aircraft" value={flight.aircraft} />}
+                {flight.registration !== null && <InfoRow label="Registration" value={flight.registration} />}
               </View>
 
               {/* Airports */}

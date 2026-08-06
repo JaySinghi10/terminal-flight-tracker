@@ -273,8 +273,10 @@ def _build_movement(movement, movement_name: str, raw_status, include_baggage: b
         "iata": airport.get("iata"),
         "terminal": m.get("terminal"),
         "gate": m.get("gate"),
+        "checkin_desk": m.get("checkInDesk"),
         "scheduled": format_time(sched_local, tz),
         "actual": format_time(actual_local, tz),
+        "estimated": format_time(est_local, tz) if est_local else None,
         "delay": _delay_minutes(sched_utc, comparison_utc) if comparison_utc else None,
         # LOCAL wall clock + true offset — see _to_wire_iso. Never UTC.
         "scheduled_iso": _to_wire_iso(sched_local, sched_utc),
@@ -295,6 +297,7 @@ def _build_dto(item) -> dict:
     it = item or {}
     raw_status = it.get("status")
     airline = it.get("airline") or {}
+    aircraft = it.get("aircraft") or {}
 
     departure = _build_movement(it.get("departure"), "departure", raw_status, False)
     arrival = _build_movement(it.get("arrival"), "arrival", raw_status, True)
@@ -314,6 +317,8 @@ def _build_dto(item) -> dict:
         # The provider's own vocabulary, carried verbatim. Nothing renders it;
         # it exists so a live response can be diagnosed without another call.
         "raw_status": raw_status,
+        "aircraft_model": aircraft.get("model"),
+        "aircraft_registration": aircraft.get("reg"),
         "departure": departure,
         "arrival": arrival,
     }

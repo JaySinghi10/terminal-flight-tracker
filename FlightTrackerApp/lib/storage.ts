@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -14,11 +14,16 @@ export type SavedFlightEndpoint = {
   gate: string | null;
   scheduled: string;
   actual: string;
+  estimated: string;
   delay: number | null;
   scheduledIso: string | null;
   estimatedIso: string | null;
   actualIso: string | null;
   timezone: string | null;
+  checkinDesk: string | null;
+  baggage: string | null;
+  actualSource: string | null;
+  estimatedSource: string | null;
 };
 
 export type SavedFlight = {
@@ -29,6 +34,8 @@ export type SavedFlight = {
   status: string;
   from: SavedFlightEndpoint;
   to: SavedFlightEndpoint;
+  aircraftModel: string | null;
+  aircraftRegistration: string | null;
   savedAt: number;
   updatedAt: number;
   landedAt: number | null;
@@ -47,11 +54,16 @@ function endpointFromApi(raw: any): SavedFlightEndpoint {
     gate: raw?.gate ?? null,
     scheduled: raw?.scheduled ?? 'N/A',
     actual: raw?.actual ?? 'N/A',
+    estimated: raw?.estimated ?? 'N/A',
     delay: typeof raw?.delay === 'number' ? raw.delay : null,
     scheduledIso: raw?.scheduled_iso ?? null,
     estimatedIso: raw?.estimated_iso ?? null,
     actualIso: raw?.actual_iso ?? null,
     timezone: raw?.timezone ?? null,
+    checkinDesk: raw?.checkin_desk ?? null,
+    baggage: raw?.baggage ?? null,
+    actualSource: raw?.actual_source ?? null,
+    estimatedSource: raw?.estimated_source ?? null,
   };
 }
 
@@ -70,6 +82,8 @@ export function savedFlightFromApi(data: any): SavedFlight {
     status,
     from: endpointFromApi(data?.departure),
     to: endpointFromApi(data?.arrival),
+    aircraftModel: data?.aircraft_model ?? null,
+    aircraftRegistration: data?.aircraft_registration ?? null,
     savedAt: now,
     updatedAt: now,
     landedAt: status === 'landed' ? now : null,
@@ -109,7 +123,8 @@ function isExpired(flight: SavedFlight, now: number): boolean {
   return localDay(flight.landedAt) < localDay(now);
 }
 
-// Upgrades a record to schema v2 in place, reporting whether anything changed.
+// Upgrades a record to the current schema in place, reporting whether anything
+// changed.
 // record is null (dropped) when the flight number is empty after normalization.
 function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; changed: boolean } {
   let changed = false;
@@ -139,8 +154,25 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     }
   }
 
-  if (version !== 3) {
-    flight.schemaVersion = 3;
+  // v3 -> v4: default the estimated/source/check-in/belt and aircraft fields.
+  // Existing records keep everything they already had; the new fields fill in on
+  // the next refresh.
+  if (version < 4) {
+    for (const ep of [flight.from, flight.to]) {
+      if (ep) {
+        ep.estimated = ep.estimated ?? 'N/A';
+        ep.checkinDesk = ep.checkinDesk ?? null;
+        ep.baggage = ep.baggage ?? null;
+        ep.actualSource = ep.actualSource ?? null;
+        ep.estimatedSource = ep.estimatedSource ?? null;
+      }
+    }
+    flight.aircraftModel = flight.aircraftModel ?? null;
+    flight.aircraftRegistration = flight.aircraftRegistration ?? null;
+  }
+
+  if (version !== 4) {
+    flight.schemaVersion = 4;
     changed = true;
   }
 
