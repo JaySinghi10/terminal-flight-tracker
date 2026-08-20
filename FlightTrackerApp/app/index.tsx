@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import Svg, { Path, Rect, G } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
 import {
   View,
@@ -12,13 +13,11 @@ import {
   RefreshControl,
   Animated,
   AppState,
-  Dimensions,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Easing,
-  PanResponder,
   Modal,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,14 +33,22 @@ import {
   mergeGuestInto,
 } from '../lib/storage';
 
+const MONO = 'JetBrainsMono_400Regular';
+const MONO_BOLD = 'JetBrainsMono_700Bold';
+const SANS = 'Inter_400Regular';
+const SANS_SEMI = 'Inter_600SemiBold';
+
 const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
 
-// These caps protect the AviationStack quota.
+// These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
 const AUTO_REFRESH_MAX_FLIGHTS = 2;
 const AUTO_REFRESH_MIN_AGE_MS = 100 * 365 * 24 * 60 * 60 * 1000; // auto-refresh disabled while on the free tier; set to 12 * 60 * 60 * 1000 to re-enable
 const AUTO_REFRESH_RESUME_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to show a live countdown; lower to 30 * 60 * 1000 or 10 * 60 * 1000 for stricter honesty
+// The provider's BASIC plan caps requests at one per second and rejects the rest
+// with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
+const REFRESH_SPACING_MS = 1300;
 
 type FlightData = {
   flight: string;
@@ -76,20 +83,22 @@ type FlightData = {
 function getStatusColor(status: string) {
   switch (status) {
     case "landed": return "#8e8e93";
-    case "active": return "#30d158";
-    case "scheduled": return "#4ade80";
-    case "delayed": return "#ff9f0a";
-    default: return "#ff9f0a";
+    case "active": return "#4ade80";
+    case "scheduled": return "#aeaeb2";
+    case "delayed": return "#fbbf24";
+    case "cancelled": return "#f87171";
+    default: return "#fbbf24";
   }
 }
 
 function getStatusBg(status: string) {
   switch (status) {
     case "landed": return "#8e8e9312";
-    case "active": return "#30d15812";
-    case "scheduled": return "#4ade8012";
-    case "delayed": return "#ff9f0a12";
-    default: return "#ff9f0a12";
+    case "active": return "#4ade8012";
+    case "scheduled": return "#aeaeb212";
+    case "delayed": return "#fbbf2412";
+    case "cancelled": return "#f8717112";
+    default: return "#fbbf2412";
   }
 }
 
@@ -194,11 +203,13 @@ function flightDataFromApi(data: any): FlightData {
     statusColor: getStatusColor(status),
     statusBg: getStatusBg(status),
     from: dep.iata || "—",
-    fromFull: dep.airport || "—",
-    fromCity: dep.airport || "—",
+    fromFull: airportFullLabel(dep.short_name ?? null, dep.city ?? null, dep.airport || "—"),
+    // City where there is one, airport name where there is not: the provider
+    // omits municipalityName on plenty of airports.
+    fromCity: dep.city || dep.airport || "—",
     to: arr.iata || "—",
-    toFull: arr.airport || "—",
-    toCity: arr.airport || "—",
+    toFull: airportFullLabel(arr.short_name ?? null, arr.city ?? null, arr.airport || "—"),
+    toCity: arr.city || arr.airport || "—",
     dep: dep.scheduled || "N/A",
     arr: arr.scheduled || "N/A",
     depTimeLabel: depCell.label,
@@ -228,6 +239,66 @@ function timeAgo(ts: number, now: number) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Header line, e.g. "Sat, 16 Aug · 2:04 AM". Fixed arrays rather than Intl so
+// the output never shifts with locale.
+function formatClock(ts: number) {
+  const d = new Date(ts);
+  const hours = d.getHours();
+  const period = hours < 12 ? 'AM' : 'PM';
+  const display = hours % 12 === 0 ? 12 : hours % 12;
+  const time = `${display}:${String(d.getMinutes()).padStart(2, '0')} ${period}`;
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${WEEKDAYS[d.getDay()]}, ${day} ${MONTHS[d.getMonth()]} · ${time}`;
+}
+
+// WEEKDAYS holds abbreviations for the clock line; "Happy Sat" reads clipped in
+// a greeting, so the full names live here. Only the weekend entries reach it.
+const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Greeting prefixes, keyed by the situation greetingPrefix resolves to. Every
+// entry renders as "<prefix>, <name>", so each has to read naturally in front of
+// a comma and a first name. '{day}' is substituted with the weekday name.
+const GREETINGS = {
+  morning: ['Good morning', 'Morning', 'Up early'],
+  afternoon: ['Good afternoon', 'Afternoon'],
+  evening: ['Good evening', 'Evening', 'Winding down'],
+  night: ['Still up', 'Late one'],
+  mondayMorning: ['Monday again', 'New week', 'Good morning'],
+  weekendMorning: ['Happy {day}', 'Slow start', 'Weekend mode'],
+  weekendAfternoon: ['Enjoy the weekend', 'Good afternoon'],
+};
+
+// Pure and total. Day-specific cases resolve first, then the plain hour buckets.
+// The night bucket spans 22-04 and so wraps past midnight, which is why it is
+// the fallthrough rather than a range. Evenings and nights are deliberately
+// shared across every day: a Saturday 2am is not different from a Tuesday 2am.
+// The double modulo keeps the lookup total for a negative index.
+function greetingPrefix(ts: number, index: number): string {
+  const d = new Date(ts);
+  const day = d.getDay();
+  const h = d.getHours();
+  const isWeekend = day === 0 || day === 6;
+  const pool =
+    day === 1 && h >= 5 && h <= 11 ? GREETINGS.mondayMorning :
+    isWeekend && h >= 5 && h <= 11 ? GREETINGS.weekendMorning :
+    isWeekend && h >= 12 && h <= 16 ? GREETINGS.weekendAfternoon :
+    h >= 5 && h <= 11 ? GREETINGS.morning :
+    h >= 12 && h <= 16 ? GREETINGS.afternoon :
+    h >= 17 && h <= 21 ? GREETINGS.evening :
+    GREETINGS.night;
+  const prefix = pool[((index % pool.length) + pool.length) % pool.length];
+  // No-op for every entry without the token.
+  return prefix.replace('{day}', WEEKDAYS_LONG[day]);
+}
+
+// Display-only handle. Saved flights are keyed on email, never on this.
+function sanitiseDisplayName(raw: string) {
+  return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 14);
+}
+
 function localDayKey(ts: number) {
   const d = new Date(ts);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -239,11 +310,22 @@ function trimAirportName(name: string) {
   return (i >= 0 ? name.slice(0, i) : name).trim();
 }
 
-function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+// "Chhatrapati Shivaji, Mumbai" when the provider supplies both parts and they
+// differ, otherwise the full airport name alone. Single-name airports return
+// shortName === city — DXB is "Dubai"/"Dubai" — and must not read "Dubai,
+// Dubai". Compared case-insensitively after trimming.
+function airportFullLabel(shortName: string | null, city: string | null, airport: string): string {
+  const s = (shortName ?? '').trim();
+  const c = (city ?? '').trim();
+  if (s && c && s.toLowerCase() !== c.toLowerCase()) return `${s}, ${c}`;
+  return airport;
+}
+
+function InfoRow({ label, value, sans }: { label: string; value: string; sans?: boolean }) {
   return (
     <View style={ir.row}>
       <Text style={ir.label}>{label}</Text>
-      <Text style={[ir.value, highlight && ir.highlight]}>{value}</Text>
+      <Text style={[ir.value, sans && ir.valueSans]}>{value}</Text>
     </View>
   );
 }
@@ -255,18 +337,18 @@ const ir = StyleSheet.create({
     alignItems: "flex-start",
     paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: "#111111",
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
-  label: { fontSize: 14, color: "rgba(226,226,226,0.4)", fontWeight: "500", fontFamily: "Courier New" },
-  value: { fontSize: 14, color: "#ffffff", fontWeight: "600", textAlign: "right", flex: 1, marginLeft: 16, fontFamily: "Courier New" },
-  highlight: { color: "#4ade80" },
+  label: { fontSize: 13, color: "rgba(226,226,226,0.45)", fontFamily: SANS },
+  value: { fontSize: 13, color: "#ffffff", textAlign: "right", flex: 1, marginLeft: 16, fontFamily: MONO },
+  valueSans: { fontFamily: SANS },
 });
 
 // --- Live-countdown helpers -------------------------------------------------
 const CD_GREEN = '#4ade80';
 const CD_AGE = 'rgba(226,226,226,0.3)';
-const CD_LATE = 'rgba(255,69,58,0.8)';
-const CD_EARLY = '#4ade80';
+const CD_LATE = '#fbbf24';
+const CD_EARLY = 'rgba(226,226,226,0.5)';
 
 type LineSeg = { text: string; color: string };
 
@@ -343,7 +425,7 @@ function flightLineSegments(f: SavedFlight, now: number): LineSeg[] {
     if (s === 'landed') {
       const ago = now - ts;
       if (ago >= 0) {
-        const segs: LineSeg[] = [statusSeg, { text: ` · ${formatCountdown(ago)} ago`, color: CD_GREEN }];
+        const segs: LineSeg[] = [statusSeg, { text: ` · ${formatCountdown(ago)} ago`, color: 'rgba(226,226,226,0.5)' }];
         const d = delaySegment(ep, s); if (d) segs.push(d);
         return segs;
       }
@@ -365,13 +447,46 @@ function flightLineSegments(f: SavedFlight, now: number): LineSeg[] {
   return [statusSeg, { text: tail, color: CD_AGE }];
 }
 
-function StatusLine({ f, now, style, numberOfLines }: { f: SavedFlight; now: number; style?: any; numberOfLines?: number }) {
-  const segs = flightLineSegments(f, now);
+function StatusLine({ f, now, style, numberOfLines, hideStatus }: { f: SavedFlight; now: number; style?: any; numberOfLines?: number; hideStatus?: boolean }) {
+  const all = flightLineSegments(f, now);
+  // The status word is always the first segment, and everything after it opens
+  // with " · ". Dropping the word means dropping that separator too.
+  const segs = hideStatus
+    ? all.slice(1).map((seg, i) => (i === 0 ? { ...seg, text: seg.text.replace(/^ · /, '') } : seg))
+    : all;
   return (
-    <Text style={[{ fontFamily: 'Courier New', fontSize: 11 }, style]} numberOfLines={numberOfLines}>
+    <Text style={[{ fontFamily: MONO, fontSize: 11 }, style]} numberOfLines={numberOfLines}>
       {segs.map((seg, i) => <Text key={i} style={{ color: seg.color }}>{seg.text}</Text>)}
     </Text>
   );
+}
+
+// Relevance order: in the air, then upcoming, then finished. Unparseable times
+// sink to the end of their own group rather than the end of the list.
+const SAVED_RANK: Record<string, number> = { active: 0, scheduled: 1, delayed: 1 };
+const RANK_LAST = 2;
+const NO_TIME = Number.MAX_SAFE_INTEGER;
+
+function savedSortKey(f: SavedFlight): { rank: number; when: number } {
+  const s = f.status.toLowerCase();
+  const rank = SAVED_RANK[s] ?? RANK_LAST;
+  if (rank === 0) {
+    // Same precedence flightLineSegments uses for an active flight.
+    return { rank, when: zonedIsoToTs(f.to.estimatedIso ?? f.to.scheduledIso, f.to.timezone) ?? NO_TIME };
+  }
+  if (rank === 1) {
+    return { rank, when: zonedIsoToTs(f.from.estimatedIso ?? f.from.scheduledIso, f.from.timezone) ?? NO_TIME };
+  }
+  return { rank, when: -f.updatedAt };   // negated so the newest sorts first
+}
+
+// Pure: returns a new array, never mutates the input.
+function sortSavedByRelevance(list: SavedFlight[]): SavedFlight[] {
+  return [...list].sort((a, b) => {
+    const ka = savedSortKey(a);
+    const kb = savedSortKey(b);
+    return ka.rank !== kb.rank ? ka.rank - kb.rank : ka.when - kb.when;
+  });
 }
 
 function SavedFlightRow({
@@ -393,7 +508,7 @@ function SavedFlightRow({
           <Text style={sf.remove}>{'×'}</Text>
         </TouchableOpacity>
       </View>
-      <StatusLine f={flight} now={now} numberOfLines={1} style={{ fontWeight: '600', marginTop: 4 }} />
+      <StatusLine f={flight} now={now} numberOfLines={1} style={{ marginTop: 4 }} />
     </TouchableOpacity>
   );
 }
@@ -402,23 +517,27 @@ const sf = StyleSheet.create({
   row: {
     paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: '#111111',
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   line1: { flexDirection: 'row', alignItems: 'center' },
-  number: { fontSize: 13, color: '#ffffff', fontWeight: '700', fontFamily: 'Courier New' },
-  route: { fontSize: 13, color: 'rgba(226,226,226,0.4)', fontWeight: '500', fontFamily: 'Courier New', flex: 1, marginLeft: 12 },
-  line2: { fontSize: 11, fontWeight: '600', fontFamily: 'Courier New', marginTop: 4 },
+  number: { fontSize: 13, color: '#ffffff', fontFamily: MONO_BOLD },
+  // Deliberately outside the type scale: this is a hit target, not text.
+  chevron: { fontFamily: MONO, fontSize: 24, color: 'rgba(226,226,226,0.75)' },
+  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  collapsedLine: { paddingVertical: 10 },
+  collapsedNumber: { fontFamily: MONO, fontSize: 11, color: '#ffffff' },
+  collapsedDim: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)' },
+  route: { fontSize: 13, color: 'rgba(226,226,226,0.6)', fontFamily: MONO, flex: 1, marginLeft: 12 },
   updated: { color: 'rgba(226,226,226,0.3)' },
   remove: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'rgba(255,69,58,0.75)',
-    fontFamily: 'Courier New',
+    fontSize: 20,
+    color: 'rgba(248,113,113,0.55)',
+    fontFamily: MONO,
     paddingLeft: 12,
   },
 });
 
-function ProgressBar({ progress, color, from, to }: { progress: number; color: string; from: string; to: string }) {
+function ProgressBar({ progress, color }: { progress: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
   const planeAnim = useRef(new Animated.Value(0)).current;
 
@@ -469,10 +588,6 @@ function ProgressBar({ progress, color, from, to }: { progress: number; color: s
       >
         ✈
       </Animated.Text>
-      <View style={pg.endpoints}>
-        <Text style={pg.endpoint}>{from}</Text>
-        <Text style={pg.endpoint}>{to}</Text>
-      </View>
     </View>
   );
 }
@@ -482,228 +597,135 @@ const pg = StyleSheet.create({
   track: { height: 3, backgroundColor: "rgba(255,255,255,0.07)", borderRadius: 2, marginBottom: 14 },
   fill: { height: 3, borderRadius: 2 },
   plane: { position: "absolute", top: -11, fontSize: 20, color: "#ffffff" },
-  endpoints: { flexDirection: "row", justifyContent: "space-between" },
-  endpoint: { fontSize: 12, color: "#48484a", fontWeight: "700", letterSpacing: 1, fontFamily: "Courier New" },
 });
 
-function WebDotGrid() {
-  const ref = useRef<any>(null);
+function ProfileModal({
+  visible, onClose, onGoogleSignIn, onLogout, username,
+  email, effectiveName, askName, onSaveName, onSkipName,
+}: {
+  visible: boolean; onClose: () => void; onGoogleSignIn: () => void; onLogout: () => void;
+  username: string | null; email: string | null; effectiveName: string | null; askName: boolean;
+  onSaveName: (name: string) => void; onSkipName: () => void;
+}) {
+  const [nameDraft, setNameDraft] = useState(effectiveName ?? '');
+  const [editing, setEditing] = useState(false);
 
+  // Re-seed each time the sheet opens so a discarded edit does not linger.
   useEffect(() => {
-    const style = document.createElement('style');
-    style.id = 'dot-grid-style';
-    style.textContent = `
-      #dot-grid-bg {
-        position: fixed;
-        top: 0; left: 0;
-        width: 100vw; height: 100vh;
-        background-color: #050505;
-        z-index: 0;
-        overflow: hidden;
-        pointer-events: none;
-      }
-      #dot-grid-bg::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
-        background-image: radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);
-        background-size: 20px 20px;
-        -webkit-mask-image: radial-gradient(circle 400px at var(--mouse-x, 50%) var(--mouse-y, 50%), black 0%, transparent 100%);
-        mask-image: radial-gradient(circle 400px at var(--mouse-x, 50%) var(--mouse-y, 50%), black 0%, transparent 100%);
-      }
-    `;
-    if (!document.getElementById('dot-grid-style')) {
-      document.head.appendChild(style);
+    if (visible) {
+      setNameDraft(effectiveName ?? '');
+      setEditing(false);
     }
+  }, [visible, effectiveName]);
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (ref.current) {
-        ref.current.style.setProperty('--mouse-x', `${e.clientX}px`);
-        ref.current.style.setProperty('--mouse-y', `${e.clientY}px`);
-      }
-    };
-    window.addEventListener('mousemove', handleMouseMove);
+  // The first-run ask forces the input open; otherwise the pencil does.
+  const showInput = askName || editing;
 
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      document.getElementById('dot-grid-style')?.remove();
-    };
-  }, []);
-
-  return <View ref={ref} nativeID="dot-grid-bg" pointerEvents="none" />;
-}
-
-function MobileDotGrid() {
-  const { width, height } = Dimensions.get('window');
-  const touchX = useRef(new Animated.Value(0)).current;
-  const touchY = useRef(new Animated.Value(0)).current;
-  const touchOpacity = useRef(new Animated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: () => false,
-      onPanResponderTerminationRequest: () => true,
-      onPanResponderGrant: (e) => {
-        touchX.setValue(e.nativeEvent.pageX);
-        touchY.setValue(e.nativeEvent.pageY);
-        Animated.timing(touchOpacity, { toValue: 0.18, duration: 150, useNativeDriver: false }).start();
-      },
-      onPanResponderMove: (e) => {
-        touchX.setValue(e.nativeEvent.pageX);
-        touchY.setValue(e.nativeEvent.pageY);
-      },
-      onPanResponderRelease: () => {
-        Animated.timing(touchOpacity, { toValue: 0, duration: 300, useNativeDriver: false }).start();
-      },
-      onPanResponderTerminate: () => {
-        Animated.timing(touchOpacity, { toValue: 0, duration: 300, useNativeDriver: false }).start();
-      },
-    })
-  ).current;
-
-  const cols = Math.ceil(width / 20);
-  const rows = Math.ceil(height / 20);
+  const commitName = () => {
+    const cleaned = sanitiseDisplayName(nameDraft);
+    if (!cleaned) return;            // empty after sanitising: keep the old value and stay open
+    setEditing(false);
+    onSaveName(cleaned);
+  };
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { pointerEvents: 'none' }]} {...panResponder.panHandlers} pointerEvents="none">
-      <View style={[StyleSheet.absoluteFillObject, { opacity: 0.06 }]} pointerEvents="none">
-        {Array.from({ length: rows }).map((_, r) => (
-          <View key={r} style={{ flexDirection: 'row', position: 'absolute', top: r * 20 }}>
-            {Array.from({ length: cols }).map((_, c) => (
-              <View key={c} style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: '#ffffff', marginRight: 18 }} />
-            ))}
-          </View>
-        ))}
-      </View>
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          width: 400,
-          height: 400,
-          borderRadius: 200,
-          backgroundColor: '#ffffff',
-          opacity: touchOpacity,
-          left: -200,
-          top: -200,
-          transform: [{ translateX: touchX }, { translateY: touchY }],
-        }}
-      />
-    </View>
-  );
-}
-
-function ProfileModal({ visible, onClose, onGoogleSignIn, onLogout, username }: { visible: boolean; onClose: () => void; onGoogleSignIn: () => void; onLogout: () => void; username: string | null }) {
-  return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={askName ? onSkipName : onClose}>
       <View style={pm.backdrop}>
-        <View style={pm.sheet}>
-          <TouchableOpacity style={pm.closeBtn} onPress={onClose}>
-            <Text style={pm.closeTxt}>X</Text>
-          </TouchableOpacity>
-
-          <View style={pm.avatar}>
-            <Text style={pm.avatarTxt}>{'//'}</Text>
-          </View>
-          <Text style={pm.name}>{username ?? 'Guest User'}</Text>
-          <Text style={pm.sub}>{username ? `signed in as ${username}` : 'Sign in to sync your flights'}</Text>
-
-          {!username && (
-            <>
-              <TouchableOpacity style={pm.authBtn} activeOpacity={0.75} onPress={onGoogleSignIn}>
-                <View style={pm.authBtnInner}>
-                  <Svg width="20" height="20" viewBox="0 0 24 24">
-                    <G>
-                      <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                      <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                      <Path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-                      <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                    </G>
-                  </Svg>
-                  <Text style={pm.authBtnTxt}> Sign in with Google </Text>
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity style={pm.authBtn} activeOpacity={0.75}>
-                <View style={pm.authBtnInner}>
-                  <Svg width="20" height="20" viewBox="0 0 21 21">
-                    <Rect x="1" y="1" width="9" height="9" fill="#F25022" />
-                    <Rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-                    <Rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-                    <Rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-                  </Svg>
-                  <Text style={pm.authBtnTxt}> Sign in with Microsoft </Text>
-                </View>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {username && (
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={onLogout}
-              style={{ borderWidth: 1, borderColor: '#ff453a', borderRadius: 4, padding: 12, marginTop: 16, alignItems: 'center', width: '100%' }}
-            >
-              <Text style={{ fontFamily: 'Courier New', color: '#ff453a' }}> Log out </Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={pm.sheet}>
+            <TouchableOpacity style={pm.closeBtn} onPress={askName ? onSkipName : onClose}>
+              <Text style={pm.closeTxt}>X</Text>
             </TouchableOpacity>
-          )}
 
-          <Text style={pm.version}>{'// terminal v0.1.0'}</Text>
-        </View>
+            <View style={pm.avatar}>
+              <Text style={pm.avatarTxt}>{'//'}</Text>
+            </View>
+            {username !== null && showInput && (
+              <>
+                <Text style={pm.nameLabel}>{askName ? 'pick a name' : 'username'}</Text>
+                <View style={pm.nameRow}>
+                  <TextInput
+                    style={pm.nameInput}
+                    value={nameDraft}
+                    onChangeText={setNameDraft}
+                    onSubmitEditing={commitName}
+                    placeholder="terminal"
+                    placeholderTextColor="rgba(226,226,226,0.25)"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={14}
+                    selectionColor="#4ade80"
+                    returnKeyType="done"
+                  />
+                  <TouchableOpacity style={pm.nameBtn} activeOpacity={0.75} onPress={commitName}>
+                    <Text style={pm.nameBtnTxt}>{'save'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {username !== null && !showInput && (
+              <View style={pm.nameLine}>
+                <Text style={pm.name}>{effectiveName ?? 'Guest User'}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setEditing(true)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Text style={pm.pencil}>{'\u270E'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {username === null && (
+              <Text style={[pm.name, { marginBottom: 8 }]}>{effectiveName ?? 'Guest User'}</Text>
+            )}
+
+            <Text style={pm.sub}>{username ? (email ? `signed in as ${email}` : 'signed in') : 'Sign in to sync your flights'}</Text>
+
+            {!username && (
+              <>
+                <TouchableOpacity style={pm.authBtn} activeOpacity={0.75} onPress={onGoogleSignIn}>
+                  <View style={pm.authBtnInner}>
+                    <Svg width="20" height="20" viewBox="0 0 24 24">
+                      <G>
+                        <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <Path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+                        <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </G>
+                    </Svg>
+                    <Text style={pm.authBtnTxt}> Sign in with Google </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={pm.authBtn} activeOpacity={0.75}>
+                  <View style={pm.authBtnInner}>
+                    <Svg width="20" height="20" viewBox="0 0 21 21">
+                      <Rect x="1" y="1" width="9" height="9" fill="#F25022" />
+                      <Rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+                      <Rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+                      <Rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+                    </Svg>
+                    <Text style={pm.authBtnTxt}> Sign in with Microsoft </Text>
+                  </View>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {username && (
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={onLogout}
+                style={{ alignSelf: 'center', marginTop: 20, paddingVertical: 8 }}
+              >
+                <Text style={{ fontFamily: SANS, fontSize: 13, color: 'rgba(248,113,113,0.7)' }}> Log out </Text>
+              </TouchableOpacity>
+            )}
+
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
-  );
-}
-
-function AnimatedLogo() {
-  const VARIABLE = 'Terminal';
-  const [text, setText] = useState(VARIABLE);
-  const [cursorVisible, setCursorVisible] = useState(true);
-
-  useEffect(() => {
-    const id = setInterval(() => setCursorVisible(v => !v), 530);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let cancelled = false;
-    const sleep = (ms: number) => new Promise<void>(r => { timer = setTimeout(r, ms); });
-
-    const loop = async () => {
-      while (!cancelled) {
-        await sleep(2000);
-        if (cancelled) break;
-
-        for (let i = VARIABLE.length - 1; i >= 0 && !cancelled; i--) {
-          await sleep(150);
-          setText(VARIABLE.slice(0, i));
-        }
-        if (cancelled) break;
-
-        await sleep(400);
-        if (cancelled) break;
-
-        for (let i = 1; i <= VARIABLE.length && !cancelled; i++) {
-          await sleep(150);
-          setText(VARIABLE.slice(0, i));
-        }
-      }
-    };
-
-    loop();
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, []);
-
-  const ts = { fontSize: 28, fontFamily: 'Courier New', fontWeight: '700' as const };
-
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <Text style={[ts, { color: '#4ade80' }]}>{'> '}</Text>
-      {text.length > 0 && <Text style={[ts, { color: '#e2e2e2' }]}>{text}</Text>}
-      <Text style={[ts, { color: '#4ade80', opacity: cursorVisible ? 1 : 0 }]}>{'_'}</Text>
-    </View>
   );
 }
 
@@ -760,18 +782,13 @@ function AnimatedPlaceholder() {
 
   return (
     <Text
-      style={{ position: 'absolute', left: 0, right: 0, top: 0, color: '#2c2c2e', fontFamily: 'Courier New', fontSize: 15 }}
+      style={{ position: 'absolute', left: 0, right: 0, top: 0, color: '#2c2c2e', fontFamily: MONO, fontSize: 15 }}
+      numberOfLines={1}
       pointerEvents="none"
     >
       {text}
     </Text>
   );
-}
-
-function DotGrid({ scrollY }: { scrollY: Animated.Value }) {
-  void scrollY;
-  if (Platform.OS === 'web') return <WebDotGrid />;
-  return <MobileDotGrid />;
 }
 
 export default function Index() {
@@ -782,11 +799,17 @@ export default function Index() {
   const [focused, setFocused] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [gmailToken, setGmailToken] = useState<string | null>(null);
-  const [resultHeight, setResultHeight] = useState(0);
   const [errorCounter, setErrorCounter] = useState(0);
   const [chatResponse, setChatResponse] = useState<string | null>(null);
   const [savedFlights, setSavedFlights] = useState<SavedFlight[]>([]);
+  // Persisted under 'savedCollapsed'. Starts true so an absent key means
+  // collapsed; hydration only overrides it when the key exists.
+  const [savedCollapsed, setSavedCollapsed] = useState(true);
+  // Session only, never persisted: has the user revealed the saved section for
+  // the result currently on screen?
+  const [savedRevealed, setSavedRevealed] = useState(false);
   const [flightRecord, setFlightRecord] = useState<SavedFlight | null>(null);
   const [saveError, setSaveError] = useState("");
   const [email, setEmail] = useState<string | null>(null);
@@ -794,9 +817,17 @@ export default function Index() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Picked on mount, re-picked only by onRefresh. The header re-renders every
+  // 60s on the `now` tick, so choosing this during render would reshuffle the
+  // greeting every minute. 60 is a whole multiple of every pool length (3 and
+  // 2), so the modulo stays uniform.
+  const [greetingIndex, setGreetingIndex] = useState(() => Math.floor(Math.random() * 60));
   const [refreshMsg, setRefreshMsg] = useState("");
   const [refreshMsgCounter, setRefreshMsgCounter] = useState(0);
   const [refreshTone, setRefreshTone] = useState<'error' | 'info'>('error');
+  // Session only, never persisted. Counter retriggers the fade on repeat taps.
+  const [toastMsg, setToastMsg] = useState("");
+  const [toastCounter, setToastCounter] = useState(0);
   const insets = useSafeAreaInsets();
 
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -827,7 +858,8 @@ export default function Index() {
           setGmailToken(accessToken);
           if (validEmail) setEmail(validEmail);
           clearResultView();
-          setProfileOpen(false);
+          // Sheet stays open: displayName is null here, so the first-run ask
+          // effect takes over and it transitions in place.
         } catch (err) {
           console.log('[Auth] userinfo fetch error:', err);
         }
@@ -841,20 +873,40 @@ export default function Index() {
       if (u) setUsername(u);
       const e = localStorage.getItem('email');
       if (e) setEmail(e);
-      setAuthHydrated(true);
+      const dn = localStorage.getItem('displayName');
+      if (dn) setDisplayName(dn);
+      // Resolved before authHydrated, which gates the saved-list load, so the
+      // section never renders expanded and then snaps shut.
+      AsyncStorage.getItem('savedCollapsed').then(c => {
+        if (c !== null) setSavedCollapsed(c === 'true');
+        setAuthHydrated(true);
+      });
     } else {
       Promise.all([
         SecureStore.getItemAsync('username'),
         SecureStore.getItemAsync('gmailToken'),
         SecureStore.getItemAsync('email'),
-      ]).then(([u, t, e]) => {
+        SecureStore.getItemAsync('displayName'),
+        AsyncStorage.getItem('savedCollapsed'),
+      ]).then(([u, t, e, dn, c]) => {
         if (u) setUsername(u);
         if (t) setGmailToken(t);
         if (e) setEmail(e);
+        if (dn) setDisplayName(dn);
+        if (c !== null) setSavedCollapsed(c === 'true');
         setAuthHydrated(true);
       });
     }
   }, []);
+
+  // First-run ask. Only after hydration, only when signed in, and only while
+  // displayName is still unset — which skipping also fills, so it asks once.
+  useEffect(() => {
+    if (!authHydrated) return;
+    if (username === null) return;
+    if (displayName !== null) return;
+    setProfileOpen(true);
+  }, [authHydrated, username, displayName]);
 
   useEffect(() => {
     if (!authHydrated) return;
@@ -890,7 +942,8 @@ export default function Index() {
           setUsername(firstName);
           if (validEmail) setEmail(validEmail);
           clearResultView();
-          setProfileOpen(false);
+          // Sheet stays open: displayName is null here, so the first-run ask
+          // effect takes over and it transitions in place.
         },
       });
     };
@@ -903,11 +956,8 @@ export default function Index() {
   const resultOpacity = useRef(new Animated.Value(0)).current;
   const resultTranslate = useRef(new Animated.Value(30)).current;
   const btnScale = useRef(new Animated.Value(1)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
   const cardBorderAnim = useRef(new Animated.Value(0)).current;
-  const btnBorderAnim = useRef(new Animated.Value(0)).current;
   const badgePulse = useRef(new Animated.Value(1)).current;
-  const scanlineAnim = useRef(new Animated.Value(0)).current;
   const errorMsgOpacity = useRef(new Animated.Value(0)).current;
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshingRef = useRef(false);
@@ -916,26 +966,24 @@ export default function Index() {
   const dayRef = useRef(localDayKey(Date.now()));
   const refreshMsgOpacity = useRef(new Animated.Value(0)).current;
   const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     cardBorderAnim.stopAnimation();
-    btnBorderAnim.stopAnimation();
     if (loading) {
       const fastPulse = (anim: Animated.Value) => Animated.loop(Animated.sequence([
         Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: false }),
         Animated.timing(anim, { toValue: 0, duration: 200, useNativeDriver: false }),
       ]));
       fastPulse(cardBorderAnim).start();
-      fastPulse(btnBorderAnim).start();
     } else if (focused) {
       Animated.loop(Animated.sequence([
         Animated.timing(cardBorderAnim, { toValue: 1, duration: 530, useNativeDriver: false }),
         Animated.timing(cardBorderAnim, { toValue: 0, duration: 530, useNativeDriver: false }),
       ])).start();
-      btnBorderAnim.setValue(0);
     } else {
       cardBorderAnim.setValue(0);
-      btnBorderAnim.setValue(0);
     }
   }, [focused, loading]);
 
@@ -949,6 +997,13 @@ export default function Index() {
       badgePulse.stopAnimation();
       badgePulse.setValue(1);
     }
+  }, [flight]);
+
+  // The reveal belongs to one result. clearResultView is shared with sign-in and
+  // logout and must not be modified, so the reset hangs off the result going null
+  // rather than living inside it.
+  useEffect(() => {
+    if (flight === null) setSavedRevealed(false);
   }, [flight]);
 
   useEffect(() => {
@@ -984,6 +1039,21 @@ export default function Index() {
     refreshMsgTimerRef.current = setTimeout(() => setRefreshMsg(''), 5000);
     return () => { if (refreshMsgTimerRef.current) clearTimeout(refreshMsgTimerRef.current); };
   }, [refreshMsg, refreshMsgCounter]);
+
+  useEffect(() => {
+    if (toastMsg === '') return;
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastOpacity.stopAnimation();
+    toastOpacity.setValue(1);
+    Animated.timing(toastOpacity, { toValue: 0, duration: 300, delay: 900, useNativeDriver: false }).start();
+    toastTimerRef.current = setTimeout(() => setToastMsg(''), 1200);
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, [toastMsg, toastCounter]);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setToastCounter(c => c + 1);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1026,7 +1096,6 @@ export default function Index() {
   const showResult = () => {
     resultOpacity.setValue(0);
     resultTranslate.setValue(30);
-    scanlineAnim.setValue(0);
     Animated.parallel([
       Animated.timing(resultOpacity, {
         toValue: 1, duration: 500,
@@ -1038,11 +1107,6 @@ export default function Index() {
         useNativeDriver: true,
       }),
     ]).start();
-    Animated.timing(scanlineAnim, {
-      toValue: 1, duration: 600,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    }).start();
   };
 
   const renderSavedFlight = (saved: SavedFlight) => {
@@ -1054,6 +1118,7 @@ export default function Index() {
     const depCell = movementTimeCell(saved.from.actual, saved.from.estimated, saved.from.actualSource, saved.from.estimatedSource, true);
     const arrCell = movementTimeCell(saved.to.actual, saved.to.estimated, saved.to.actualSource, saved.to.estimatedSource, false);
     const savedDelay = delayCell(saved.from.delay);
+    setSavedRevealed(false);
     setFlight({
       flight: saved.flightNumber,
       airline: saved.airline,
@@ -1061,11 +1126,12 @@ export default function Index() {
       statusColor: getStatusColor(savedStatus),
       statusBg: getStatusBg(savedStatus),
       from: saved.from.iata,
-      fromFull: saved.from.airport,
-      fromCity: saved.from.airport,
+      fromFull: airportFullLabel(saved.from.shortName, saved.from.city, saved.from.airport),
+      // Records saved before v5 carry city: null and fall back until refreshed.
+      fromCity: saved.from.city || saved.from.airport,
       to: saved.to.iata,
-      toFull: saved.to.airport,
-      toCity: saved.to.airport,
+      toFull: airportFullLabel(saved.to.shortName, saved.to.city, saved.to.airport),
+      toCity: saved.to.city || saved.to.airport,
       dep: saved.from.scheduled || "N/A",
       arr: saved.to.scheduled || "N/A",
       depTimeLabel: depCell.label,
@@ -1107,6 +1173,7 @@ export default function Index() {
         return false;
       }
 
+      setSavedRevealed(false);
       setFlight(flightDataFromApi(data));
 
       const record = savedFlightFromApi(data);
@@ -1136,7 +1203,7 @@ export default function Index() {
     setSaveError("");
 
     if (!cleaned) {
-      setError("Please enter a flight number.");
+      setError("enter a flight number or ask a question");
       setErrorCounter(c => c + 1);
       shake();
       return;
@@ -1171,6 +1238,7 @@ export default function Index() {
 
       setChatResponse(data.response);
       if (data.flight) {
+        setSavedRevealed(false);
         setFlight(flightDataFromApi(data.flight));
         const record = savedFlightFromApi(data.flight);
         setFlightRecord(record);
@@ -1198,6 +1266,9 @@ export default function Index() {
 
     for (const f of list) {                                   // sequential — never parallel
       if (attempts >= maxAttempts) break;
+      // Between attempts only — never before the first, never after the last, so
+      // a single saved flight waits no longer than it does today.
+      if (attempts > 0) await new Promise(resolve => setTimeout(resolve, REFRESH_SPACING_MS));
       attempts++;
       try {
         const response = await fetch(`https://flight-tracker-970706733452.asia-south1.run.app/flight/${f.flightNumber}`);
@@ -1231,6 +1302,7 @@ export default function Index() {
 
   const onRefresh = async () => {
     if (refreshingRef.current) return;                        // synchronous guard; iOS can double-fire the pull
+    setGreetingIndex(Math.floor(Math.random() * 60));         // past the double-fire guard, above the cooldown: a throttled pull still rerolls
     refreshingRef.current = true;
     setRefreshing(true);
     setRefreshMsg("");
@@ -1269,6 +1341,27 @@ export default function Index() {
     }
   };
 
+  // Everything on screen reads this; `username` stays exactly as sign-in derived it.
+  const effectiveName = displayName ?? username;
+
+  // Derived per render from a copy; savedFlights itself is never reordered.
+  const sortedSaved = sortSavedByRelevance(savedFlights);
+
+  // Auto-collapse can only hide, never reveal: an open result overrides a
+  // persisted expand until the user reveals it for that result.
+  const savedShowCollapsed = savedCollapsed || (flight !== null && !savedRevealed);
+
+  const persistCollapsed = async (next: boolean) => {
+    setSavedCollapsed(next);
+    try { await AsyncStorage.setItem('savedCollapsed', next ? 'true' : 'false'); } catch {}
+  };
+
+  const persistDisplayName = async (name: string) => {
+    if (Platform.OS === 'web') localStorage.setItem('displayName', name);
+    else await SecureStore.setItemAsync('displayName', name);
+    setDisplayName(name);
+  };
+
   const isSaved = !!flightRecord && savedFlights.some(f => f.id === flightRecord.id);
   // Recomputed every render, so the bar tracks the ticking `now` state.
   const progressValue = computeProgress(flightRecord, now);
@@ -1278,13 +1371,16 @@ export default function Index() {
     setSaveError("");
     if (isSaved) {
       setSavedFlights(await unsaveFlight(email, flightRecord.id));
+      showToast('unsaved');
       return;
     }
     const result = await saveFlight(email, flightRecord);
     setSavedFlights(result.flights);
     if (!result.ok) {
       setSaveError('saved flight limit reached — unsave one first');
+      return;   // saveError owns this case; no toast
     }
+    showToast('saved');
   };
 
   const clearResultView = () => {
@@ -1302,16 +1398,24 @@ export default function Index() {
         visible={profileOpen}
         onClose={() => setProfileOpen(false)}
         username={username}
+        email={email}
+        effectiveName={effectiveName}
+        askName={username !== null && displayName === null}
+        onSaveName={async (name) => { await persistDisplayName(name); setProfileOpen(false); }}
+        onSkipName={async () => { if (username) await persistDisplayName(username); setProfileOpen(false); }}
         onLogout={async () => {
           if (Platform.OS === 'web') {
             localStorage.removeItem('username');
             localStorage.removeItem('email');
+            localStorage.removeItem('displayName');
           } else {
             await SecureStore.deleteItemAsync('username');
             await SecureStore.deleteItemAsync('gmailToken');
             await SecureStore.deleteItemAsync('email');
+            await SecureStore.deleteItemAsync('displayName');
           }
           setUsername(null);
+          setDisplayName(null);
           setGmailToken(null);
           setEmail(null);
           clearResultView();
@@ -1327,25 +1431,27 @@ export default function Index() {
           }
         }}
       />
-      <DotGrid scrollY={scrollY} />
       <StatusBar barStyle="light-content" backgroundColor="#000" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, paddingTop: insets.top + 12 }}>
         <ScrollView
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
-          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4ade80" colors={["#4ade80"]} />
           }
         >
 
           {/* ── HEADER ── */}
-          <View style={s.header}>
+          <View style={[s.header, effectiveName === null && { marginBottom: 16 }]}>
             <View>
-              <AnimatedLogo />
-              <Text style={s.appSub}>{'// flight intelligence'}</Text>
+              <Text style={{ fontFamily: MONO_BOLD, color: '#4ade80', fontSize: 15 }}>{'>_'}</Text>
+              {effectiveName !== null && (
+                <Text style={{ fontFamily: SANS_SEMI, fontSize: 20, color: '#e2e2e2', marginTop: 10 }}>{`${greetingPrefix(now, greetingIndex)}, ${effectiveName}`}</Text>
+              )}
+              {effectiveName !== null && (
+                <Text style={{ fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.4)', marginTop: 3 }}>{formatClock(now)}</Text>
+              )}
             </View>
             {username !== null && (
               <TouchableOpacity style={s.profileBtn} onPress={() => setProfileOpen(true)}>
@@ -1355,12 +1461,10 @@ export default function Index() {
           </View>
 
           {/* ── SEARCH ── */}
-          <Text style={s.inputLabel}>Flight Number</Text>
-
           <Animated.View style={{ transform: [{ translateX: errorShake }] }}>
-            <Animated.View style={[s.searchCard, { borderColor: cardBorderAnim.interpolate({ inputRange: [0, 1, 2], outputRange: ['rgba(74,222,128,0.3)', '#4ade80', 'rgba(255,69,58,0.6)'] }) }]}>
+            <Animated.View style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: cardBorderAnim.interpolate({ inputRange: [0, 1, 2], outputRange: ['rgba(255,255,255,0.12)', '#4ade80', 'rgba(248,113,113,0.6)'] }) }}>
               <View style={s.inputContainer}>
-                <Text style={s.prompt}>{username !== null ? `~/${username}:-$` : '~/terminal:-$'}</Text>
+                <Text style={s.prompt}>{`~/${effectiveName !== null ? effectiveName.toLowerCase() : 'terminal'}:-$`}</Text>
                 <View style={{ flex: 1 }}>
                   <TextInput
                     style={s.input}
@@ -1374,9 +1478,7 @@ export default function Index() {
                     autoCorrect={false}
                     maxLength={200}
                     selectionColor="#4ade80"
-                    multiline
-                    scrollEnabled={false}
-                    textAlignVertical="top"
+                    multiline={false}
                     blurOnSubmit={true}
                   />
                   {query.length === 0 && <AnimatedPlaceholder />}
@@ -1387,30 +1489,28 @@ export default function Index() {
 
           {error !== "" && (
             <Animated.View style={{ opacity: errorMsgOpacity }}>
-              <Text style={{ color: 'rgba(255,69,58,0.8)', fontFamily: 'Courier New', fontSize: 12, marginTop: 4, marginBottom: 6, paddingLeft: 18 }}>{`> ${error}`}</Text>
+              <Text style={{ fontFamily: SANS, color: 'rgba(248,113,113,0.8)', fontSize: 11, marginTop: 4, marginBottom: 6, paddingLeft: 18 }}>{`> ${error}`}</Text>
             </Animated.View>
           )}
 
           <View style={{ alignItems: 'center', marginBottom: 32 }}>
             <Animated.View style={{ transform: [{ scale: btnScale }] }}>
-              <Animated.View style={{ borderRadius: 4, borderWidth: 1, borderColor: query.trim() ? btnBorderAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(74,222,128,0.3)', '#4ade80'] }) : 'rgba(255,255,255,0.07)' }}>
-                <TouchableOpacity
-                  style={[s.searchBtn, query.trim() ? s.searchBtnOn : s.searchBtnOff]}
-                  onPress={handleSearch}
-                  activeOpacity={0.85}
-                >
-                  {loading
-                    ? <ActivityIndicator color="#ffffff" />
-                    : <Text style={[s.searchBtnTxt, !query.trim() && s.searchBtnTxtOff]}>{'Execute'}</Text>
-                  }
-                </TouchableOpacity>
-              </Animated.View>
+              <TouchableOpacity
+                style={s.searchBtn}
+                onPress={handleSearch}
+                activeOpacity={0.85}
+              >
+                {loading
+                  ? <ActivityIndicator color="#4ade80" />
+                  : <Text style={[s.searchBtnTxt, !query.trim() && s.searchBtnTxtOff]}>{'Execute'}</Text>
+                }
+              </TouchableOpacity>
             </Animated.View>
           </View>
 
           {username === null && (
             <View style={{ alignItems: 'center', marginBottom: 24, marginTop: 0 }}>
-              <Text style={{ color: 'rgba(226,226,226,0.5)', fontFamily: 'Courier New', fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
+              <Text style={{ fontFamily: SANS, color: 'rgba(226,226,226,0.5)', fontSize: 11, marginBottom: 12, textAlign: 'center' }}>
                 {'// sign in to pull your flights straight from gmail'}
               </Text>
               <TouchableOpacity
@@ -1430,42 +1530,81 @@ export default function Index() {
                   <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
                   <Path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
                 </Svg>
-                <Text style={{ color: '#e3e3e3', fontSize: 14, fontWeight: '500' }}>Sign in with Google</Text>
+                <Text style={{ fontFamily: SANS, color: '#e3e3e3', fontSize: 13 }}>Sign in with Google</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {savedFlights.length > 0 && (
-            <View style={[s.detailsCard, { marginBottom: 14 }]}>
-              <Text style={s.detailsTitle}>{'> saved flights'}</Text>
+            <View style={{ marginBottom: 24 }}>
+              {/* Above the collapse branch: a refresh failure must never be silent. */}
               {refreshMsg !== '' && (
                 <Animated.View style={{ opacity: refreshMsgOpacity }}>
                   <Text style={{
-                    fontFamily: 'Courier New',
-                    fontSize: 12,
+                    fontFamily: SANS,
+                    fontSize: 11,
                     marginTop: 4,
                     marginBottom: 2,
-                    color: refreshTone === 'info' ? 'rgba(226,226,226,0.3)' : 'rgba(255,69,58,0.8)',
+                    color: refreshTone === 'info' ? 'rgba(226,226,226,0.3)' : 'rgba(248,113,113,0.8)',
                   }}>{refreshMsg}</Text>
                 </Animated.View>
               )}
-              {savedFlights.map(f => (
-                <SavedFlightRow
-                  key={f.id}
-                  flight={f}
-                  now={now}
-                  onPress={() => renderSavedFlight(f)}
-                  onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
-                />
-              ))}
+              {savedShowCollapsed ? (
+                <TouchableOpacity
+                  style={sf.collapsedLine}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Only a persisted collapse writes to storage; a collapse
+                    // caused by an open result is revealed in memory.
+                    if (savedCollapsed) persistCollapsed(false);
+                    else setSavedRevealed(true);
+                  }}
+                >
+                  <Text numberOfLines={1}>
+                    <Text style={sf.chevron}>{'\u25B8 '}</Text>
+                    <Text style={sf.collapsedNumber}>{sortedSaved[0].flightNumber}</Text>
+                    <Text style={sf.collapsedDim}>{' '}</Text>
+                    <StatusLine f={sortedSaved[0]} now={now} hideStatus />
+                    {savedFlights.length > 1 && (
+                      <Text style={sf.collapsedDim}>{` · +${savedFlights.length - 1} more`}</Text>
+                    )}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={sf.headingRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      // Collapsing a section that was only revealed for this
+                      // result must not overwrite the stored preference.
+                      if (flight !== null && !savedCollapsed) setSavedRevealed(false);
+                      else persistCollapsed(true);
+                    }}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={s.detailsTitle}>{'saved flights'}</Text>
+                    <Text style={sf.chevron}>{'\u25BE'}</Text>
+                  </TouchableOpacity>
+                  {sortedSaved.map(f => (
+                    <SavedFlightRow
+                      key={f.id}
+                      flight={f}
+                      now={now}
+                      onPress={() => renderSavedFlight(f)}
+                      onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                    />
+                  ))}
+                </>
+              )}
             </View>
           )}
 
           {chatResponse && (
             <Animated.View style={[s.resultWrap, { opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }]}>
-              <View style={s.detailsCard}>
-                <Text style={s.detailsTitle}>{'> response'}</Text>
-                <Text style={{ color: '#e2e2e2', fontFamily: 'Courier New', fontSize: 14, lineHeight: 22 }}>{chatResponse}</Text>
+              <View style={{ marginBottom: 4 }}>
+                <Text style={s.detailsTitle}>{'response'}</Text>
+                <Text style={{ fontFamily: SANS, color: '#e2e2e2', fontSize: 13, lineHeight: 22 }}>{chatResponse}</Text>
               </View>
             </Animated.View>
           )}
@@ -1474,78 +1613,125 @@ export default function Index() {
           {flight && (
             <Animated.View
               style={[s.resultWrap, { opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }]}
-              onLayout={(e) => setResultHeight(e.nativeEvent.layout.height)}
             >
-              <Animated.View
-                pointerEvents="none"
-                style={{
-                  position: 'absolute', left: 0, right: 0, height: 2, zIndex: 10,
-                  backgroundColor: '#4ade80', opacity: 0.4,
-                  transform: [{ translateY: scanlineAnim.interpolate({ inputRange: [0, 1], outputRange: [0, resultHeight] }) }],
-                }}
-              />
-
-              {/* Flight header */}
-              <View style={s.flightHeader}>
-                <View>
-                  <Text style={s.flightNumber}>{flight.flight}</Text>
-                  <Text style={s.flightAirline}>{flight.airline}</Text>
+              {/* Flight header + status line, ruled off from the route block */}
+              <View style={{ borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)', paddingBottom: 16, marginBottom: 4 }}>
+                <View style={s.flightHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.flightNumber} numberOfLines={1}>{flight.flight}</Text>
+                    <Text style={s.flightAirline}>{flight.airline}</Text>
+                  </View>
+                  <Animated.View style={[s.statusBadge, { backgroundColor: flight.statusBg, borderColor: flight.statusColor + "50", opacity: flight.status === 'ACTIVE' ? badgePulse : 1 }]}>
+                    <Text style={[s.statusTxt, { color: flight.statusColor }]}>{flight.status}</Text>
+                  </Animated.View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <TouchableOpacity
+                      onPress={handleToggleSave}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={{
+                        paddingVertical: 6,
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      <Svg width={18} height={18} viewBox="0 0 24 24">
+                        <Path
+                          d="M6 3h12a1 1 0 0 1 1 1v17l-7-5-7 5V4a1 1 0 0 1 1-1z"
+                          fill={isSaved ? '#4ade80' : 'none'}
+                          stroke={isSaved ? '#4ade80' : 'rgba(226,226,226,0.5)'}
+                          strokeWidth={1.75}
+                        />
+                      </Svg>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        if (!flightRecord) return;
+                        const ok = await runFlightLookup(flightRecord.flightNumber, true);
+                        if (ok) showToast('updated');
+                      }}
+                      activeOpacity={0.7}
+                      disabled={loading}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={{
+                        paddingVertical: 6,
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      <Svg width={18} height={18} viewBox="0 0 24 24">
+                        <Path
+                          d="M21 12a9 9 0 1 1-3.5-7.1"
+                          fill="none"
+                          stroke={loading ? 'rgba(226,226,226,0.25)' : 'rgba(226,226,226,0.6)'}
+                          strokeWidth={1.75}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <Path
+                          d="M21 3v6h-6"
+                          fill="none"
+                          stroke={loading ? 'rgba(226,226,226,0.25)' : 'rgba(226,226,226,0.6)'}
+                          strokeWidth={1.75}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </Svg>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={clearResultView}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={{
+                        paddingVertical: 6,
+                        paddingHorizontal: 4,
+                        // Cancels this control's own right padding so the ink
+                        // sits on the content edge, flush with the arrival IATA
+                        // code below it. hitSlop keeps the tap area intact.
+                        marginRight: -4,
+                      }}
+                    >
+                      {/* Spans 5..19 of the 24-unit box to match the bookmark's
+                          3..21; the old 6..18 read visibly smaller at the same
+                          nominal size. */}
+                      <Svg width={20} height={20} viewBox="0 0 24 24">
+                        <Path
+                          d="M19 5 5 19"
+                          fill="none"
+                          stroke="rgba(248,113,113,0.55)"
+                          strokeWidth={1.75}
+                          strokeLinecap="round"
+                        />
+                        <Path
+                          d="M5 5l14 14"
+                          fill="none"
+                          stroke="rgba(248,113,113,0.55)"
+                          strokeWidth={1.75}
+                          strokeLinecap="round"
+                        />
+                      </Svg>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Animated.View style={[s.statusBadge, { backgroundColor: flight.statusBg, borderColor: flight.statusColor + "50", opacity: flight.status === 'ACTIVE' ? badgePulse : 1 }]}>
-                  <Text style={[s.statusTxt, { color: flight.statusColor }]}>{flight.status}</Text>
-                </Animated.View>
-              </View>
 
-              <View style={{ flexDirection: 'column', gap: 4 }}>
-                {saveError !== '' ? (
-                  <Text style={{ fontFamily: 'Courier New', fontSize: 11, color: 'rgba(255,69,58,0.8)', marginBottom: 10 }}>{`> ${saveError}`}</Text>
-                ) : flightRecord ? (
-                  <StatusLine f={flightRecord} now={now} style={{ marginBottom: 10 }} />
-                ) : (
-                  <Text style={{ fontFamily: 'Courier New', fontSize: 11, color: 'rgba(226,226,226,0.3)', marginBottom: 10 }}>{lastUpdated !== null ? `updated ${timeAgo(lastUpdated, now)}` : ''}</Text>
-                )}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 14 }}>
-                  <TouchableOpacity
-                    onPress={handleToggleSave}
-                    activeOpacity={0.7}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: isSaved ? 'rgba(226,226,226,0.2)' : 'rgba(74,222,128,0.3)',
-                      borderRadius: 4,
-                      paddingVertical: 6,
-                      paddingHorizontal: 14,
-                    }}
-                  >
-                    <Text style={{
-                      fontFamily: 'Courier New',
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: isSaved ? 'rgba(226,226,226,0.4)' : '#4ade80',
-                    }}>
-                      {isSaved ? 'saved' : 'save'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => { if (flightRecord) runFlightLookup(flightRecord.flightNumber, true); }}
-                    activeOpacity={0.7}
-                    disabled={loading}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: 'rgba(226,226,226,0.15)',
-                      borderRadius: 4,
-                      paddingVertical: 6,
-                      paddingHorizontal: 14,
-                    }}
-                  >
-                    <Text style={{
-                      fontFamily: 'Courier New',
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: loading ? 'rgba(226,226,226,0.22)' : 'rgba(226,226,226,0.4)',
-                    }}>
-                      {'refresh'}
-                    </Text>
-                  </TouchableOpacity>
+                <View style={{ flexDirection: 'column', gap: 4 }}>
+                  {saveError !== '' ? (
+                    <Text style={{ fontFamily: SANS, fontSize: 11, color: 'rgba(248,113,113,0.8)' }}>{`> ${saveError}`}</Text>
+                  ) : flightRecord ? (
+                    <StatusLine f={flightRecord} now={now} hideStatus />
+                  ) : (
+                    <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.3)' }}>{lastUpdated !== null ? `updated ${timeAgo(lastUpdated, now)}` : ''}</Text>
+                  )}
+                </View>
+
+                {/* Fixed height reserves the line so the block never reflows. */}
+                <View style={{ minHeight: 16, alignItems: 'flex-start' }}>
+                  {saveError === '' && toastMsg !== '' && (
+                    <Animated.Text style={{
+                      opacity: toastOpacity,
+                      fontFamily: SANS,
+                      fontSize: 11,
+                      color: 'rgba(226,226,226,0.5)',
+                    }}>{toastMsg}</Animated.Text>
+                  )}
                 </View>
               </View>
 
@@ -1569,25 +1755,23 @@ export default function Index() {
               </View>
 
               {/* Progress bar — hidden entirely when the flight state cannot place it */}
-              {progressValue !== null && (
+              {progressValue !== null && (flight.status === 'ACTIVE' || flight.status === 'LANDED') && (
                 <ProgressBar
                   progress={progressValue}
                   color={flight.statusColor}
-                  from={flight.from}
-                  to={flight.to}
                 />
               )}
 
               {/* Flight details */}
-              <View style={s.detailsCard}>
+              <View style={{ marginTop: 8 }}>
                 <Text style={s.detailsTitle}>Flight Details</Text>
                 <InfoRow label="Date" value={flight.date} />
-                <InfoRow label="Scheduled Departure" value={flight.dep} highlight />
+                <InfoRow label="Scheduled Departure" value={flight.dep} />
                 <InfoRow label={flight.depTimeLabel} value={flight.depTimeValue} />
-                <InfoRow label="Scheduled Arrival" value={flight.arr} highlight />
+                <InfoRow label="Scheduled Arrival" value={flight.arr} />
                 <InfoRow label={flight.arrTimeLabel} value={flight.arrTimeValue} />
                 <InfoRow label="Terminal" value={flight.terminal} />
-                <InfoRow label="Gate" value={flight.gate} highlight />
+                <InfoRow label="Gate" value={flight.gate} />
                 {flight.checkinDesk !== null && <InfoRow label="Check-in Desk" value={flight.checkinDesk} />}
                 {flight.delayLabel !== null && flight.delayValue !== null && (
                   <InfoRow label={flight.delayLabel} value={flight.delayValue} />
@@ -1598,10 +1782,10 @@ export default function Index() {
               </View>
 
               {/* Airports */}
-              <View style={s.detailsCard}>
+              <View style={{ marginTop: 8 }}>
                 <Text style={s.detailsTitle}>Airports</Text>
-                <InfoRow label="Departing From" value={flight.fromFull} />
-                <InfoRow label="Arriving At" value={flight.toFull} />
+                <InfoRow label="Departing From" value={flight.fromFull} sans />
+                <InfoRow label="Arriving At" value={flight.toFull} sans />
               </View>
 
             </Animated.View>
@@ -1617,41 +1801,23 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#050505" },
   scroll: { paddingHorizontal: 20, paddingBottom: 48 },
 
-  header: { marginBottom: 36, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { marginBottom: 36, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   profileBtn: {
     width: 36, height: 36, borderRadius: 18,
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
-    backgroundColor: 'rgba(74,222,128,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
-  profileTxt: { color: '#4ade80', fontSize: 12, fontFamily: 'Courier New' },
-  appName: { fontSize: 32, fontWeight: "700", color: "#ffffff", letterSpacing: -0.5, fontFamily: "Courier New" },
-  appSub: { fontSize: 14, color: "rgba(226,226,226,0.4)", fontWeight: "400", marginTop: 5, letterSpacing: 0.2, fontFamily: "Courier New" },
-
-  inputLabel: {
-    fontSize: 13, fontWeight: "700",
-    color: "#4ade80", letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 10,
-    fontFamily: "Courier New",
-  },
-
-  searchCard: {
-    backgroundColor: "transparent",
-    borderRadius: 4,
-    borderWidth: 1, borderColor: "#4ade80",
-    paddingHorizontal: 18,
-    marginBottom: 12,
-  },
+  profileTxt: { color: 'rgba(226,226,226,0.5)', fontSize: 11, fontFamily: MONO },
 
   inputContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingVertical: 18,
+    paddingVertical: 20,
   },
   prompt: {
     color: "#4ade80",
-    fontFamily: "Courier New",
+    fontFamily: MONO,
     fontSize: 13,
     marginRight: 8,
     paddingTop: 2,
@@ -1659,10 +1825,8 @@ const s = StyleSheet.create({
 
   input: {
     fontSize: 15,
-    fontWeight: "400",
     color: "#ffffff",
-    fontFamily: "Courier New",
-    textAlignVertical: "top",
+    fontFamily: MONO,
     textAlign: "left",
   },
 
@@ -1676,57 +1840,47 @@ const s = StyleSheet.create({
   },
 
   searchBtn: {
-    borderRadius: 4, paddingVertical: 8, paddingHorizontal: 30,
-    alignItems: "center", justifyContent: "center", alignSelf: "center",
+    paddingVertical: 8, paddingHorizontal: 0,
+    // Pinned so swapping the label for the spinner cannot resize the row.
+    minHeight: 40,
+    alignItems: "center", justifyContent: "center",
   },
-  searchBtnOn: {
-    backgroundColor: "transparent",
-  },
-  searchBtnOff: { backgroundColor: "rgba(255,255,255,0.03)" },
-  searchBtnTxt: { fontSize: 16, fontWeight: "700", color: "#4ade80", fontFamily: "Courier New" },
-  searchBtnTxtOff: { color: "#3a3a3c" },
+  searchBtnTxt: { fontSize: 15, color: "#4ade80", fontFamily: MONO_BOLD },
+  searchBtnTxtOff: { color: "rgba(226,226,226,0.25)" },
 
   resultWrap: { gap: 14 },
 
   flightHeader: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12, padding: 20,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.07)",
+    flexDirection: "row", justifyContent: "flex-start", alignItems: "flex-start",
+    paddingVertical: 4,
   },
-  flightNumber: { fontSize: 32, fontWeight: "900", color: "#ffffff", letterSpacing: 1, fontFamily: "Courier New" },
-  flightAirline: { fontSize: 14, color: "#636366", fontWeight: "500", marginTop: 3, fontFamily: "Courier New" },
+  flightNumber: { fontSize: 32, color: "#ffffff", letterSpacing: 1, fontFamily: MONO_BOLD },
+  flightAirline: { fontSize: 13, color: "rgba(226,226,226,0.5)", marginTop: 3, fontFamily: SANS },
   statusBadge: {
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8,
     borderWidth: 1,
+    flexShrink: 0,
+    marginRight: 16,
   },
-  statusTxt: { fontSize: 13, fontWeight: "800", letterSpacing: 0.5, fontFamily: "Courier New" },
+  statusTxt: { fontSize: 11, letterSpacing: 0.5, fontFamily: MONO_BOLD },
 
   routeCard: {
     flexDirection: "row", alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12, padding: 20,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.07)",
+    paddingVertical: 4,
   },
   routeLeft: { flex: 1 },
   routeRight: { flex: 1, alignItems: "flex-end" },
   routeMid: { alignItems: "center", paddingHorizontal: 8 },
-  routeIATA: { fontSize: 36, fontWeight: "900", color: "#ffffff", letterSpacing: -0.5, fontFamily: "Courier New" },
-  routeCity: { fontSize: 11, color: "#636366", fontWeight: "500", marginTop: 2, fontFamily: "Courier New" },
-  routeTime: { fontSize: 15, fontWeight: "700", color: "#aeaeb2", marginTop: 8, fontFamily: "Courier New" },
-  routeDuration: { fontSize: 11, color: "#48484a", fontWeight: "600", marginBottom: 6 },
-  routeArrow: { fontSize: 16, color: "#3a3a3c" },
-  routeDirect: { fontSize: 10, color: "#48484a", fontWeight: "600", marginTop: 6 },
+  routeIATA: { fontSize: 32, color: "#ffffff", letterSpacing: -0.5, fontFamily: MONO_BOLD },
+  routeCity: { fontSize: 13, color: "rgba(226,226,226,0.55)", marginTop: 2, fontFamily: SANS },
+  routeTime: { fontSize: 13, color: "#aeaeb2", marginTop: 8, fontFamily: MONO_BOLD },
+  routeDuration: { fontSize: 13, color: "rgba(226,226,226,0.5)", marginBottom: 6, fontFamily: MONO },
+  routeArrow: { fontSize: 20, color: "rgba(226,226,226,0.45)", fontFamily: MONO },
+  routeDirect: { fontSize: 13, color: "rgba(226,226,226,0.5)", marginTop: 6, fontFamily: MONO },
 
-  detailsCard: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12, padding: 20,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 2,
-  },
   detailsTitle: {
-    fontSize: 16, fontWeight: "800", color: "#4ade80",
-    marginBottom: 4, letterSpacing: -0.2, fontFamily: "Courier New",
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
+    marginBottom: 10, letterSpacing: 1, textTransform: "uppercase",
   },
 });
 
@@ -1758,7 +1912,7 @@ const pm = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeTxt: { color: '#4ade80', fontSize: 16, fontWeight: '700', fontFamily: 'Courier New' },
+  closeTxt: { color: '#4ade80', fontSize: 15, fontFamily: MONO },
   avatar: {
     width: 80,
     height: 80,
@@ -1771,12 +1925,12 @@ const pm = StyleSheet.create({
     marginBottom: 16,
     marginTop: 4,
   },
-  avatarTxt: { color: '#4ade80', fontSize: 22, fontFamily: 'Courier New' },
-  name: { fontSize: 22, fontWeight: '700', color: '#ffffff', fontFamily: 'Courier New', marginBottom: 8 },
+  avatarTxt: { color: '#4ade80', fontSize: 20, fontFamily: MONO },
+  name: { fontSize: 20, color: '#ffffff', fontFamily: MONO },
   sub: {
-    fontSize: 14,
+    fontSize: 13,
     color: 'rgba(226,226,226,0.4)',
-    fontFamily: 'Courier New',
+    fontFamily: MONO,
     marginBottom: 32,
     textAlign: 'center',
   },
@@ -1792,11 +1946,34 @@ const pm = StyleSheet.create({
     alignItems: 'center',
   },
   authBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  authBtnTxt: { color: '#ffffff', fontSize: 15, fontWeight: '600', fontFamily: 'Courier New' },
-  version: {
-    marginTop: 20,
-    fontSize: 12,
-    color: 'rgba(226,226,226,0.22)',
-    fontFamily: 'Courier New',
+  nameLabel: {
+    fontFamily: SANS,
+    fontSize: 11,
+    color: 'rgba(226,226,226,0.4)',
+    alignSelf: 'flex-start',
+    marginBottom: 6,
   },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', marginBottom: 8 },
+  nameInput: {
+    flex: 1,
+    fontFamily: MONO,
+    fontSize: 13,
+    color: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  nameBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  nameBtnTxt: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  pencil: { fontFamily: SANS, fontSize: 13, color: 'rgba(226,226,226,0.4)' },
+  authBtnTxt: { color: '#ffffff', fontSize: 15, fontFamily: MONO },
 });
