@@ -280,6 +280,13 @@ def _build_movement(movement, movement_name: str, raw_status, include_baggage: b
 
     out = {
         "airport": airport.get("name"),
+        # The city, which is NOT the airport name: BOM is name="Mumbai
+        # Chhatrapati Shivaji", municipalityName="Mumbai". Absent on some
+        # airports, so consumers must fall back to the name.
+        "city": airport.get("municipalityName"),
+        # The airport's own name with the city stripped off: BOM is
+        # name="Mumbai Chhatrapati Shivaji", shortName="Chhatrapati Shivaji".
+        "short_name": airport.get("shortName"),
         "iata": airport.get("iata"),
         "terminal": m.get("terminal"),
         "gate": m.get("gate"),
