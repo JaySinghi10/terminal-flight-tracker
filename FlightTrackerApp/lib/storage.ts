@@ -4,12 +4,14 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 6;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
   iata: string;
   airport: string;
+  city: string | null;
+  shortName: string | null;
   terminal: string | null;
   gate: string | null;
   scheduled: string;
@@ -50,6 +52,8 @@ function endpointFromApi(raw: any): SavedFlightEndpoint {
   return {
     iata: raw?.iata ?? '',
     airport: raw?.airport ?? '',
+    city: raw?.city ?? null,
+    shortName: raw?.short_name ?? null,
     terminal: raw?.terminal ?? null,
     gate: raw?.gate ?? null,
     scheduled: raw?.scheduled ?? 'N/A',
@@ -171,8 +175,28 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     flight.aircraftRegistration = flight.aircraftRegistration ?? null;
   }
 
-  if (version !== 4) {
-    flight.schemaVersion = 4;
+  // v4 -> v5: default the new city field. Existing records keep everything they
+  // already had; the city fills in on the next refresh.
+  if (version < 5) {
+    for (const ep of [flight.from, flight.to]) {
+      if (ep) {
+        ep.city = ep.city ?? null;
+      }
+    }
+  }
+
+  // v5 -> v6: default the new shortName field. Existing records keep everything
+  // they already had; the short name fills in on the next refresh.
+  if (version < 6) {
+    for (const ep of [flight.from, flight.to]) {
+      if (ep) {
+        ep.shortName = ep.shortName ?? null;
+      }
+    }
+  }
+
+  if (version !== 6) {
+    flight.schemaVersion = 6;
     changed = true;
   }
 
