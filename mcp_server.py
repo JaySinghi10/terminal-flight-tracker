@@ -14,6 +14,16 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 AERODATABOX_HOST = "aerodatabox.p.rapidapi.com"
 REQUEST_TIMEOUT_SECONDS = 10
 
+# One connection pool for the process. requests.get() builds and discards a
+# Session per call, so every lookup previously paid a fresh DNS resolution, TCP
+# connect and TLS handshake to RapidAPI.
+_SESSION = requests.Session()
+
+# Successful lookups only, keyed by the normalised flight number. Entries are
+# ignored once older than the window, never removed: no eviction, no size cap.
+FLIGHT_CACHE_TTL = timedelta(minutes=5)
+_FLIGHT_CACHE = {}
+
 mcp = FastMCP("Flight Tracker")
 
 # ──────────────────────────────────────────────
@@ -432,8 +442,14 @@ def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
     if not RAPIDAPI_KEY:
         return ("Flight lookup is not configured: RAPIDAPI_KEY is not set.", None)
 
+    cached = _FLIGHT_CACHE.get(number)
+    if cached is not None:
+        cached_at, cached_result = cached
+        if datetime.now(timezone.utc) - cached_at < FLIGHT_CACHE_TTL:
+            return cached_result
+
     try:
-        response = requests.get(
+        response = _SESSION.get(
             f"https://{AERODATABOX_HOST}/flights/number/{number}",
             headers={
                 "X-RapidAPI-Key": RAPIDAPI_KEY,
@@ -468,7 +484,9 @@ def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
         # than emitting a partial DTO.
         return not_found
 
-    return (_render_text(dto), dto)
+    result = (_render_text(dto), dto)
+    _FLIGHT_CACHE[number] = (datetime.now(timezone.utc), result)
+    return result
 
 
 def fetch_flight(flight_number: str) -> str:
