@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from mcp_server import fetch_flight_full, extract_flight_number
+from mcp_server import fetch_flight_full, extract_flight_number, fetch_route
 
 load_dotenv()
 
@@ -57,6 +57,11 @@ def get_flight(flight_number: str):
     if dto is None:
         return {"error": f"No flight found for {flight_number.strip().upper()}"}
     return dto
+
+
+@app.get("/route/{origin}/{destination}")
+def get_route(origin: str, destination: str, hours: int = 12):
+    return fetch_route(origin, destination, hours)
 
 
 TOOLS = [

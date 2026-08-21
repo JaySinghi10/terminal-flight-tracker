@@ -499,6 +499,253 @@ def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
 def fetch_flight(flight_number: str) -> str:
     return fetch_flight_full(flight_number)[0]
 
+
+# ──────────────────────────────────────────────
+# ROUTE SEARCH
+# ──────────────────────────────────────────────
+# A board covers a 12-hour window and costs the same regardless of how many
+# routes are read out of it, so it is cached far longer than a single flight.
+ROUTE_CACHE_TTL = timedelta(minutes=30)
+_ROUTE_CACHE = {}
+
+# The window requested upstream. Callers narrow within it; they cannot widen it
+# without a second board fetch, which is the whole point of caching one board.
+ROUTE_WINDOW_MINUTES = 720
+ROUTE_MAX_RESULTS = 25
+
+_IATA_RE = re.compile(r"^[A-Z]{3}$")
+
+# One-shot: confirms the departures payload shape on the first live board.
+_ROUTE_SHAPE_LOGGED = False
+
+
+# ── TEMPORARY DIAGNOSTICS ──────────────────────────────────────────────
+# _route_diag and _route_diag_quota, and every call to them, are scaffolding.
+# Strip them once the board payload shape is confirmed in production logs.
+# At most two lines per request: a quota line only when an upstream call is
+# actually made, and exactly one outcome line.
+def _route_diag(line: str) -> None:
+    """One bounded diagnostic line. Filter Cloud Run logs on the FLIGHTDIAG marker."""
+    print(f"FLIGHTDIAG {line}"[:400])
+
+
+def _route_diag_quota(resp) -> None:
+    """RapidAPI rate-limit counters only. Never key- or auth-shaped headers."""
+    try:
+        headers = {
+            name.lower(): value
+            for name, value in resp.headers.items()
+            if "key" not in name.lower() and "authorization" not in name.lower()
+        }
+    except Exception:
+        headers = {}
+
+    parts = []
+    for label, prefix in (("requests", "x-ratelimit-requests"),
+                          ("units", "x-ratelimit-api-units")):
+        limit = headers.get(prefix + "-limit")
+        remaining = headers.get(prefix + "-remaining")
+        reset = headers.get(prefix + "-reset")
+        if limit is None and remaining is None:
+            continue
+        parts.append(f"{label}={remaining}/{limit} reset={reset}")
+    _route_diag("route quota " + (" ".join(parts) if parts else "none-present"))
+# ── END TEMPORARY DIAGNOSTICS ──────────────────────────────────────────
+
+
+def _build_route_row(item):
+    """One compact board row, or None when the item cannot be used.
+
+    withLeg=true gives every board item the same "departure"/"arrival" blocks the
+    per-flight endpoint returns, so the existing time helpers apply unchanged and
+    no new date handling is introduced here.
+    """
+    it = item if isinstance(item, dict) else {}
+    departure = it.get("departure") or {}
+    arrival = it.get("arrival") or {}
+    dep_airport = departure.get("airport") or {}
+    dest_airport = arrival.get("airport") or {}
+
+    dest_iata = dest_airport.get("iata")
+    dep_utc = _movement_utc(it, "departure")
+    # Without a destination there is nothing to match on, and without a departure
+    # UTC the row can be neither sorted nor windowed. Either way it is unusable.
+    if not dest_iata or dep_utc is None:
+        return None
+
+    dep_local, dep_utc_raw = _times(departure, "scheduledTime")
+    arr_local, arr_utc_raw = _times(arrival, "scheduledTime")
+    dep_tz = dep_airport.get("timeZone")
+    arr_tz = dest_airport.get("timeZone")
+
+    return {
+        "flight_number": re.sub(r"\s+", "", str(it.get("number") or "")).upper(),
+        "airline": (it.get("airline") or {}).get("name"),
+        "destination_iata": dest_iata,
+        "destination_airport": dest_airport.get("name"),
+        "departure_scheduled": format_time(dep_local, dep_tz),
+        "departure_scheduled_iso": _to_wire_iso(dep_local, dep_utc_raw),
+        "departure_timezone": dep_tz,
+        "arrival_scheduled": format_time(arr_local, arr_tz),
+        "arrival_scheduled_iso": _to_wire_iso(arr_local, arr_utc_raw),
+        "arrival_timezone": arr_tz,
+        "status": map_status(it.get("status")),
+        "aircraft_model": (it.get("aircraft") or {}).get("model"),
+        # Sort and window key. Private, and stripped before anything is emitted.
+        "_dep_utc": dep_utc,
+    }
+
+
+def _fetch_board(code: str):
+    """Trimmed departure board for one airport, cached for ROUTE_CACHE_TTL.
+
+    Returns (rows, age_seconds, cache_hit, note). rows is None on any failure,
+    with note carrying the reason. Only a cleanly parsed board is ever cached,
+    and only the trimmed rows: the raw response is never retained.
+    """
+    global _ROUTE_SHAPE_LOGGED
+
+    cached = _ROUTE_CACHE.get(code)
+    if cached is not None:
+        cached_at, rows = cached
+        age = datetime.now(timezone.utc) - cached_at
+        if age < ROUTE_CACHE_TTL:
+            return rows, int(age.total_seconds()), True, ""
+
+    try:
+        response = _SESSION.get(
+            f"https://{AERODATABOX_HOST}/flights/airports/iata/{code}",
+            headers={
+                "X-RapidAPI-Key": RAPIDAPI_KEY,
+                "X-RapidAPI-Host": AERODATABOX_HOST,
+            },
+            params={
+                "offsetMinutes": 0,
+                "durationMinutes": ROUTE_WINDOW_MINUTES,
+                "direction": "Departure",
+                # Strings, not Python bools: requests would encode those as
+                # "True"/"False", which the provider does not accept.
+                "withLeg": "true",
+                "withCancelled": "false",
+                "withCodeshared": "false",
+                "withCargo": "false",
+                "withPrivate": "false",
+                "withLocation": "false",
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        return None, None, False, f"request-exception={type(exc).__name__}"
+
+    _route_diag_quota(response)
+
+    if response.status_code != 200 or not response.content:
+        return None, None, False, f"upstream-not-ok status={response.status_code}"
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, None, False, "bad-json"
+
+    if not isinstance(payload, dict):
+        return None, None, False, f"top-level-not-an-object type={type(payload).__name__}"
+
+    # The documented shape is {"departures": [...]}, but that is not assumed:
+    # the keys are reported once so the assumption can be confirmed from logs.
+    note = ""
+    if not _ROUTE_SHAPE_LOGGED:
+        _ROUTE_SHAPE_LOGGED = True
+        note = f"top-level-keys={sorted(payload.keys())}"
+
+    items = payload.get("departures")
+    if items is None:
+        # Absent or null is a legitimately empty board, not a failure.
+        items = []
+    if not isinstance(items, list):
+        return None, None, False, f"departures-not-a-list type={type(items).__name__}"
+
+    rows = [r for r in (_build_route_row(it) for it in items) if r is not None]
+    _ROUTE_CACHE[code] = (datetime.now(timezone.utc), rows)
+    return rows, 0, False, note
+
+
+def _route_result(origin, destination, hours, flights=None, total_found=0,
+                  data_age_seconds=None, error=None) -> dict:
+    """Every response carries the same keys, so a caller never branches on
+    key presence — only on whether "error" is None."""
+    flights = flights or []
+    return {
+        "origin": origin,
+        "destination": destination,
+        "window_hours": hours,
+        "count": len(flights),
+        "total_found": total_found,
+        "truncated": total_found > len(flights),
+        "data_age_seconds": data_age_seconds,
+        "flights": flights,
+        "error": error,
+    }
+
+
+def fetch_route(origin, destination, hours=12) -> dict:
+    """Scheduled departures from origin to destination within the next `hours`.
+
+    Every rejection here happens before any network call, so a malformed request
+    costs nothing upstream.
+    """
+    o = str(origin or "").strip().upper()
+    d = str(destination or "").strip().upper()
+
+    # Coerced first so that even a rejection reports a sane window.
+    try:
+        window = int(hours)
+    except (TypeError, ValueError):
+        window = 12
+    window = max(1, min(12, window))
+
+    if not _IATA_RE.match(o) or not _IATA_RE.match(d):
+        _route_diag(f"route {o or '<empty>'}->{d or '<empty>'} rejected=bad-iata no-upstream-call")
+        return _route_result(o, d, window,
+                             error="Origin and destination must both be 3-letter IATA codes.")
+    if o == d:
+        _route_diag(f"route {o}->{d} rejected=same-airport no-upstream-call")
+        return _route_result(o, d, window,
+                             error="Origin and destination must be different airports.")
+    if not RAPIDAPI_KEY:
+        _route_diag(f"route {o}->{d} rejected=no-api-key no-upstream-call")
+        return _route_result(o, d, window,
+                             error="Route lookup is not configured: RAPIDAPI_KEY is not set.")
+
+    rows, age_seconds, cache_hit, note = _fetch_board(o)
+    if rows is None:
+        _route_diag(f"route {o}->{d} board-failed {note}")
+        return _route_result(o, d, window,
+                             error=f"Could not load the departure board for {o}.")
+
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=window)
+    matched = sorted(
+        (r for r in rows
+         if r["destination_iata"] == d and now <= r["_dep_utc"] <= horizon),
+        key=lambda r: r["_dep_utc"],
+    )
+    kept = matched[:ROUTE_MAX_RESULTS]
+
+    _route_diag(
+        f"route {o}->{d} hours={window} cache={'hit' if cache_hit else 'miss'} "
+        f"age_s={age_seconds} board={len(rows)} matched={len(matched)} "
+        f"returned={len(kept)}{(' ' + note) if note else ''}"
+    )
+
+    return _route_result(
+        o, d, window,
+        # Fresh dicts. A caller must never hold a reference into the cache.
+        flights=[{k: v for k, v in r.items() if k != "_dep_utc"} for r in kept],
+        total_found=len(matched),
+        data_age_seconds=age_seconds,
+    )
+
+
 # ──────────────────────────────────────────────
 # SEARCH GMAIL FOR FLIGHT BOOKING EMAILS
 # ──────────────────────────────────────────────
