@@ -439,9 +439,19 @@ def _render_text(dto: dict) -> str:
 # ──────────────────────────────────────────────
 # FETCH FLIGHT STATUS FROM AERODATABOX
 # ──────────────────────────────────────────────
-def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
+def fetch_flight_full(flight_number: str, date: str | None = None) -> tuple[str, dict | None]:
+    """One flight, optionally on a specific local departure date.
+
+    date is None for the behaviour this has always had: the provider picks the
+    nearest instance to now, and _select_item narrows it. A "YYYY-MM-DD" uses the
+    provider's dated form instead, which returns that day's instance and nothing
+    else. Both forms are TIER 2 upstream, so the date costs no extra units.
+    """
     number = re.sub(r"\s+", "", str(flight_number or "")).upper()
+    day = str(date).strip() if date is not None and str(date).strip() else None
     not_found = (
+        f"No flight found for {number} on {day}."
+        if day else
         f"No flight found for {number}. Make sure it is operating today.",
         None,
     )
@@ -450,20 +460,33 @@ def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
     if not RAPIDAPI_KEY:
         return ("Flight lookup is not configured: RAPIDAPI_KEY is not set.", None)
 
-    cached = _FLIGHT_CACHE.get(number)
+    # The date is PART OF THE KEY, for the same reason the board cache keys on
+    # it: keyed on the number alone, a dated lookup would be handed whichever
+    # instance happened to be cached — right flight, wrong day, no error.
+    key = (number, day)
+    cached = _FLIGHT_CACHE.get(key)
     if cached is not None:
         cached_at, cached_result = cached
         if datetime.now(timezone.utc) - cached_at < FLIGHT_CACHE_TTL:
             return cached_result
 
+    # Departure, not Both, on the dated form. The board defines a row's day by
+    # its DEPARTURE local date, so that is the day being asked about. Both would
+    # additionally match a flight arriving that date — one that departed the day
+    # before — and hand _select_item two instances to choose between on
+    # proximity to now, which is the very fault this is fixing.
+    url = (f"https://{AERODATABOX_HOST}/flights/number/{number}/{day}"
+           if day else
+           f"https://{AERODATABOX_HOST}/flights/number/{number}")
+
     try:
         response = _SESSION.get(
-            f"https://{AERODATABOX_HOST}/flights/number/{number}",
+            url,
             headers={
                 "X-RapidAPI-Key": RAPIDAPI_KEY,
                 "X-RapidAPI-Host": AERODATABOX_HOST,
             },
-            params={"dateLocalRole": "Both"},
+            params={"dateLocalRole": "Departure" if day else "Both"},
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException:
@@ -493,7 +516,7 @@ def fetch_flight_full(flight_number: str) -> tuple[str, dict | None]:
         return not_found
 
     result = (_render_text(dto), dto)
-    _FLIGHT_CACHE[number] = (datetime.now(timezone.utc), result)
+    _FLIGHT_CACHE[key] = (datetime.now(timezone.utc), result)
     return result
 
 

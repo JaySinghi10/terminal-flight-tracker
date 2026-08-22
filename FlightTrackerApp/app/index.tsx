@@ -86,9 +86,13 @@ const ROUTE_TODAY_HOURS = 12;
 // out-of-range date never reaches the network: a dated search costs 4 units.
 const ROUTE_MAX_DATE_DAYS = 60;
 
-// The anchored panel is clamped to this and to the screen edge, so a long
-// airline name wraps inside it rather than running off the right of a 320pt
-// display. "Pakistan International Airlines (2)" alone measures 267pt.
+// A cap on how wide the panel may GROW, so a long airline name wraps inside it
+// rather than running off the right of a 320pt display. "Pakistan International
+// Airlines (2)" alone measures 267pt.
+//
+// It is not what the panel is positioned against: the placement clamp reads the
+// panel's measured width. Using this instead treated every panel as if it were
+// the widest one possible.
 const ROUTE_PANEL_MAX_WIDTH = 260;
 
 // Distance from the panel to its trigger, and the margin it keeps from the top
@@ -1015,21 +1019,28 @@ export default function Index() {
   // coordinates so the panel can live in a Modal and still sit under its control.
   // top and bottom are the two candidate placements; the space fields decide
   // which of them the panel actually gets.
+  //
+  // x and width are the TRIGGER's own geometry, stored unclamped. Nothing here
+  // can decide the horizontal placement, because that needs the panel's width
+  // and the panel has not laid out yet.
   const [routeAnchor, setRouteAnchor] = useState<{
-    left: number;
+    x: number;
+    width: number;
+    screen: number;
     top: number;
     bottom: number;
-    width: number;
     spaceBelow: number;
     spaceAbove: number;
   } | null>(null);
-  // The panel's own height, reported by onLayout on its first pass. Null until
+  // The panel's own size, reported by onLayout on its first pass. Null until
   // then, which is also what holds the fade back — see routePanelMeasured.
-  const [routePanelH, setRoutePanelH] = useState<number | null>(null);
+  // Both dimensions, from the one event: the height decides which side it opens
+  // on, the width decides where its left edge lands.
+  const [routePanelSize, setRoutePanelSize] = useState<{ w: number; h: number } | null>(null);
   // Declared here, not beside the placement maths below, because the fade
   // effect names it in a dependency array and would otherwise read it before
   // its own initialiser has run.
-  const routePanelMeasured = routePanelH !== null;
+  const routePanelMeasured = routePanelSize !== null;
   const [routeFiltersOpen, setRouteFiltersOpen] = useState(false);
   const [routeSort, setRouteSort] = useState<RouteSort>(ROUTE_SORT_DEFAULT);
   // One slot, so opening any control closes the others by construction.
@@ -1431,7 +1442,14 @@ export default function Index() {
     showResult();
   };
 
-  const runFlightLookup = async (flightNumber: string, keepVisible = false): Promise<boolean> => {
+  // `date` is the LOCAL DEPARTURE date of the instance wanted, or null for the
+  // nearest one — which is what every caller meant before this existed, so an
+  // omitted argument preserves today's behaviour exactly.
+  const runFlightLookup = async (
+    flightNumber: string,
+    keepVisible = false,
+    date: string | null = null,
+  ): Promise<boolean> => {
     setError("");
     setSaveError("");
     if (!keepVisible) {
@@ -1441,7 +1459,9 @@ export default function Index() {
     }
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/flight/${flightNumber}`);
+      const response = await fetch(
+        `${API_BASE}/flight/${flightNumber}${date === null ? '' : `?date=${date}`}`,
+      );
       const data = await response.json();
 
       if (data.error || !response.ok) {
@@ -1520,12 +1540,17 @@ export default function Index() {
   //
   // Costs 2 units per distinct flight. The backend caches a successful lookup for
   // five minutes, so re-tapping the same number inside that window is free.
-  const saveFromRoute = async (flightNumber: string) => {
+  const saveFromRoute = async (flightNumber: string, date: string | null) => {
     if (routeSavingKey !== null) return;      // one at a time; the UI also disables the rest
     setRouteSavingKey(flightNumber);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/flight/${flightNumber}`);
+      // Same date the row was rendered from. Without it this stored TODAY's
+      // instance of the flight under a row the user picked off a future board —
+      // and unlike the card, that one persists.
+      const response = await fetch(
+        `${API_BASE}/flight/${flightNumber}${date === null ? '' : `?date=${date}`}`,
+      );
       const data = await response.json();
 
       if (data.error || !response.ok) {
@@ -1847,40 +1872,92 @@ export default function Index() {
   const routeSorted = [...routeVisible].sort((a, b) => routeSortKey(a) - routeSortKey(b));
   const routeHiddenCount = (routeResult?.flights.length ?? 0) - routeVisible.length;
 
-  // Grouping is meaningful only under a departure sort; under arrival or
-  // duration the headings would describe an order the list is not in.
-  const routeGroups = routeSort === 'departure'
-    ? ROUTE_BANDS
-        .map(part => ({ part, rows: routeSorted.filter(r => routeDepBand(r) === part) }))
-        .filter(g => g.rows.length > 0)
-    : [];
-  const routeUngrouped = routeSort === 'departure'
-    ? routeSorted.filter(r => routeDepBand(r) === null)
-    : [];
-
   // Computed over the FILTERED set, so the marker always describes what is
-  // currently on screen. Null when fewer than two durations are present — a
-  // single visible row has nothing to be faster than — when every duration is
-  // equal, or when the shortest is tied. A marker that always fires marks
-  // nothing.
-  const routeFastestKey = (() => {
+  // currently on screen. Null when fewer than two rows are timed — one row has
+  // nothing to be faster than — or when every duration is identical, where
+  // "fastest" would describe the whole list and so describe nothing.
+  //
+  // A TIE no longer suppresses it. Ties are ordinary: five rows share 170m on a
+  // typical BLR-DEL board, and a tie on the minimum used to blank the marker
+  // outright — measured at 24% of two-row and 16% of three-row filtered subsets.
+  // Rows sharing the shortest time are genuinely the best available, so every
+  // one of them keeps its in-row tag and the first in the CURRENT sort order
+  // takes the pin. `timed` is built from routeSorted, so "first" means first as
+  // rendered, and the pin cannot jump between renders.
+  const routeFastest = (() => {
     const timed = routeSorted
       .map(r => ({ key: routeRowKey(r), ms: routeDurationMs(r) }))
       .filter((v): v is { key: string; ms: number } => v.ms !== null);
     if (timed.length < 2) return null;
     const min = Math.min(...timed.map(v => v.ms));
     if (min === Math.max(...timed.map(v => v.ms))) return null;
-    const winners = timed.filter(v => v.ms === min);
-    return winners.length === 1 ? winners[0].key : null;
+    const keys = timed.filter(v => v.ms === min).map(v => v.key);
+    return { keys: new Set(keys), pin: keys[0] };
   })();
+
+  // Every row achieving the shortest time carries the tag; exactly one of them
+  // is lifted into the pin.
+  const routeFastestKeys = routeFastest?.keys ?? new Set<string>();
+  const routeFastestKey = routeFastest?.pin ?? null;
+
+  // Lifted OUT of the list and pinned above it, so it appears exactly once
+  // rather than twice. Never under a duration sort: it is already the first row
+  // there, and pinning would buy a heading and a duplicate.
+  const routePinned = routeSort !== 'duration' && routeFastestKey !== null
+    ? routeSorted.find(r => routeRowKey(r) === routeFastestKey) ?? null
+    : null;
+
+  // Everything the list below renders. The groups and their counts both derive
+  // from this, so a heading can never claim a row that was lifted out.
+  const routeListed = routePinned === null
+    ? routeSorted
+    : routeSorted.filter(r => routeRowKey(r) !== routeFastestKey);
+
+  // Grouping is meaningful only under a departure sort; under arrival or
+  // duration the headings would describe an order the list is not in.
+  //
+  // Ordered by FIRST APPEARANCE in the sorted list, not by ROUTE_BANDS. Fixed
+  // band order was a real defect: the rolling twelve-hour window starts before
+  // midnight for much of the day, which puts the 23:xx departures in
+  // "18:00-00:00" — last in ROUTE_BANDS — so the chronologically FIRST flights
+  // rendered after the very last one. A Map preserves insertion order, so the
+  // headings now run in the same direction as the rows beneath them.
+  const routeGroups = routeSort === 'departure'
+    ? (() => {
+        const byBand = new Map<RouteBand, RouteFlight[]>();
+        for (const r of routeListed) {
+          const b = routeDepBand(r);
+          if (b === null) continue;
+          const g = byBand.get(b);
+          if (g) g.push(r); else byBand.set(b, [r]);
+        }
+        return Array.from(byBand, ([part, rows]) => ({ part, rows }));
+      })()
+    : [];
+
+  // A row with no DEPARTURE time has no band to sit in and nothing to order by,
+  // so it trails the groups. Only a missing departure reaches this: the
+  // departure sort and the departure banding both read departure_scheduled_iso
+  // and nothing else, so a missing arrival or duration cannot move a row here.
+  const routeUngrouped = routeSort === 'departure'
+    ? routeListed.filter(r => routeDepBand(r) === null)
+    : [];
 
   // Flat rows, not cards. Line one carries everything variable-width; line two
   // carries the two times and the connector between them, and nothing else may
   // join it. The times are sized to their own content and pinned to opposite
   // edges of the row, so departures start at the same x and arrivals end at the
   // same x while the connector absorbs every point of slack.
-  const routeRow = (r: RouteFlight) => {
+  // `pinned` only suppresses the in-row "fastest" tag, because the heading
+  // directly above the pinned row already says the word. Same component, same
+  // layout, one boolean — there is no second row renderer.
+  const routeRow = (r: RouteFlight, pinned = false) => {
     const ms = routeDurationMs(r);
+    const origin = routeResult?.origin ?? '';
+    // The APPLIED date, never routeDate: that can hold a selection the list has
+    // not been re-fetched for, which would open a card for a day the row on
+    // screen is not from. Null for an undated board, which is today.
+    const rowDate = routeResult?.date ?? null;
     const airline = airlineFromFlightNumber(r.flight_number);
     const saved = savedFlights.some(f => f.id === makeFlightId(r.flight_number));
     const pending = routeSavingKey === r.flight_number;
@@ -1889,9 +1966,9 @@ export default function Index() {
     return (
       <TouchableOpacity
         key={routeRowKey(r)}
-        style={s.routeFlatRow}
+        style={[s.routeFlatRow, pinned && s.routeFlatRowPinned]}
         activeOpacity={0.7}
-        onPress={() => runFlightLookup(r.flight_number)}
+        onPress={() => runFlightLookup(r.flight_number, false, rowDate)}
       >
         <View style={s.routeFlatBody}>
           {/* Identity and flags. Everything variable-width lives on this line so
@@ -1908,7 +1985,7 @@ export default function Index() {
               {/* No "Direct" label: it printed identically on every row, and the
                   note under the heading already says the whole list is direct.
                   It earns a place here only once connections can appear. */}
-              {routeFastestKey === routeRowKey(r) && (
+              {!pinned && routeFastestKeys.has(routeRowKey(r)) && (
                 <Text style={s.routeFastest}>{'fastest'}</Text>
               )}
               {showStatus && (
@@ -1947,6 +2024,18 @@ export default function Index() {
               )}
             </Text>
           </View>
+
+          {/* Its own row, repeating routeFlatTop's geometry exactly, so each code
+              sits under its own time. Putting them INSIDE routeFlatTop would have
+              grown the box the connector centres itself in, dragging the line
+              below the times it belongs to. */}
+          <View style={s.routeFlatCodes}>
+            <Text style={s.routeFlatCode} numberOfLines={1}>{origin}</Text>
+            <View style={s.routeConnSpacer} />
+            <Text style={[s.routeFlatCode, s.routeFlatCodeEnd]} numberOfLines={1}>
+              {r.destination_iata}
+            </Text>
+          </View>
         </View>
 
         {/* Nested Touchable: React Native gives the responder to the deepest view
@@ -1956,7 +2045,7 @@ export default function Index() {
           activeOpacity={0.7}
           disabled={saved || busy}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          onPress={() => saveFromRoute(r.flight_number)}
+          onPress={() => saveFromRoute(r.flight_number, rowDate)}
         >
           <View style={s.routeFlatMarkBox}>
             {pending ? (
@@ -2072,11 +2161,21 @@ export default function Index() {
     ]).start(() => setRouteCalOpen(false));
   };
 
-  // Selecting only. Execute still fires the search, and today stays null so the
-  // request carries no date parameter at all.
+  // Picking a date now RUNS the search. It was a two-step selection before, and
+  // the second step was invisible: the list simply stayed on the old day until
+  // Execute happened to be pressed. Today stays null, so that request carries no
+  // date parameter and costs the usual 2 units; any other day costs 4.
+  //
+  // Compared against routeResult.date, not routeDate: re-picking the day already
+  // on screen must not spend anything, while a day that only LOOKS selected —
+  // set but never searched — still has to fire.
   const pickRouteCalDay = (iso: string, isToday: boolean) => {
-    setRouteDate(isToday ? null : iso);
+    const next = isToday ? null : iso;
+    setRouteDate(next);
     closeRouteCal();
+    if (loading) return;
+    if (routeResult === null || next === routeResult.date) return;
+    runRouteLookup(routeResult.origin, routeResult.destination, next);
   };
 
   // ── Anchored panels ───────────────────────────────────────────────────
@@ -2103,17 +2202,21 @@ export default function Index() {
       const below = wy + height + ROUTE_PANEL_GAP;
       const above = win.height - wy + ROUTE_PANEL_GAP;
       setRouteAnchor({
-        // Clamped so a panel anchored near the right edge stays on screen.
-        left: Math.max(12, Math.min(wx, win.width - 12 - ROUTE_PANEL_MAX_WIDTH)),
+        // Verbatim, unclamped. routePanelLeft decides the placement once the
+        // panel has reported how wide it actually is.
+        x: wx,
+        width,
+        // Carried rather than read again at render time, so the placement and
+        // the measurement can never disagree across a rotation.
+        screen: win.width,
         top: below,
         bottom: above,
-        width,
         spaceBelow: win.height - below - ROUTE_PANEL_EDGE,
         spaceAbove: win.height - above - ROUTE_PANEL_EDGE,
       });
-      // Forces a fresh measurement: the previous panel's height says nothing
+      // Forces a fresh measurement: the previous panel's size says nothing
       // about this one's.
-      setRoutePanelH(null);
+      setRoutePanelSize(null);
       setRouteOpenDrop(id);
     });
   };
@@ -2122,8 +2225,8 @@ export default function Index() {
   // only when the panel genuinely does not fit below AND there is more room
   // above — a flip that trades one clipped panel for another is not a fix.
   const routePanelFlip =
-    routeAnchor !== null && routePanelH !== null
-    && routePanelH > routeAnchor.spaceBelow
+    routeAnchor !== null && routePanelSize !== null
+    && routePanelSize.h > routeAnchor.spaceBelow
     && routeAnchor.spaceAbove > routeAnchor.spaceBelow;
 
   // If it fits nowhere — a long airline list on a short screen — it takes the
@@ -2131,6 +2234,33 @@ export default function Index() {
   const routePanelSpace = routeAnchor === null
     ? 0
     : routePanelFlip ? routeAnchor.spaceAbove : routeAnchor.spaceBelow;
+
+  // Horizontal placement, from the panel's REAL width.
+  //
+  // The old form clamped against ROUTE_PANEL_MAX_WIDTH, which is the width the
+  // panel may reach and not the width it has. At 320pt that made the ceiling
+  // 320 - 12 - 260 = 48, so EVERY trigger past 48pt from the left edge was
+  // dragged back to 48 whether or not its panel would have overflowed — which is
+  // why a right-hand pill opened its panel most of a row to its left.
+  //
+  // Left edges aligned is the default: it reads as the panel dropping out of the
+  // control. It matches RIGHT edges instead only when left-aligning would run
+  // off, that being the smallest shift which still leaves the panel attached to
+  // its trigger. The final clamp is the guarantee, not the strategy — with a
+  // measured width it now has nothing to do in any ordinary case.
+  const routePanelLeft = (() => {
+    if (routeAnchor === null) return 0;
+    // Unmeasured: the trigger's own x. This pass renders fully transparent, so
+    // the provisional placement is never seen — the same contract the height
+    // side has always had.
+    if (routePanelSize === null) return routeAnchor.x;
+    const w = routePanelSize.w;
+    const rightBound = routeAnchor.screen - ROUTE_PANEL_EDGE;
+    const preferred = routeAnchor.x + w > rightBound
+      ? routeAnchor.x + routeAnchor.width - w
+      : routeAnchor.x;
+    return Math.max(ROUTE_PANEL_EDGE, Math.min(preferred, rightBound - w));
+  })();
 
   const toggleBand = (
     set: React.Dispatch<React.SetStateAction<Record<RouteBand, boolean>>>,
@@ -2326,12 +2456,21 @@ export default function Index() {
           />
           {routeAnchor !== null && (
             <Animated.View
-              onLayout={e => setRoutePanelH(e.nativeEvent.layout.height)}
+              onLayout={e => {
+                const { width, height } = e.nativeEvent.layout;
+                // Bails out when nothing actually changed. Moving the panel fires
+                // onLayout again, and a fresh object each time would re-render
+                // for no reason.
+                setRoutePanelSize(prev =>
+                  prev !== null && prev.w === width && prev.h === height
+                    ? prev
+                    : { w: width, h: height });
+              }}
               style={[
                 s.routeDropPanel,
                 {
                   position: 'absolute',
-                  left: routeAnchor.left,
+                  left: routePanelLeft,
                   // One side or the other, never both.
                   ...(routePanelFlip
                     ? { bottom: routeAnchor.bottom }
@@ -2703,11 +2842,13 @@ export default function Index() {
                     <Text style={sf.remove}>{'×'}</Text>
                   </TouchableOpacity>
                 </View>
-                {/* The summary repeated what the codes above already say. The
-                    first note carries the gap the summary used to provide. */}
+                {/* What the rows below ARE, never what the control is set to.
+                    routeResult.date is the date the backend actually filtered
+                    on, so this line cannot drift from the list under it. A bare
+                    date read as decoration; "Showing" makes it a statement. */}
                 {routeResult.date !== null && (
-                  <Text style={[s.routeNote, { marginTop: 12, color: '#ffffff' }]}>
-                    {routeDateLabel(routeResult.date)}
+                  <Text style={s.routeAppliedDate}>
+                    {`Showing ${routeDateLabel(routeResult.date)}`}
                   </Text>
                 )}
                 <Text style={[s.routeNote, routeResult.date === null && { marginTop: 12 }]}>
@@ -2767,28 +2908,35 @@ export default function Index() {
                         </View>
 
                         {routeDropdown('sort', `Sort: ${ROUTE_SORT_LABELS[routeSort]}`)}
-
-                        {/* Still leaves the date alone: that decides what Execute
-                            FETCHES, and a view reset must never silently change a
-                            4-unit search. */}
-                        {routeControlsDirty && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            onPress={routeResetControls}
-                          >
-                            <Text style={s.routeReset}>{'Reset'}</Text>
-                          </TouchableOpacity>
-                        )}
                       </>
+                    )}
+
+                    {/* OUTSIDE the count gate. Bands and sort survive a search,
+                        so a board that came back empty used to hide every control
+                        while its filters were still on — leaving them to apply
+                        invisibly to the next search with no way to clear them.
+                        Reset now tracks the state it resets, not the size of the
+                        board.
+
+                        It still leaves the date alone: that decides what gets
+                        FETCHED, and a view reset must never silently re-spend. */}
+                    {routeControlsDirty && (
+                      <TouchableOpacity
+                        style={s.routeResetBtn}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={routeResetControls}
+                      >
+                        <Text style={s.routeReset}>{'Reset'}</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
 
                   {routeResult.count > 0 && routeFiltersOpen && (
                     <View style={s.routeFilterPills}>
+                      {routeDropdown('air', `Airline: ${airlineLabel}`)}
                       {routeDropdown('dep', `Departure: ${bandLabel(routeDepBands)}`)}
                       {routeDropdown('arr', `Arrival: ${bandLabel(routeArrBands)}`)}
-                      {routeDropdown('air', `Airline: ${airlineLabel}`)}
                     </View>
                   )}
                 </View>
@@ -2808,6 +2956,15 @@ export default function Index() {
                       </Text>
                     ) : (
                       <>
+                        {/* Above the list and removed from it, so it renders
+                            exactly once. routeListed carries the removal, which
+                            is what keeps the group counts honest. */}
+                        {routePinned !== null && (
+                          <View>
+                            <Text style={[s.routeGroup, s.routePinHead]}>{'Fastest'}</Text>
+                            {routeRow(routePinned, true)}
+                          </View>
+                        )}
                         {routeSort === 'departure' ? (
                           <>
                             {routeGroups.map(g => (
@@ -2821,7 +2978,7 @@ export default function Index() {
                             {routeUngrouped.map(r => routeRow(r))}
                           </>
                         ) : (
-                          routeSorted.map(r => routeRow(r))
+                          routeListed.map(r => routeRow(r))
                         )}
 
                         {routeHiddenCount > 0 && (
@@ -2879,7 +3036,15 @@ export default function Index() {
                     <TouchableOpacity
                       onPress={async () => {
                         if (!flightRecord) return;
-                        const ok = await runFlightLookup(flightRecord.flightNumber, true);
+                        // Pinned to the instance on screen. flight.date is the
+                        // backend's own flight_date, derived from the departure
+                        // ISO, so it names exactly the day being refreshed; the
+                        // shape test lets "N/A" fall through to undated.
+                        const ok = await runFlightLookup(
+                          flightRecord.flightNumber,
+                          true,
+                          /^\d{4}-\d{2}-\d{2}$/.test(flight.date) ? flight.date : null,
+                        );
                         if (ok) showToast('updated');
                       }}
                       activeOpacity={0.7}
@@ -3157,9 +3322,11 @@ const s = StyleSheet.create({
   routeConn: { flex: 1, justifyContent: "center", alignItems: "center", marginHorizontal: 12 },
   // Absolutely positioned so it labels the line without adding row height or
   // shifting the line off the times' vertical centre.
+  // MONO_BOLD at 0.75 rather than MONO at 0.4. It labels the connector it sits
+  // on, and at 0.4 it read as a watermark rather than as the block time.
   routeConnDur: {
     position: "absolute", left: 0, right: 0, bottom: 7,
-    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO, textAlign: "center",
+    fontSize: 11, color: "rgba(226,226,226,0.75)", fontFamily: MONO_BOLD, textAlign: "center",
   },
   routeConnLineRow: {
     flexDirection: "row", alignItems: "center",
@@ -3174,6 +3341,17 @@ const s = StyleSheet.create({
     transform: [{ rotate: "45deg" }],
     marginLeft: -1,
   },
+  // 60pt each end and a flexed middle with the same 12pt margins routeConn
+  // carries, so a code lands directly under its own time at every width. The
+  // times themselves are untouched: departures still start on the row's left
+  // edge and arrivals still end on its right.
+  routeFlatCodes: { flexDirection: "row", alignItems: "center", marginTop: 2 },
+  routeFlatCode: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO, minWidth: 60,
+  },
+  routeFlatCodeEnd: { textAlign: "right" },
+  routeConnSpacer: { flex: 1, marginHorizontal: 12 },
+
   // Icon only, no container. hitSlop carries the tap target.
   routeFlatMark: { marginLeft: 14 },
   routeFlatMarkBox: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
@@ -3205,9 +3383,27 @@ const s = StyleSheet.create({
     flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8,
     marginTop: 14,
   },
+  // A control, not a run of text. Same height and corner as the pills beside it
+  // — paddingVertical 5 over a 1pt border — but a 0.07 edge against their 0.12
+  // and no fill and no chevron, so it reads as subordinate to the three it
+  // resets rather than as a fourth filter.
+  routeResetBtn: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    borderRadius: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
   // No marginBottom. It carried one to sit level with the old heading's; in a
   // centre-aligned toolbar that would lift the word off the pills' centre line.
   routeReset: { fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: MONO },
+
+  // The date the rows ARE for. MONO_BOLD at 13 rather than the 11pt 0.3 SANS the
+  // notes use: it is a fact about the data, not small print.
+  routeAppliedDate: {
+    fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD,
+    marginTop: 12, marginBottom: 10,
+  },
   // Layout only. The dim that used to live here is now a sibling layer, so it
   // can fade on its own value.
   routeOverlayScrim: { flex: 1 },
@@ -3312,6 +3508,14 @@ const s = StyleSheet.create({
   // Its own size and family: it sits in the row's flag group, not inside a
   // parent Text it could inherit from.
   routeFastest: { fontSize: 11, color: "#4ade80", fontFamily: MONO },
+  // The one row on screen allowed to draw the eye. A tint and a hairline, both
+  // opacity variations of the existing accent — no geometry changes at all, so
+  // the pinned row's columns still line up with every row below it.
+  routeFlatRowPinned: {
+    backgroundColor: "rgba(74,222,128,0.06)",
+    borderBottomColor: "rgba(74,222,128,0.25)",
+  },
+  routePinHead: { color: "#4ade80" },
   routeNote: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginBottom: 10 },
   routeCap: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginTop: 10 },
   routeEmpty: { fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: SANS },

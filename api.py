@@ -7,7 +7,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from mcp_server import fetch_flight_full, extract_flight_number, fetch_route
+from mcp_server import (
+    fetch_flight_full,
+    extract_flight_number,
+    fetch_route,
+    _validate_route_date,
+)
 
 load_dotenv()
 
@@ -52,10 +57,17 @@ def search_gmail_for_flight(gmail_token: str):
 
 
 @app.get("/flight/{flight_number}")
-def get_flight(flight_number: str):
-    _text, dto = fetch_flight_full(flight_number)
+def get_flight(flight_number: str, date: str | None = None):
+    # The same validator the route search uses, so the two cannot drift on what
+    # a date means or how far it may reach. Every rejection happens here, before
+    # any upstream call, so a malformed date costs nothing.
+    day, date_error = _validate_route_date(date)
+    if date_error is not None:
+        return {"error": date_error}
+    _text, dto = fetch_flight_full(flight_number, day)
     if dto is None:
-        return {"error": f"No flight found for {flight_number.strip().upper()}"}
+        suffix = f" on {day}" if day else ""
+        return {"error": f"No flight found for {flight_number.strip().upper()}{suffix}"}
     return dto
 
 
