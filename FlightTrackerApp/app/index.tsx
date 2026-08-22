@@ -19,6 +19,8 @@ import {
   ActivityIndicator,
   Easing,
   Modal,
+  Pressable,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -29,16 +31,42 @@ import {
   unsaveFlight,
   touchSavedFlight,
   savedFlightFromApi,
+  makeFlightId,
   migrateLegacyIfNeeded,
   mergeGuestInto,
 } from '../lib/storage';
+import { airlineFromFlightNumber } from '../lib/airlines';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
 const SANS = 'Inter_400Regular';
 const SANS_SEMI = 'Inter_600SemiBold';
 
+const API_BASE = 'https://flight-tracker-970706733452.asia-south1.run.app';
+
 const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
+// Three letters, an optional single separator, three letters. "BLR DEL",
+// "BLR>DEL", "BLR-DEL", "BLR\u2192DEL" and "BLRDEL" all match. Tested after
+// FLIGHT_REGEX, which needs digits, so the two can never both match.
+const ROUTE_REGEX = /^([A-Z]{3})[\s>\-\u2192]?([A-Z]{3})$/;
+
+// The affordance under the command line and the routing branch in handleSearch
+// must test the IDENTICAL string, or the affordance shows for input the search
+// then rejects. One helper, called from both, so the two cannot drift.
+// Internal whitespace collapses to a single space: "BLR  DEL" is a typing
+// accident, not a question worth spending an LLM call on.
+function matchRoute(q: string) {
+  return ROUTE_REGEX.exec(q.trim().toUpperCase().replace(/\s+/g, ' '));
+}
+
+// A route needs two DIFFERENT airports. Both the affordance and the routing
+// branch read this, so neither can accept what the other rejects — the same
+// guarantee matchRoute gives for the normalized string.
+function routeCodes(q: string): { from: string; to: string; sameAirport: boolean } | null {
+  const m = matchRoute(q);
+  if (!m) return null;
+  return { from: m[1], to: m[2], sameAirport: m[1] === m[2] };
+}
 
 // These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
@@ -49,6 +77,96 @@ const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to sh
 // The provider's BASIC plan caps requests at one per second and rejects the rest
 // with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
 const REFRESH_SPACING_MS = 1300;
+// The backend fetches a 12-hour board whichever value it is sent, then filters
+// down to this. At 6 half of what was already paid for was discarded, so 12 is
+// strictly more for the same 2 units.
+const ROUTE_TODAY_HOURS = 12;
+
+// Matches ROUTE_MAX_FUTURE_DAYS on the backend. Checked here too so an
+// out-of-range date never reaches the network: a dated search costs 4 units.
+const ROUTE_MAX_DATE_DAYS = 60;
+
+// The anchored panel is clamped to this and to the screen edge, so a long
+// airline name wraps inside it rather than running off the right of a 320pt
+// display. "Pakistan International Airlines (2)" alone measures 267pt.
+const ROUTE_PANEL_MAX_WIDTH = 260;
+
+// Distance from the panel to its trigger, and the margin it keeps from the top
+// and bottom of the window when deciding which side it opens on.
+const ROUTE_PANEL_GAP = 6;
+const ROUTE_PANEL_EDGE = 12;
+
+// Overlay motion. Entry decelerates hard and settles; exit accelerates away and
+// is shorter. The asymmetry is the point: a surface arriving should look like it
+// is coming to rest, and one leaving should not make you wait for it.
+//
+// EASE_OUT is the standard expo-out bezier. Easing.out(Easing.cubic), which
+// these used before, spends too much of its budget near the end to read as
+// motion at all over 140ms.
+const EASE_OUT = Easing.bezier(0.16, 1, 0.3, 1);
+const EASE_IN = Easing.bezier(0.4, 0, 1, 1);
+
+// The panel travels less than the calendar because it starts beside its trigger
+// and only has to look like it came out of it.
+const OVERLAY_RISE = 10;
+const CAL_RISE = 28;
+
+const PANEL_IN_MS = 220;
+const PANEL_OUT_MS = 150;
+const CAL_IN_MS = 260;
+const CAL_OUT_MS = 170;
+// Its own timing, on its own value. Slightly ahead going in and slightly behind
+// coming out, so the backdrop never looks welded to the surface it sits under.
+const SCRIM_IN_MS = 200;
+const SCRIM_OUT_MS = 150;
+
+// Local-only view controls. Nothing here re-fetches: every option reorders or
+// hides rows already in state.
+const ROUTE_SORT_OPTIONS = ['departure', 'arrival', 'duration'] as const;
+type RouteSort = typeof ROUTE_SORT_OPTIONS[number];
+const ROUTE_SORT_DEFAULT: RouteSort = 'departure';
+
+// The bare enum values are ambiguous on a pill: "departure" could as easily mean
+// a filter as an ordering. Naming the quantity being sorted on removes the
+// question.
+const ROUTE_SORT_LABELS: Record<RouteSort, string> = {
+  departure: 'departure time',
+  arrival: 'arrival time',
+  duration: 'duration',
+};
+
+// Boundaries are on each airport's own wall clock, not the device's. Labelled in
+// 24-hour time so the control reads in the same units as the rows.
+// Chronological, so the filter panels and the group headings both read down the
+// clock. bandForHour is boundary-based and does not depend on this order; every
+// other use derives from it, so this line is the only place ordering lives.
+const ROUTE_BANDS = ['00:00-05:00', '05:00-12:00', '12:00-18:00', '18:00-00:00'] as const;
+type RouteBand = typeof ROUTE_BANDS[number];
+
+function bandForHour(h: number): RouteBand {
+  if (h >= 5 && h < 12) return '05:00-12:00';
+  if (h >= 12 && h < 18) return '12:00-18:00';
+  if (h >= 18) return '18:00-00:00';
+  return '00:00-05:00';
+}
+
+const ALL_BANDS_ON: Record<RouteBand, boolean> =
+  { '00:00-05:00': true, '05:00-12:00': true, '12:00-18:00': true, '18:00-00:00': true };
+
+// A departure board is almost entirely "scheduled". Printing it on every row is
+// a column of identical grey words that buries the one row a traveller actually
+// needs to see. Everything else renders, including states this app does not yet
+// know about: an unrecognised status is by definition not routine.
+const ROUTE_STATUS_ROUTINE = 'scheduled';
+
+// Ceiling on the DRAWN line only. The connector's box still spans everything
+// between the two times; the line is centred inside it, so the gap either side
+// is equal by construction at any width.
+//
+// This replaces a duration-proportional left inset, which was a defect: pushing
+// the line right grew the left gap while the right gap stayed fixed, so only the
+// single longest flight in a list ever showed equal gaps.
+const ROUTE_CONNECTOR_MAX = 120;
 
 type FlightData = {
   flight: string;
@@ -78,6 +196,35 @@ type FlightData = {
   delayLabel: string | null;
   delayValue: string | null;
   date: string;
+};
+
+// Only the fields actually rendered. `airline` is deliberately absent: the
+// provider mislabels at least one carrier (QP comes back as "Starlight
+// Airline", not Akasa Air), and the two-letter prefix of flight_number is the
+// reliable identifier. Omitting it here makes rendering it a type error.
+type RouteFlight = {
+  flight_number: string;
+  destination_iata: string;
+  departure_scheduled: string;
+  departure_scheduled_iso: string | null;
+  // Null when the board carried no arrival time for this row at all. The
+  // backend sends the key with a null value rather than omitting it.
+  arrival_scheduled: string | null;
+  arrival_scheduled_iso: string | null;
+  status: string;
+};
+
+type RouteResult = {
+  origin: string;
+  destination: string;
+  window_hours: number;
+  // The local calendar date the board was fetched for, or null for the rolling
+  // window from now. window_hours does not apply to a dated search.
+  date: string | null;
+  count: number;
+  total_found: number;
+  truncated: boolean;
+  flights: RouteFlight[];
 };
 
 function getStatusColor(status: string) {
@@ -242,14 +389,15 @@ function timeAgo(ts: number, now: number) {
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Header line, e.g. "Sat, 16 Aug · 2:04 AM". Fixed arrays rather than Intl so
+// Header line, e.g. "Sat, 16 Aug · 02:04". Fixed arrays rather than Intl so
 // the output never shifts with locale.
+//
+// 24-hour, matching the route rows. Both parts are zero-padded, so the line is
+// the same nineteen characters at every hour and no longer changes width as the
+// meridiem comes and goes.
 function formatClock(ts: number) {
   const d = new Date(ts);
-  const hours = d.getHours();
-  const period = hours < 12 ? 'AM' : 'PM';
-  const display = hours % 12 === 0 ? 12 : hours % 12;
-  const time = `${display}:${String(d.getMinutes()).padStart(2, '0')} ${period}`;
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const day = String(d.getDate()).padStart(2, '0');
   return `${WEEKDAYS[d.getDay()]}, ${day} ${MONTHS[d.getMonth()]} · ${time}`;
 }
@@ -294,6 +442,23 @@ function greetingPrefix(ts: number, index: number): string {
   return prefix.replace('{day}', WEEKDAYS_LONG[day]);
 }
 
+// YYYY-MM-DD from the device's own calendar parts. Never toISOString, which
+// reports UTC and lands on the wrong day either side of midnight.
+function localIsoDate(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+// "Sat, 29 Aug" from a YYYY-MM-DD string, or the string itself if unparseable.
+// Built from the fixed WEEKDAYS/MONTHS arrays so it never shifts with locale.
+function routeDateLabel(iso: string | null): string {
+  if (!iso) return 'Today';
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
 // Display-only handle. Saved flights are keyed on email, never on this.
 function sanitiseDisplayName(raw: string) {
   return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 14);
@@ -303,6 +468,39 @@ function localDayKey(ts: number) {
   const d = new Date(ts);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
+
+// "6:40 PM IST" -> "6:40 PM". A departure board omits the origin airport
+// object, so departure times arrive with no zone label while arrivals have one;
+// dropping the label restores symmetry. Anything without AM/PM is returned
+// untouched rather than guessed at — trimming the last token would corrupt an
+// unlabelled value like "18:40" or "N/A".
+function stripZoneLabel(t: string): string {
+  if (typeof t !== 'string') return '';
+  const m = /^(.*?[AP]M)\b/.exec(t);
+  return m ? m[1] : t;
+}
+
+// "2026-08-21T15:45+05:30" -> "15:45". These are the airport's wall-clock digits
+// and are already zero-padded upstream, so every result is exactly five
+// characters — which is what lets both time cells share one fixed width.
+//
+// Read as text, never through Date: new Date(iso).getHours() would re-express
+// the instant in the DEVICE's zone and silently shift every time on the board.
+// ROUTE ROWS ONLY. The flight card and saved rows render strings the backend
+// formatted, and are converted separately.
+const ISO_CLOCK_RE = /T(\d{2}:\d{2})/;
+
+function routeClock(iso: string | null, fallback: string): string {
+  if (!iso) return fallback;
+  const m = ISO_CLOCK_RE.exec(iso);
+  return m ? m[1] : fallback;   // unparseable: show what the backend sent, untouched
+}
+
+// Shown when a row has no arrival time of any kind. An em dash says "not known"
+// in the width of a glyph; the "N/A" that used to arrive here said it in the
+// width of a word and read as an error rather than as a gap. The font already
+// renders this dash elsewhere in the file at MONO_BOLD.
+const ROUTE_NO_TIME = '\u2014';
 
 function trimAirportName(name: string) {
   if (typeof name !== 'string') return '';
@@ -803,13 +1001,53 @@ export default function Index() {
   const [gmailToken, setGmailToken] = useState<string | null>(null);
   const [errorCounter, setErrorCounter] = useState(0);
   const [chatResponse, setChatResponse] = useState<string | null>(null);
+  const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
+  // null means Today, which sends no date parameter at all and so preserves the
+  // existing relative-form search exactly.
+  const [routeDate, setRouteDate] = useState<string | null>(null);
+  const [routeCalOpen, setRouteCalOpen] = useState(false);
+  // The month the grid is showing, independent of what is selected.
+  const [routeCalMonth, setRouteCalMonth] = useState(() => {
+    const n = new Date();
+    return { y: n.getFullYear(), m: n.getMonth() };
+  });
+  // Where the open filter panel floats, measured from its trigger in window
+  // coordinates so the panel can live in a Modal and still sit under its control.
+  // top and bottom are the two candidate placements; the space fields decide
+  // which of them the panel actually gets.
+  const [routeAnchor, setRouteAnchor] = useState<{
+    left: number;
+    top: number;
+    bottom: number;
+    width: number;
+    spaceBelow: number;
+    spaceAbove: number;
+  } | null>(null);
+  // The panel's own height, reported by onLayout on its first pass. Null until
+  // then, which is also what holds the fade back — see routePanelMeasured.
+  const [routePanelH, setRoutePanelH] = useState<number | null>(null);
+  // Declared here, not beside the placement maths below, because the fade
+  // effect names it in a dependency array and would otherwise read it before
+  // its own initialiser has run.
+  const routePanelMeasured = routePanelH !== null;
+  const [routeFiltersOpen, setRouteFiltersOpen] = useState(false);
+  const [routeSort, setRouteSort] = useState<RouteSort>(ROUTE_SORT_DEFAULT);
+  // One slot, so opening any control closes the others by construction.
+  const [routeOpenDrop, setRouteOpenDrop] = useState<null | 'sort' | 'dep' | 'arr' | 'air'>(null);
+  // The flight number currently being looked up and saved from a route row, or
+  // null. A single slot, not a set: it doubles as the guard that stops a user
+  // firing several 2-unit lookups by tapping down the list.
+  const [routeSavingKey, setRouteSavingKey] = useState<string | null>(null);
+  const [routeDepBands, setRouteDepBands] = useState<Record<RouteBand, boolean>>(ALL_BANDS_ON);
+  const [routeArrBands, setRouteArrBands] = useState<Record<RouteBand, boolean>>(ALL_BANDS_ON);
+  // Exclusions rather than inclusions: the airline list is derived per result
+  // set, so an empty array means "all on" without having to seed state for
+  // carriers we have not seen yet.
+  const [routeAirlinesOff, setRouteAirlinesOff] = useState<string[]>([]);
   const [savedFlights, setSavedFlights] = useState<SavedFlight[]>([]);
   // Persisted under 'savedCollapsed'. Starts true so an absent key means
   // collapsed; hydration only overrides it when the key exists.
   const [savedCollapsed, setSavedCollapsed] = useState(true);
-  // Session only, never persisted: has the user revealed the saved section for
-  // the result currently on screen?
-  const [savedRevealed, setSavedRevealed] = useState(false);
   const [flightRecord, setFlightRecord] = useState<SavedFlight | null>(null);
   const [saveError, setSaveError] = useState("");
   const [email, setEmail] = useState<string | null>(null);
@@ -967,6 +1205,14 @@ export default function Index() {
   const refreshMsgOpacity = useRef(new Animated.Value(0)).current;
   const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
+  // Four values, not two: each overlay drives its content and its scrim
+  // separately, so the backdrop can run its own timing. Every property either
+  // value touches is opacity or transform, so all of it is native-driven and
+  // none of it can move the layout underneath.
+  const routePanelAnim = useRef(new Animated.Value(0)).current;
+  const routeScrimAnim = useRef(new Animated.Value(0)).current;
+  const routeCalAnim = useRef(new Animated.Value(0)).current;
+  const routeCalScrimAnim = useRef(new Animated.Value(0)).current;
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -997,13 +1243,6 @@ export default function Index() {
       badgePulse.stopAnimation();
       badgePulse.setValue(1);
     }
-  }, [flight]);
-
-  // The reveal belongs to one result. clearResultView is shared with sign-in and
-  // logout and must not be modified, so the reset hangs off the result going null
-  // rather than living inside it.
-  useEffect(() => {
-    if (flight === null) setSavedRevealed(false);
   }, [flight]);
 
   useEffect(() => {
@@ -1049,6 +1288,45 @@ export default function Index() {
     toastTimerRef.current = setTimeout(() => setToastMsg(''), 1200);
     return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
   }, [toastMsg, toastCounter]);
+
+  // The scrim owes nothing to layout, so it starts on the tap rather than
+  // waiting behind the panel's measuring pass.
+  useEffect(() => {
+    if (routeOpenDrop === null) return;
+    routeScrimAnim.setValue(0);
+    Animated.timing(routeScrimAnim, {
+      toValue: 1, duration: SCRIM_IN_MS,
+      easing: EASE_OUT, useNativeDriver: true,
+    }).start();
+  }, [routeOpenDrop]);
+
+  // Waits for the measurement, so the panel enters already on the correct side.
+  // Depends on the boolean rather than the height itself: a re-layout that
+  // happens to change the height must not replay the entrance.
+  useEffect(() => {
+    if (routeOpenDrop === null || !routePanelMeasured) return;
+    routePanelAnim.setValue(0);
+    Animated.timing(routePanelAnim, {
+      toValue: 1, duration: PANEL_IN_MS,
+      easing: EASE_OUT, useNativeDriver: true,
+    }).start();
+  }, [routeOpenDrop, routePanelMeasured]);
+
+  useEffect(() => {
+    if (!routeCalOpen) return;
+    routeCalAnim.setValue(0);
+    routeCalScrimAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(routeCalScrimAnim, {
+        toValue: 1, duration: SCRIM_IN_MS,
+        easing: EASE_OUT, useNativeDriver: true,
+      }),
+      Animated.timing(routeCalAnim, {
+        toValue: 1, duration: CAL_IN_MS,
+        easing: EASE_OUT, useNativeDriver: true,
+      }),
+    ]).start();
+  }, [routeCalOpen]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -1113,12 +1391,12 @@ export default function Index() {
     setError("");
     setSaveError("");
     setChatResponse(null);
+    setRouteResult(null);
     setFlightRecord(saved);
     const savedStatus = displayStatus(saved.status.toLowerCase(), saved.from.delay);
     const depCell = movementTimeCell(saved.from.actual, saved.from.estimated, saved.from.actualSource, saved.from.estimatedSource, true);
     const arrCell = movementTimeCell(saved.to.actual, saved.to.estimated, saved.to.actualSource, saved.to.estimatedSource, false);
     const savedDelay = delayCell(saved.from.delay);
-    setSavedRevealed(false);
     setFlight({
       flight: saved.flightNumber,
       airline: saved.airline,
@@ -1163,7 +1441,7 @@ export default function Index() {
     }
     setLoading(true);
     try {
-      const response = await fetch(`https://flight-tracker-970706733452.asia-south1.run.app/flight/${flightNumber}`);
+      const response = await fetch(`${API_BASE}/flight/${flightNumber}`);
       const data = await response.json();
 
       if (data.error || !response.ok) {
@@ -1173,7 +1451,6 @@ export default function Index() {
         return false;
       }
 
-      setSavedRevealed(false);
       setFlight(flightDataFromApi(data));
 
       const record = savedFlightFromApi(data);
@@ -1194,11 +1471,94 @@ export default function Index() {
     }
   };
 
+  const runRouteLookup = async (origin: string, destination: string, day: string | null) => {
+    setError("");
+    setSaveError("");
+    // The three result kinds are mutually exclusive; a route answer replaces
+    // whatever was on screen.
+    setFlight(null);
+    setChatResponse(null);
+    setFlightRecord(null);
+    setRouteResult(null);
+    setLoading(true);
+    try {
+      // The date is omitted entirely for Today, not sent empty: the backend
+      // treats absent and empty alike, but omitting keeps the URL identical to
+      // what it has always been.
+      const query = day === null
+        ? `hours=${ROUTE_TODAY_HOURS}`
+        : `hours=${ROUTE_TODAY_HOURS}&date=${day}`;
+      const response = await fetch(`${API_BASE}/route/${origin}/${destination}?${query}`);
+      const data = await response.json();
+
+      // The envelope always carries an `error` key; non-null means failure.
+      if (data.error || !response.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
+        setErrorCounter(c => c + 1);
+        shake();
+        return;
+      }
+
+      // Airline exclusions are keyed to one result set; a different route has a
+      // different carrier list, so carrying them over would silently hide rows.
+      setRouteAirlinesOff([]);
+      setRouteResult(data as RouteResult);
+      showResult();
+    } catch {
+      setError("Could not reach the server. Please check your connection and try again.");
+      setErrorCounter(c => c + 1);
+      shake();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Bookmark on a route row: look the flight up, then save it, without the card
+  // ever appearing. It deliberately does NOT reuse runFlightLookup, which sets
+  // `flight` and calls showResult() — that would unmount the route list and flash
+  // the card open and shut. Same endpoint, same DTO mapping, no card.
+  //
+  // Costs 2 units per distinct flight. The backend caches a successful lookup for
+  // five minutes, so re-tapping the same number inside that window is free.
+  const saveFromRoute = async (flightNumber: string) => {
+    if (routeSavingKey !== null) return;      // one at a time; the UI also disables the rest
+    setRouteSavingKey(flightNumber);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/flight/${flightNumber}`);
+      const data = await response.json();
+
+      if (data.error || !response.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
+        setErrorCounter(c => c + 1);
+        shake();
+        return;
+      }
+
+      const result = await saveFlight(email, savedFlightFromApi(data));
+      setSavedFlights(result.flights);
+      if (!result.ok) {
+        setError('saved flight limit reached \u2014 unsave one first');
+        setErrorCounter(c => c + 1);
+        shake();
+        return;
+      }
+      showToast('saved');
+    } catch {
+      setError("Could not reach the server. Please check your connection and try again.");
+      setErrorCounter(c => c + 1);
+      shake();
+    } finally {
+      setRouteSavingKey(null);
+    }
+  };
+
   const handleSearch = async () => {
     const cleaned = query.trim().toUpperCase().replace(/\s/g, "");
     setError("");
     setFlight(null);
     setChatResponse(null);
+    setRouteResult(null);
     setFlightRecord(null);
     setSaveError("");
 
@@ -1219,10 +1579,24 @@ export default function Index() {
       return;
     }
 
+    // Route-shaped input is answered from the departure board and must never
+    // reach /chat — keeping it off the LLM is the point of the feature.
+    const route = routeCodes(query);
+    if (route) {
+      if (route.sameAirport) {
+        setError("origin and destination must be different airports");
+        setErrorCounter(c => c + 1);
+        shake();
+        return;                 // still never reaches /chat
+      }
+      await runRouteLookup(route.from, route.to, routeDate);
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
-      const response = await fetch('https://flight-tracker-970706733452.asia-south1.run.app/chat', {
+      const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: query, gmail_token: gmailToken }),
@@ -1238,7 +1612,6 @@ export default function Index() {
 
       setChatResponse(data.response);
       if (data.flight) {
-        setSavedRevealed(false);
         setFlight(flightDataFromApi(data.flight));
         const record = savedFlightFromApi(data.flight);
         setFlightRecord(record);
@@ -1271,7 +1644,7 @@ export default function Index() {
       if (attempts > 0) await new Promise(resolve => setTimeout(resolve, REFRESH_SPACING_MS));
       attempts++;
       try {
-        const response = await fetch(`https://flight-tracker-970706733452.asia-south1.run.app/flight/${f.flightNumber}`);
+        const response = await fetch(`${API_BASE}/flight/${f.flightNumber}`);
         const data = await response.json();
         if (data.error || !response.ok) { failures++; continue; }
         await touchSavedFlight(email, savedFlightFromApi(data));
@@ -1347,9 +1720,499 @@ export default function Index() {
   // Derived per render from a copy; savedFlights itself is never reordered.
   const sortedSaved = sortSavedByRelevance(savedFlights);
 
-  // Auto-collapse can only hide, never reveal: an open result overrides a
-  // persisted expand until the user reveals it for that result.
-  const savedShowCollapsed = savedCollapsed || (flight !== null && !savedRevealed);
+  // Names come only from flights already on this device. No lookup table, no
+  // network: an unrecognised code simply renders as the bare code.
+  const airportNameFor = (iata: string): string | null => {
+    for (const f of savedFlights) {
+      for (const ep of [f.from, f.to]) {
+        if (ep.iata === iata && ep.airport) return trimAirportName(ep.airport);
+      }
+    }
+    return null;
+  };
+
+  const routeCandidate = routeCodes(query);
+  // Same-airport input is not a route: the affordance stays hidden and Execute
+  // reports it through the existing error channel.
+  const routeAffordance = routeCandidate && !routeCandidate.sameAirport ? routeCandidate : null;
+  const routeFromName = routeAffordance ? airportNameFor(routeAffordance.from) : null;
+  const routeToName = routeAffordance ? airportNameFor(routeAffordance.to) : null;
+
+  // The ROUTE payload's *_iso fields carry a TRUE UTC offset, so Date.parse
+  // reads them correctly. That is NOT true of the *_iso fields on the flight DTO
+  // path: those carry a bogus +00:00 over local wall-clock digits and must go
+  // through zonedIsoToTs. The two paths deliberately do not share a time helper,
+  // because one correct-looking swap would silently shift every value.
+  // Everything below parses through this one function.
+  const routeTs = (iso: string | null): number | null => {
+    if (!iso) return null;
+    const t = Date.parse(iso);
+    return Number.isNaN(t) ? null : t;
+  };
+
+  const routeDepartureTs = (r: RouteFlight): number => routeTs(r.departure_scheduled_iso) ?? NO_TIME;
+  const routeArrivalTs = (r: RouteFlight): number => routeTs(r.arrival_scheduled_iso) ?? NO_TIME;
+
+  // Null whenever either end is missing or the pair is nonsensical, so the row
+  // simply renders no duration rather than a placeholder.
+  const routeDurationMs = (r: RouteFlight): number | null => {
+    const dep = routeTs(r.departure_scheduled_iso);
+    const arr = routeTs(r.arrival_scheduled_iso);
+    if (dep === null || arr === null || arr <= dep) return null;
+    return arr - dep;
+  };
+
+  // The hour as it reads AT THE AIRPORT, taken from the wall-clock digits.
+  // new Date(iso).getHours() would report the device's zone instead, which puts
+  // a Bengaluru breakfast flight in the evening band for a user in London.
+  const routeHourOf = (iso: string | null): number | null => {
+    const m = /T(\d{2}):/.exec(iso ?? '');
+    return m ? Number(m[1]) : null;
+  };
+
+  const routeDepBand = (r: RouteFlight): RouteBand | null => {
+    const h = routeHourOf(r.departure_scheduled_iso);
+    return h === null ? null : bandForHour(h);
+  };
+
+  const routeArrBand = (r: RouteFlight): RouteBand | null => {
+    const h = routeHourOf(r.arrival_scheduled_iso);
+    return h === null ? null : bandForHour(h);
+  };
+
+  // Unmapped carriers group under their two-letter prefix rather than being left
+  // out of the filter. Excluding them would make those rows unfilterable, and
+  // would let "turn every airline off" still leave flights on screen.
+  const routeAirlineKey = (r: RouteFlight): string => {
+    const name = airlineFromFlightNumber(r.flight_number);
+    if (name !== null) return name;
+    const m = /^([A-Z]{2}|[A-Z]\d|\d[A-Z])/.exec(r.flight_number);
+    return m ? m[1] : r.flight_number;
+  };
+
+  // Only carriers actually present in this result set.
+  const routeAirlineOptions = routeResult
+    ? Array.from(new Set(routeResult.flights.map(routeAirlineKey))).sort()
+    : [];
+
+  const routeRowKey = (r: RouteFlight) => `${r.flight_number}-${r.departure_scheduled_iso ?? ''}`;
+
+  // Missing values resolve to NO_TIME in every mode, so unparseable rows sort
+  // last whichever key is active.
+  const routeSortKey = (r: RouteFlight): number =>
+    routeSort === 'arrival' ? routeArrivalTs(r)
+      : routeSort === 'duration' ? (routeDurationMs(r) ?? NO_TIME)
+        : routeDepartureTs(r);
+
+  // One predicate for both the real filter and the option counts, so a count can
+  // never disagree with what enabling the option actually produces. `skip` names
+  // the dimension to ignore.
+  //
+  // A row whose band cannot be determined is never hidden by that filter: the
+  // app has no grounds to place it in a band, and hiding data it cannot classify
+  // is worse than showing it.
+  const routePasses = (r: RouteFlight, skip: 'dep' | 'arr' | 'air' | null) => {
+    if (skip !== 'dep') {
+      const b = routeDepBand(r);
+      if (b !== null && !routeDepBands[b]) return false;
+    }
+    if (skip !== 'arr') {
+      const b = routeArrBand(r);
+      if (b !== null && !routeArrBands[b]) return false;
+    }
+    if (skip !== 'air' && routeAirlinesOff.includes(routeAirlineKey(r))) return false;
+    return true;
+  };
+
+  const routeVisible = routeResult
+    ? routeResult.flights.filter(r => routePasses(r, null))
+    : [];
+
+  // Counted with the OTHER filters applied but not this one, so the number says
+  // what enabling the option would give you — and does not collapse to zero the
+  // moment you switch the option off.
+  const routeCountBy = (skip: 'dep' | 'arr' | 'air', keyOf: (r: RouteFlight) => string | null) => {
+    const out: Record<string, number> = {};
+    for (const r of routeResult?.flights ?? []) {
+      if (!routePasses(r, skip)) continue;
+      const k = keyOf(r);
+      if (k !== null) out[k] = (out[k] ?? 0) + 1;
+    }
+    return out;
+  };
+  const routeDepCounts = routeCountBy('dep', routeDepBand);
+  const routeArrCounts = routeCountBy('arr', routeArrBand);
+  const routeAirCounts = routeCountBy('air', routeAirlineKey);
+
+  const routeSorted = [...routeVisible].sort((a, b) => routeSortKey(a) - routeSortKey(b));
+  const routeHiddenCount = (routeResult?.flights.length ?? 0) - routeVisible.length;
+
+  // Grouping is meaningful only under a departure sort; under arrival or
+  // duration the headings would describe an order the list is not in.
+  const routeGroups = routeSort === 'departure'
+    ? ROUTE_BANDS
+        .map(part => ({ part, rows: routeSorted.filter(r => routeDepBand(r) === part) }))
+        .filter(g => g.rows.length > 0)
+    : [];
+  const routeUngrouped = routeSort === 'departure'
+    ? routeSorted.filter(r => routeDepBand(r) === null)
+    : [];
+
+  // Computed over the FILTERED set, so the marker always describes what is
+  // currently on screen. Null when fewer than two durations are present — a
+  // single visible row has nothing to be faster than — when every duration is
+  // equal, or when the shortest is tied. A marker that always fires marks
+  // nothing.
+  const routeFastestKey = (() => {
+    const timed = routeSorted
+      .map(r => ({ key: routeRowKey(r), ms: routeDurationMs(r) }))
+      .filter((v): v is { key: string; ms: number } => v.ms !== null);
+    if (timed.length < 2) return null;
+    const min = Math.min(...timed.map(v => v.ms));
+    if (min === Math.max(...timed.map(v => v.ms))) return null;
+    const winners = timed.filter(v => v.ms === min);
+    return winners.length === 1 ? winners[0].key : null;
+  })();
+
+  // Flat rows, not cards. Line one carries everything variable-width; line two
+  // carries the two times and the connector between them, and nothing else may
+  // join it. The times are sized to their own content and pinned to opposite
+  // edges of the row, so departures start at the same x and arrivals end at the
+  // same x while the connector absorbs every point of slack.
+  const routeRow = (r: RouteFlight) => {
+    const ms = routeDurationMs(r);
+    const airline = airlineFromFlightNumber(r.flight_number);
+    const saved = savedFlights.some(f => f.id === makeFlightId(r.flight_number));
+    const pending = routeSavingKey === r.flight_number;
+    const busy = routeSavingKey !== null;
+    const showStatus = r.status !== ROUTE_STATUS_ROUTINE;
+    return (
+      <TouchableOpacity
+        key={routeRowKey(r)}
+        style={s.routeFlatRow}
+        activeOpacity={0.7}
+        onPress={() => runFlightLookup(r.flight_number)}
+      >
+        <View style={s.routeFlatBody}>
+          {/* Identity and flags. Everything variable-width lives on this line so
+              the times below keep the whole row to flex into; the airline is the
+              only cell allowed to shrink, and may be absent entirely. */}
+          <View style={s.routeFlatHead}>
+            <View style={s.routeFlatIdent}>
+              {airline !== null && (
+                <Text style={s.routeFlatAirline} numberOfLines={1}>{airline}</Text>
+              )}
+              <Text style={s.routeFlatNumber} numberOfLines={1}>{r.flight_number}</Text>
+            </View>
+            <View style={s.routeFlatTags}>
+              {/* No "Direct" label: it printed identically on every row, and the
+                  note under the heading already says the whole list is direct.
+                  It earns a place here only once connections can appear. */}
+              {routeFastestKey === routeRowKey(r) && (
+                <Text style={s.routeFastest}>{'fastest'}</Text>
+              )}
+              {showStatus && (
+                <Text style={[s.routeFlatStatus, { color: getStatusColor(r.status) }]} numberOfLines={1}>
+                  {r.status}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Both cells are the same fixed width, because every 24-hour time is
+              exactly five characters. The connector is the only flexed element
+              between them, so the gap either side of it is equal by construction
+              rather than by tuning. */}
+          <View style={s.routeFlatTop}>
+            <Text style={s.routeFlatTime} numberOfLines={1}>
+              {routeClock(r.departure_scheduled_iso, r.departure_scheduled)}
+            </Text>
+            <View style={s.routeConn}>
+              {ms !== null && (
+                <Text style={s.routeConnDur} numberOfLines={1}>{formatCountdown(ms)}</Text>
+              )}
+              <View style={s.routeConnLineRow}>
+                <View style={s.routeConnLine} />
+                <View style={s.routeConnHead} />
+              </View>
+            </View>
+            {/* The iso is still preferred; the fallback is the only thing that
+                changes. A row with neither value gets the dash, which occupies
+                the same 60pt cell a time does, so the arrival still ends on the
+                row's right edge and the connector's share is unchanged. */}
+            <Text style={[s.routeFlatTime, s.routeFlatTimeEnd]} numberOfLines={1}>
+              {routeClock(
+                r.arrival_scheduled_iso,
+                r.arrival_scheduled === null ? ROUTE_NO_TIME : stripZoneLabel(r.arrival_scheduled),
+              )}
+            </Text>
+          </View>
+        </View>
+
+        {/* Nested Touchable: React Native gives the responder to the deepest view
+            that claims it, so this never triggers the row's own onPress. */}
+        <TouchableOpacity
+          style={s.routeFlatMark}
+          activeOpacity={0.7}
+          disabled={saved || busy}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          onPress={() => saveFromRoute(r.flight_number)}
+        >
+          <View style={s.routeFlatMarkBox}>
+            {pending ? (
+              <ActivityIndicator size="small" color="rgba(226,226,226,0.5)" />
+            ) : (
+              <Svg width={18} height={18} viewBox="0 0 24 24">
+                <Path
+                  d="M6 3h12a1 1 0 0 1 1 1v17l-7-5-7 5V4a1 1 0 0 1 1-1z"
+                  fill={saved ? '#4ade80' : 'none'}
+                  stroke={saved
+                    ? '#4ade80'
+                    : busy ? 'rgba(226,226,226,0.25)' : 'rgba(226,226,226,0.5)'}
+                  strokeWidth={1.75}
+                />
+              </Svg>
+            )}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  // Counts, not lists: four band names would not fit a pill at 320pt. "n of m"
+  // rather than a bare n, because "Departure: 2" invites reading the 2 as a
+  // time. The denominator also says how much there was to choose from.
+  const bandLabel = (sel: Record<RouteBand, boolean>) => {
+    const n = ROUTE_BANDS.filter(b => sel[b]).length;
+    return n === ROUTE_BANDS.length ? 'all' : n === 0 ? 'none' : `${n} of ${ROUTE_BANDS.length}`;
+  };
+  const airlineOnCount = routeAirlineOptions.length - routeAirlinesOff.length;
+  const airlineLabel = routeAirlinesOff.length === 0
+    ? 'all'
+    : airlineOnCount === 0 ? 'none' : `${airlineOnCount} of ${routeAirlineOptions.length}`;
+
+  // Which filters are actually narrowing the list, for the all-hidden message.
+  const routeActiveFilters = [
+    ROUTE_BANDS.every(b => routeDepBands[b]) ? null : 'departure time',
+    ROUTE_BANDS.every(b => routeArrBands[b]) ? null : 'arrival time',
+    routeAirlinesOff.length === 0 ? null : 'airline',
+  ].filter((v): v is string => v !== null);
+
+  // Everything-on for the filters, and sort back to its default.
+  const routeFiltersDirty =
+    !ROUTE_BANDS.every(b => routeDepBands[b])
+    || !ROUTE_BANDS.every(b => routeArrBands[b])
+    || routeAirlinesOff.length > 0;
+  const routeControlsDirty = routeFiltersDirty || routeSort !== ROUTE_SORT_DEFAULT;
+
+  const routeResetControls = () => {
+    setRouteDepBands(ALL_BANDS_ON);
+    setRouteArrBands(ALL_BANDS_ON);
+    setRouteAirlinesOff([]);
+    setRouteSort(ROUTE_SORT_DEFAULT);
+    setRouteOpenDrop(null);
+  };
+
+  // ── Calendar ──────────────────────────────────────────────────────────
+  // Whole days between today and a given date, on the DEVICE's calendar. The
+  // backend bounds against its own UTC date and carries a day of slack either
+  // side, so a boundary disagreement cannot lock a legitimate date out.
+  const routeDayOffset = (y: number, m: number, d: number) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((new Date(y, m, d).getTime() - today.getTime()) / 86400000);
+  };
+
+  // Leading blanks so the 1st lands under its weekday, then the days, padded to
+  // whole weeks of seven.
+  const routeCalWeeks = (() => {
+    const { y, m } = routeCalMonth;
+    const lead = new Date(y, m, 1).getDay();
+    const total = new Date(y, m + 1, 0).getDate();
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= total; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    const weeks: (number | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    return weeks;
+  })();
+
+  // Navigation stops where the selectable range does, so the grid never shows a
+  // month in which nothing can be picked.
+  const routeCalCanGoBack = routeDayOffset(routeCalMonth.y, routeCalMonth.m, 1) > 0;
+  const routeCalCanGoNext =
+    routeDayOffset(routeCalMonth.y, routeCalMonth.m + 1, 1) <= ROUTE_MAX_DATE_DAYS;
+
+  const shiftRouteCal = (delta: number) => {
+    setRouteCalMonth(prev => {
+      const d = new Date(prev.y, prev.m + delta, 1);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    });
+  };
+
+  const openRouteCal = () => {
+    const base = routeDate === null ? new Date() : new Date(`${routeDate}T00:00:00`);
+    setRouteCalMonth({ y: base.getFullYear(), m: base.getMonth() });
+    setRouteCalOpen(true);
+  };
+
+  // Unmounts only once BOTH layers have left, so the Modal never snaps away
+  // from under a scrim still on screen.
+  const closeRouteCal = () => {
+    Animated.parallel([
+      Animated.timing(routeCalAnim, {
+        toValue: 0, duration: CAL_OUT_MS,
+        easing: EASE_IN, useNativeDriver: true,
+      }),
+      Animated.timing(routeCalScrimAnim, {
+        toValue: 0, duration: SCRIM_OUT_MS,
+        easing: EASE_IN, useNativeDriver: true,
+      }),
+    ]).start(() => setRouteCalOpen(false));
+  };
+
+  // Selecting only. Execute still fires the search, and today stays null so the
+  // request carries no date parameter at all.
+  const pickRouteCalDay = (iso: string, isToday: boolean) => {
+    setRouteDate(isToday ? null : iso);
+    closeRouteCal();
+  };
+
+  // ── Anchored panels ───────────────────────────────────────────────────
+  const routeAnchorRefs = useRef<Record<string, View | null>>({});
+
+  const closeRouteDrop = () => {
+    Animated.parallel([
+      Animated.timing(routePanelAnim, {
+        toValue: 0, duration: PANEL_OUT_MS,
+        easing: EASE_IN, useNativeDriver: true,
+      }),
+      Animated.timing(routeScrimAnim, {
+        toValue: 0, duration: SCRIM_OUT_MS,
+        easing: EASE_IN, useNativeDriver: true,
+      }),
+    ]).start(() => setRouteOpenDrop(null));
+  };
+
+  const openRouteDrop = (id: 'sort' | 'dep' | 'arr' | 'air') => {
+    const node = routeAnchorRefs.current[id];
+    if (!node) return;
+    node.measureInWindow((wx, wy, width, height) => {
+      const win = Dimensions.get('window');
+      const below = wy + height + ROUTE_PANEL_GAP;
+      const above = win.height - wy + ROUTE_PANEL_GAP;
+      setRouteAnchor({
+        // Clamped so a panel anchored near the right edge stays on screen.
+        left: Math.max(12, Math.min(wx, win.width - 12 - ROUTE_PANEL_MAX_WIDTH)),
+        top: below,
+        bottom: above,
+        width,
+        spaceBelow: win.height - below - ROUTE_PANEL_EDGE,
+        spaceAbove: win.height - above - ROUTE_PANEL_EDGE,
+      });
+      // Forces a fresh measurement: the previous panel's height says nothing
+      // about this one's.
+      setRoutePanelH(null);
+      setRouteOpenDrop(id);
+    });
+  };
+
+  // Downward by default, because that reads as the control opening. It flips
+  // only when the panel genuinely does not fit below AND there is more room
+  // above — a flip that trades one clipped panel for another is not a fix.
+  const routePanelFlip =
+    routeAnchor !== null && routePanelH !== null
+    && routePanelH > routeAnchor.spaceBelow
+    && routeAnchor.spaceAbove > routeAnchor.spaceBelow;
+
+  // If it fits nowhere — a long airline list on a short screen — it takes the
+  // better side and scrolls inside the space it has, rather than running off.
+  const routePanelSpace = routeAnchor === null
+    ? 0
+    : routePanelFlip ? routeAnchor.spaceAbove : routeAnchor.spaceBelow;
+
+  const toggleBand = (
+    set: React.Dispatch<React.SetStateAction<Record<RouteBand, boolean>>>,
+    band: RouteBand,
+  ) => set(prev => ({ ...prev, [band]: !prev[band] }));
+
+  // Built here rather than at the call sites, because the panel that renders
+  // them now lives in a Modal far from the trigger. One array per control, and
+  // one lookup, so the two can still never disagree.
+  type RouteOption = { key: string; label: string; on: boolean; press: () => void };
+
+  const routeSortOptions: RouteOption[] = ROUTE_SORT_OPTIONS.map(opt => ({
+    key: opt,
+    label: ROUTE_SORT_LABELS[opt],
+    on: routeSort === opt,
+    // Sort is single-choice, so picking one is the end of the interaction.
+    press: () => { setRouteSort(opt); closeRouteDrop(); },
+  }));
+
+  // The three filters are multi-select: the panel deliberately stays open, and
+  // the counts beside each option update under the finger.
+  const routeDepOptions: RouteOption[] = ROUTE_BANDS.map(b => ({
+    key: b,
+    label: `${b} (${routeDepCounts[b] ?? 0})`,
+    on: routeDepBands[b],
+    press: () => toggleBand(setRouteDepBands, b),
+  }));
+
+  const routeArrOptions: RouteOption[] = ROUTE_BANDS.map(b => ({
+    key: b,
+    label: `${b} (${routeArrCounts[b] ?? 0})`,
+    on: routeArrBands[b],
+    press: () => toggleBand(setRouteArrBands, b),
+  }));
+
+  const routeAirOptions: RouteOption[] = routeAirlineOptions.map(a => ({
+    key: a,
+    label: `${a} (${routeAirCounts[a] ?? 0})`,
+    on: !routeAirlinesOff.includes(a),
+    press: () => setRouteAirlinesOff(prev =>
+      prev.includes(a) ? prev.filter(v => v !== a) : [...prev, a]),
+  }));
+
+  const routeOpenOptions: RouteOption[] =
+    routeOpenDrop === 'sort' ? routeSortOptions
+      : routeOpenDrop === 'dep' ? routeDepOptions
+        : routeOpenDrop === 'arr' ? routeArrOptions
+          : routeOpenDrop === 'air' ? routeAirOptions
+            : [];
+
+  // One shape for all four triggers. The panel they open is no longer here —
+  // it renders in the overlay Modal below, off the layout entirely.
+  //
+  // collapsable={false} matters on Android: without it the wrapper View can be
+  // flattened away at render time and measureInWindow returns nothing usable.
+  const routeDropdown = (
+    id: 'sort' | 'dep' | 'arr' | 'air',
+    label: string,
+  ) => {
+    const open = routeOpenDrop === id;
+    return (
+      <View
+        key={id}
+        style={s.routeDropCol}
+        collapsable={false}
+        ref={node => { routeAnchorRefs.current[id] = node; }}
+      >
+        <TouchableOpacity
+          style={s.routeDrop}
+          activeOpacity={0.7}
+          onPress={() => { if (open) closeRouteDrop(); else openRouteDrop(id); }}
+        >
+          <Text style={s.routeDropTxt} numberOfLines={1}>{label}</Text>
+          <View style={[s.routeDropChev, { transform: [{ rotate: open ? '-135deg' : '45deg' }] }]} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // The saved list is a resting-state affordance, not a companion to a result.
+  // Any result on screen hides it; clearing the result brings it straight back.
+  const resultOnScreen = flight !== null || chatResponse !== null || routeResult !== null;
 
   const persistCollapsed = async (next: boolean) => {
     setSavedCollapsed(next);
@@ -1383,10 +2246,25 @@ export default function Index() {
     showToast('saved');
   };
 
+  // Closing a card opened from a route row returns to the list. Closing a card
+  // opened from the command line returns to the resting state. clearResultView
+  // itself is untouched: logout and sign-in still depend on its full reset.
+  const closeFlightCard = () => {
+    if (routeResult !== null) {
+      setFlight(null);
+      setFlightRecord(null);
+      setSaveError("");
+      setError("");
+      return;
+    }
+    clearResultView();
+  };
+
   const clearResultView = () => {
     setFlight(null);
     setFlightRecord(null);
     setChatResponse(null);
+    setRouteResult(null);
     setSaveError("");
     setError("");
     setQuery("");
@@ -1431,6 +2309,192 @@ export default function Index() {
           }
         }}
       />
+      {/* ── ANCHORED FILTER PANEL ──
+          A Modal, not an inline block. Inline it pushed the results list down on
+          open and pulled it back on close, so everything below jumped. Floating
+          it over the content leaves the layout behind completely undisturbed.
+          The position comes from measuring the trigger in window coordinates.
+
+          Scrim and panel animate on SEPARATE values. The scrim starts the moment
+          the control is tapped; the panel waits for its measurement. Tying them
+          together would hold the whole overlay back for a layout pass. */}
+      <Modal visible={routeOpenDrop !== null} transparent animationType="none" onRequestClose={closeRouteDrop}>
+        <Pressable style={s.routeOverlayScrim} onPress={closeRouteDrop}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, s.routePanelDim, { opacity: routeScrimAnim }]}
+          />
+          {routeAnchor !== null && (
+            <Animated.View
+              onLayout={e => setRoutePanelH(e.nativeEvent.layout.height)}
+              style={[
+                s.routeDropPanel,
+                {
+                  position: 'absolute',
+                  left: routeAnchor.left,
+                  // One side or the other, never both.
+                  ...(routePanelFlip
+                    ? { bottom: routeAnchor.bottom }
+                    : { top: routeAnchor.top }),
+                  minWidth: routeAnchor.width,
+                  // Left off on the measuring pass: a cap applied before the
+                  // measurement would clamp the very height being measured, and
+                  // the panel would then report that it fits when it does not.
+                  maxHeight: routePanelMeasured ? routePanelSpace : undefined,
+                  opacity: routePanelAnim,
+                  transform: [
+                    // Travels out of its trigger, so the direction reverses with
+                    // the flip: a panel above the control has to rise, not drop.
+                    {
+                      translateY: routePanelAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [routePanelFlip ? OVERLAY_RISE : -OVERLAY_RISE, 0],
+                      }),
+                    },
+                    { scale: routePanelAnim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+                  ],
+                },
+              ]}
+            >
+              {/* Scrolls only when the cap above actually bites, and stops the
+                  tap reaching the scrim behind and closing the panel. */}
+              <ScrollView
+                bounces={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {routeOpenOptions.map(o => (
+                  <TouchableOpacity
+                    key={o.key}
+                    style={s.routeDropItem}
+                    activeOpacity={0.7}
+                    onPress={o.press}
+                  >
+                    <Text style={o.on ? s.routeDropItemOn : s.routeDropItemTxt}>{o.label}</Text>
+                    {o.on && <Text style={s.routeDropMark}>{'✓'}</Text>}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
+        </Pressable>
+      </Modal>
+
+      {/* ── DATE CALENDAR ── */}
+      <Modal visible={routeCalOpen} transparent animationType="none" onRequestClose={closeRouteCal}>
+        <Pressable style={s.routeCalScrim} onPress={closeRouteCal}>
+          {/* The dim is its own layer so it can fade on its own curve. Folding it
+              into the sheet's value would drag the whole backdrop through the
+              sheet's travel and scale. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: routeCalScrimAnim }]}
+          />
+          <Animated.View
+            style={[
+              s.routeCalSheet,
+              {
+                opacity: routeCalAnim,
+                transform: [
+                  { translateY: routeCalAnim.interpolate({ inputRange: [0, 1], outputRange: [CAL_RISE, 0] }) },
+                  { scale: routeCalAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                ],
+              },
+            ]}
+          >
+            <Pressable>
+              <View style={s.routeCalNav}>
+                {/* Month stepping is one group, so the close control can hold the
+                    right edge on its own. */}
+                <View style={s.routeCalNavGroup}>
+                  <TouchableOpacity
+                    onPress={() => shiftRouteCal(-1)}
+                    disabled={!routeCalCanGoBack}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={routeCalCanGoBack ? s.routeCalArrow : s.routeCalArrowOff}>{'<'}</Text>
+                  </TouchableOpacity>
+                  <Text style={s.routeCalTitle}>
+                    {`${MONTHS[routeCalMonth.m]} ${routeCalMonth.y}`}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => shiftRouteCal(1)}
+                    disabled={!routeCalCanGoNext}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={routeCalCanGoNext ? s.routeCalArrow : s.routeCalArrowOff}>{'>'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {/* The same glyph the flight card closes with: 20x20 over a
+                    24-unit box, spanning 5..19 at 1.75 stroke in the file's
+                    destructive red. Tapping outside still dismisses. */}
+                <TouchableOpacity
+                  onPress={closeRouteCal}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={s.routeCalClose}
+                >
+                  <Svg width={20} height={20} viewBox="0 0 24 24">
+                    <Path
+                      d="M19 5 5 19"
+                      fill="none"
+                      stroke="rgba(248,113,113,0.55)"
+                      strokeWidth={1.75}
+                      strokeLinecap="round"
+                    />
+                    <Path
+                      d="M5 5l14 14"
+                      fill="none"
+                      stroke="rgba(248,113,113,0.55)"
+                      strokeWidth={1.75}
+                      strokeLinecap="round"
+                    />
+                  </Svg>
+                </TouchableOpacity>
+              </View>
+
+              <View style={s.routeCalRow}>
+                {WEEKDAYS.map(w => (
+                  <Text key={w} style={s.routeCalHead}>{w}</Text>
+                ))}
+              </View>
+
+              {routeCalWeeks.map((week, wi) => (
+                <View key={wi} style={s.routeCalRow}>
+                  {week.map((day, di) => {
+                    if (day === null) return <View key={di} style={s.routeCalCell} />;
+                    const iso = localIsoDate(new Date(routeCalMonth.y, routeCalMonth.m, day));
+                    const offset = routeDayOffset(routeCalMonth.y, routeCalMonth.m, day);
+                    const usable = offset >= 0 && offset <= ROUTE_MAX_DATE_DAYS;
+                    const isToday = offset === 0;
+                    const picked = routeDate === null ? isToday : routeDate === iso;
+                    return (
+                      <TouchableOpacity
+                        key={di}
+                        style={[
+                          s.routeCalCell,
+                          picked && s.routeCalCellOn,
+                          !picked && isToday && s.routeCalCellToday,
+                        ]}
+                        activeOpacity={0.7}
+                        disabled={!usable}
+                        onPress={() => pickRouteCalDay(iso, isToday)}
+                      >
+                        <Text style={
+                          !usable ? s.routeCalDayOff
+                            : picked ? s.routeCalDayOn
+                              : s.routeCalDay
+                        }>{day}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, paddingTop: insets.top + 12 }}>
         <ScrollView
@@ -1469,7 +2533,14 @@ export default function Index() {
                   <TextInput
                     style={s.input}
                     value={query}
-                    onChangeText={(t) => { setQuery(t); setError(""); }}
+                    onChangeText={(t) => {
+                      setQuery(t);
+                      setError("");
+                      // The date belongs to the route that was typed. Editing the
+                      // query abandons it rather than silently carrying a
+                      // 4-unit dated search onto a different route.
+                      setRouteDate(null);
+                    }}
                     onFocus={() => setFocused(true)}
                     onBlur={() => setFocused(false)}
                     onSubmitEditing={handleSearch}
@@ -1486,6 +2557,18 @@ export default function Index() {
               </View>
             </Animated.View>
           </Animated.View>
+
+          {/* Names only when BOTH resolve locally. A half-known pair, or a
+              dimmed bare code, reads as confirmation the app cannot give.
+              Nothing else belongs under the command line while typing: the date
+              control moved up with the other view controls above the results. */}
+          {routeAffordance && routeFromName !== null && routeToName !== null && (
+            <View style={{ marginTop: 4, marginBottom: 10, paddingLeft: 18 }}>
+              <Text style={s.routeEcho} numberOfLines={2}>
+                {`${routeFromName} → ${routeToName}`}
+              </Text>
+            </View>
+          )}
 
           {error !== "" && (
             <Animated.View style={{ opacity: errorMsgOpacity }}>
@@ -1535,7 +2618,7 @@ export default function Index() {
             </View>
           )}
 
-          {savedFlights.length > 0 && (
+          {savedFlights.length > 0 && !resultOnScreen && (
             <View style={{ marginBottom: 24 }}>
               {/* Above the collapse branch: a refresh failure must never be silent. */}
               {refreshMsg !== '' && (
@@ -1549,16 +2632,11 @@ export default function Index() {
                   }}>{refreshMsg}</Text>
                 </Animated.View>
               )}
-              {savedShowCollapsed ? (
+              {savedCollapsed ? (
                 <TouchableOpacity
                   style={sf.collapsedLine}
                   activeOpacity={0.7}
-                  onPress={() => {
-                    // Only a persisted collapse writes to storage; a collapse
-                    // caused by an open result is revealed in memory.
-                    if (savedCollapsed) persistCollapsed(false);
-                    else setSavedRevealed(true);
-                  }}
+                  onPress={() => persistCollapsed(false)}
                 >
                   <Text numberOfLines={1}>
                     <Text style={sf.chevron}>{'\u25B8 '}</Text>
@@ -1575,12 +2653,7 @@ export default function Index() {
                   <TouchableOpacity
                     style={sf.headingRow}
                     activeOpacity={0.7}
-                    onPress={() => {
-                      // Collapsing a section that was only revealed for this
-                      // result must not overwrite the stored preference.
-                      if (flight !== null && !savedCollapsed) setSavedRevealed(false);
-                      else persistCollapsed(true);
-                    }}
+                    onPress={() => persistCollapsed(true)}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
                     <Text style={s.detailsTitle}>{'saved flights'}</Text>
@@ -1605,6 +2678,166 @@ export default function Index() {
               <View style={{ marginBottom: 4 }}>
                 <Text style={s.detailsTitle}>{'response'}</Text>
                 <Text style={{ fontFamily: SANS, color: '#e2e2e2', fontSize: 13, lineHeight: 22 }}>{chatResponse}</Text>
+              </View>
+            </Animated.View>
+          )}
+
+          {/* Mutually exclusive in RENDER only: routeResult survives in state
+              behind an open card, so closing the card restores this list. */}
+          {routeResult && !flight && (
+            <Animated.View style={[s.resultWrap, { opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }]}>
+              <View>
+                <View style={sf.headingRow}>
+                  {/* Interim: reads as language rather than two blocks either
+                      side of a symbol. Rebuilt once city names resolve. */}
+                  <Text style={s.routeHeadCodes} numberOfLines={1}>
+                    {routeResult.origin}
+                    <Text style={s.routeHeadTo}>{'  to  '}</Text>
+                    {routeResult.destination}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={clearResultView}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={sf.remove}>{'×'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {/* The summary repeated what the codes above already say. The
+                    first note carries the gap the summary used to provide. */}
+                {routeResult.date !== null && (
+                  <Text style={[s.routeNote, { marginTop: 12, color: '#ffffff' }]}>
+                    {routeDateLabel(routeResult.date)}
+                  </Text>
+                )}
+                <Text style={[s.routeNote, routeResult.date === null && { marginTop: 12 }]}>
+                  {'Times are local to each airport'}
+                </Text>
+                {/* Reassurance for a short or empty list, not permanent small print. */}
+                {routeSorted.length <= 3 && (
+                  <Text style={s.routeNote}>{'Direct flights only, no connections'}</Text>
+                )}
+
+                {/* ONE TOOLBAR, not three stacked rows at three widths. Date,
+                    Filters and Sort now carry the same pill, so they read as one
+                    group of view controls; the row wraps only where it has to.
+                    Reset joins the end of the run — it belongs to the group, but
+                    unbordered it does not compete with the three it resets.
+
+                    Neither the date nor the Filters pill is a routeDropdown: the
+                    date opens the calendar and Filters expands the section
+                    below, while only the other four open an anchored panel. They
+                    share the styling, not the machinery. */}
+                <View style={s.routeControls}>
+                  <View style={s.routeToolbar}>
+                    <View style={s.routeDropCol}>
+                      <TouchableOpacity
+                        style={s.routeDrop}
+                        activeOpacity={0.7}
+                        onPress={openRouteCal}
+                      >
+                        <Text
+                          style={routeDate === null ? s.routeDropTxt : s.routeDropTxtOn}
+                          numberOfLines={1}
+                        >
+                          {`Date: ${routeDateLabel(routeDate)}`}
+                        </Text>
+                        <View style={[s.routeDropChev, { transform: [{ rotate: '45deg' }] }]} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* An empty board has nothing to filter or sort, but the date
+                        still means something: it is the only control here that
+                        changes what comes back. */}
+                    {routeResult.count > 0 && (
+                      <>
+                        <View style={s.routeDropCol}>
+                          <TouchableOpacity
+                            style={s.routeDrop}
+                            activeOpacity={0.7}
+                            onPress={() => { setRouteFiltersOpen(o => !o); setRouteOpenDrop(null); }}
+                          >
+                            <Text style={s.routeDropTxt} numberOfLines={1}>
+                              {routeActiveFilters.length === 0
+                                ? 'Filters'
+                                : `Filters (${routeActiveFilters.length})`}
+                            </Text>
+                            <View style={[s.routeDropChev, { transform: [{ rotate: routeFiltersOpen ? '-135deg' : '45deg' }] }]} />
+                          </TouchableOpacity>
+                        </View>
+
+                        {routeDropdown('sort', `Sort: ${ROUTE_SORT_LABELS[routeSort]}`)}
+
+                        {/* Still leaves the date alone: that decides what Execute
+                            FETCHES, and a view reset must never silently change a
+                            4-unit search. */}
+                        {routeControlsDirty && (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={routeResetControls}
+                          >
+                            <Text style={s.routeReset}>{'Reset'}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                  </View>
+
+                  {routeResult.count > 0 && routeFiltersOpen && (
+                    <View style={s.routeFilterPills}>
+                      {routeDropdown('dep', `Departure: ${bandLabel(routeDepBands)}`)}
+                      {routeDropdown('arr', `Arrival: ${bandLabel(routeArrBands)}`)}
+                      {routeDropdown('air', `Airline: ${airlineLabel}`)}
+                    </View>
+                  )}
+                </View>
+
+                {routeResult.count === 0 ? (
+                  <Text style={s.routeEmpty}>
+                    {`No departures found in the next ${routeResult.window_hours} `
+                      + `${routeResult.window_hours === 1 ? 'hour' : 'hours'}`}
+                  </Text>
+                ) : (
+                  <>
+                    {routeSorted.length === 0 ? (
+                      <Text style={s.routeEmpty}>
+                        {`All ${routeResult.count} ${routeResult.count === 1 ? 'flight is' : 'flights are'} `
+                          + `hidden by the ${routeActiveFilters.join(' and ')} `
+                          + `${routeActiveFilters.length === 1 ? 'filter' : 'filters'} \u2014 relax one to see them`}
+                      </Text>
+                    ) : (
+                      <>
+                        {routeSort === 'departure' ? (
+                          <>
+                            {routeGroups.map(g => (
+                              <View key={g.part}>
+                                <Text style={s.routeGroup}>
+                                  {`${g.part}  \u00b7  ${g.rows.length}`}
+                                </Text>
+                                {g.rows.map(r => routeRow(r))}
+                              </View>
+                            ))}
+                            {routeUngrouped.map(r => routeRow(r))}
+                          </>
+                        ) : (
+                          routeSorted.map(r => routeRow(r))
+                        )}
+
+                        {routeHiddenCount > 0 && (
+                          <Text style={s.routeCap}>
+                            {`${routeHiddenCount} ${routeHiddenCount === 1 ? 'flight' : 'flights'} hidden by the time filter`}
+                          </Text>
+                        )}
+                        {routeResult.truncated && (
+                          <Text style={s.routeCap}>
+                            {`Showing ${routeResult.count} of ${routeResult.total_found} found`}
+                          </Text>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
               </View>
             </Animated.View>
           )}
@@ -1677,7 +2910,7 @@ export default function Index() {
                       </Svg>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={clearResultView}
+                      onPress={closeFlightCard}
                       activeOpacity={0.7}
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                       style={{
@@ -1882,6 +3115,206 @@ const s = StyleSheet.create({
     fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
     marginBottom: 10, letterSpacing: 1, textTransform: "uppercase",
   },
+
+  // Route search. Row metrics deliberately match sf.row and ir.row exactly.
+  routeEcho: { fontSize: 13, color: "rgba(226,226,226,0.55)", fontFamily: SANS },
+  // Flat rows. Separation is the file's existing hairline, the same one sf.row
+  // and ir.row use; the breathing room comes from paddingVertical, not a box.
+  routeFlatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  routeFlatBody: { flex: 1 },
+  routeFlatHead: { flexDirection: "row", alignItems: "center" },
+  routeFlatIdent: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  routeFlatAirline: { fontSize: 13, color: "rgba(226,226,226,0.6)", fontFamily: SANS, flexShrink: 1 },
+  routeFlatNumber: { fontSize: 13, color: "rgba(226,226,226,0.4)", fontFamily: MONO },
+  // Content-width, never reserved: these are flags, and a fixed cell for a
+  // status that almost never renders would leave a permanent hole. The identity
+  // group flexes, so nothing here can push the row wider than the screen.
+  routeFlatTags: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
+  // No width: the cell that collided with the duration was 62pt against a 63.9pt
+  // "scheduled" once letterSpacing was counted. Sized to content, it cannot.
+  routeFlatStatus: { fontSize: 11, fontFamily: MONO_BOLD, letterSpacing: 0.5 },
+  // No width of any kind. As a stretched child of the column body this spans the
+  // full row, so the departure sits on the row's left edge and the arrival on its
+  // right edge — the same right edge line one's flags end at. Constraining this
+  // width was what left the arrival floating mid-row.
+  // marginTop clears the duration, which hangs above the connector line without
+  // taking layout height.
+  routeFlatTop: { flexDirection: "row", alignItems: "center", marginTop: 14 },
+  // minWidth, not width: a five-character 24-hour time fits exactly, so both
+  // cells match and the connector is centred. Should a row ever fall back to a
+  // backend-formatted string, the cell grows and the connector yields instead of
+  // the time truncating.
+  routeFlatTime: { fontSize: 20, color: "#ffffff", fontFamily: MONO_BOLD, minWidth: 60 },
+  routeFlatTimeEnd: { textAlign: "right" },
+  // The box spans everything between the times; alignItems centres the drawn
+  // line inside it, so the gap either side is equal at every width.
+  routeConn: { flex: 1, justifyContent: "center", alignItems: "center", marginHorizontal: 12 },
+  // Absolutely positioned so it labels the line without adding row height or
+  // shifting the line off the times' vertical centre.
+  routeConnDur: {
+    position: "absolute", left: 0, right: 0, bottom: 7,
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO, textAlign: "center",
+  },
+  routeConnLineRow: {
+    flexDirection: "row", alignItems: "center",
+    width: "100%", maxWidth: ROUTE_CONNECTOR_MAX,
+  },
+  routeConnLine: { flex: 1, height: 1, backgroundColor: "rgba(226,226,226,0.45)" },
+  // Two borders of a square turned 45 degrees: an arrowhead with no SVG.
+  routeConnHead: {
+    width: 5, height: 5,
+    borderTopWidth: 1, borderRightWidth: 1,
+    borderColor: "rgba(226,226,226,0.45)",
+    transform: [{ rotate: "45deg" }],
+    marginLeft: -1,
+  },
+  // Icon only, no container. hitSlop carries the tap target.
+  routeFlatMark: { marginLeft: 14 },
+  routeFlatMarkBox: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+
+  // Pill treatment, now worn by all three toolbar controls as well as the three
+  // filters below them. Trigger and panel carry the SAME border at 0.12 — above
+  // the 0.06 of the row separators, so they read as real edges rather than
+  // receding behind the list. Both also take a 0.03 fill: a stroke alone on
+  // near-black does not read as pressable, and it gives the file's 0.7
+  // activeOpacity a surface to fade.
+  // White, not green: green is reserved for things that are live or that cost
+  // something, which here is the chosen date alone.
+  //
+  // One group, one set of outer margins, whatever sits inside it. The group's
+  // bottom edge is therefore the same distance from the first result whether the
+  // filter section is open or shut.
+  routeControls: { marginTop: 24, marginBottom: 24 },
+  // Wraps rather than scrolls: a horizontal scroller inside a vertical
+  // ScrollView fights its parent for the gesture on a narrow screen. At 320pt
+  // the three pills want 374.8pt against 280 available, so Sort takes a second
+  // line with Reset beside it while Date and Filters share the first at 198.8pt.
+  // alignItems centres Reset, which is shorter than a pill, on their centre line.
+  routeToolbar: {
+    flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8,
+  },
+  // Deliberately tighter than the group's own margins: these belong to the
+  // Filters pill directly above them and have to read as attached to it.
+  routeFilterPills: {
+    flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8,
+    marginTop: 14,
+  },
+  // No marginBottom. It carried one to sit level with the old heading's; in a
+  // centre-aligned toolbar that would lift the word off the pills' centre line.
+  routeReset: { fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: MONO },
+  // Layout only. The dim that used to live here is now a sibling layer, so it
+  // can fade on its own value.
+  routeOverlayScrim: { flex: 1 },
+  // Light: the panel is small and the list behind it should stay readable. It
+  // still separates the two planes, and makes tap-to-dismiss look like it works.
+  routePanelDim: { backgroundColor: "rgba(0,0,0,0.35)" },
+
+  // Centred, unlike pm.backdrop which anchors its sheet to the bottom.
+  routeCalScrim: {
+    flex: 1,
+    justifyContent: "center", paddingHorizontal: 16,
+  },
+  routeCalDim: { backgroundColor: "rgba(0,0,0,0.72)" },
+  routeCalSheet: {
+    backgroundColor: "#050505",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 4, padding: 16,
+  },
+  routeCalNav: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  // At 320pt the sheet is 256pt wide inside its padding and this group measures
+  // about 120 of it, so the close control sits clear on the right at every
+  // screen size. Every month abbreviation is three characters, so the title
+  // never changes width.
+  routeCalNavGroup: { flexDirection: "row", alignItems: "center", gap: 4 },
+  routeCalClose: { paddingVertical: 4, paddingHorizontal: 4, marginRight: -4 },
+  routeCalTitle: { fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD },
+  routeCalArrow: { fontSize: 15, color: "#ffffff", fontFamily: MONO_BOLD, paddingHorizontal: 8 },
+  routeCalArrowOff: { fontSize: 15, color: "rgba(226,226,226,0.25)", fontFamily: MONO_BOLD, paddingHorizontal: 8 },
+  routeCalRow: { flexDirection: "row" },
+  routeCalHead: {
+    flex: 1, textAlign: "center", fontSize: 11,
+    color: "rgba(226,226,226,0.4)", fontFamily: MONO, marginBottom: 6,
+  },
+  // flex divides the row evenly whatever the screen. At 320pt — the narrowest
+  // phone worth targeting — that is 36.6pt across. Seven columns cannot do
+  // better: even edge to edge with no padding at all it would only reach 45.7pt.
+  // Height is the one axis with room, so it takes the 44pt guideline outright.
+  routeCalCell: { flex: 1, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 4 },
+  routeCalCellOn: { backgroundColor: "rgba(74,222,128,0.08)" },
+  routeCalCellToday: { borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  routeCalDay: { fontSize: 13, color: "#ffffff", fontFamily: MONO },
+  routeCalDayOn: { fontSize: 13, color: "#4ade80", fontFamily: MONO_BOLD },
+  routeCalDayOff: { fontSize: 13, color: "rgba(226,226,226,0.25)", fontFamily: MONO },
+  // No flex: each control is as wide as its own label, so they read as pills
+  // rather than form fields spanning the screen.
+  routeDropCol: { alignSelf: "flex-start" },
+  routeDrop: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    flexDirection: "row", alignItems: "center",
+  },
+  routeDropTxt: { fontSize: 11, color: "#ffffff", fontFamily: MONO, flexShrink: 1 },
+  // A chosen date is one of the three things green is allowed to mark.
+  routeDropTxtOn: { fontSize: 11, color: "#4ade80", fontFamily: MONO_BOLD, flexShrink: 1 },
+  // Two borders of a square, same trick as the connector's arrowhead: a real
+  // chevron with a controllable weight, where a glyph gave a thin triangle.
+  routeDropChev: {
+    width: 6, height: 6,
+    borderRightWidth: 1.5, borderBottomWidth: 1.5,
+    borderColor: "rgba(226,226,226,0.5)",
+    marginLeft: 8,
+  },
+  // Same border as the trigger. The open state is already unmistakable from the
+  // panel existing at all and the chevron flipping; a heavier edge is not needed
+  // to say so.
+  //
+  // The ground is opaque, not the 0.03 white it carried inline. That tint read
+  // correctly against the page directly behind it; floating over a transparent
+  // scrim it let the results list show straight through. Same black as the
+  // calendar sheet.
+  routeDropPanel: {
+    maxWidth: ROUTE_PANEL_MAX_WIDTH,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "#050505",
+    borderRadius: 4,
+    // Keeps the scrolling contents inside the rounded corners.
+    overflow: "hidden",
+  },
+  routeDropItem: {
+    paddingVertical: 8, paddingHorizontal: 10,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+  },
+  routeDropItemTxt: { fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO },
+  routeDropItemOn: { fontSize: 11, color: "#ffffff", fontFamily: MONO_BOLD },
+  routeDropMark: { fontSize: 11, color: "#ffffff", fontFamily: MONO },
+  routeHeadCodes: { fontSize: 20, color: "#ffffff", letterSpacing: -0.5, fontFamily: MONO_BOLD },
+  routeHeadTo: { fontSize: 13, color: "rgba(226,226,226,0.4)", fontFamily: SANS },
+  // A divider, not a whisper: more air above than below binds it to the rows it
+  // introduces rather than to the group that ended.
+  routeGroup: {
+    fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: MONO_BOLD,
+    letterSpacing: 1, marginTop: 28, marginBottom: 6,
+  },
+  // Its own size and family: it sits in the row's flag group, not inside a
+  // parent Text it could inherit from.
+  routeFastest: { fontSize: 11, color: "#4ade80", fontFamily: MONO },
+  routeNote: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginBottom: 10 },
+  routeCap: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginTop: 10 },
+  routeEmpty: { fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: SANS },
 });
 
 const pm = StyleSheet.create({
