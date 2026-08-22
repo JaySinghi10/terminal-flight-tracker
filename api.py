@@ -60,8 +60,8 @@ def get_flight(flight_number: str):
 
 
 @app.get("/route/{origin}/{destination}")
-def get_route(origin: str, destination: str, hours: int = 12):
-    return fetch_route(origin, destination, hours)
+def get_route(origin: str, destination: str, hours: int = 12, date: str | None = None):
+    return fetch_route(origin, destination, hours, date)
 
 
 TOOLS = [

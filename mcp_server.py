@@ -1,6 +1,7 @@
 import requests
 import os
 import re
+import time
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -513,45 +514,56 @@ _ROUTE_CACHE = {}
 ROUTE_WINDOW_MINUTES = 720
 ROUTE_MAX_RESULTS = 25
 
+# A dated board is a published schedule, not a live one: it moves when an airline
+# retimes or swaps equipment, which is days apart, not minutes. Twelve hours
+# means at most two refreshes per date per day of interest while still catching a
+# retiming the same day it lands. Longer buys little in practice — Cloud Run
+# scales to zero, so the process cache usually dies long before any TTL expires.
+ROUTE_FUTURE_CACHE_TTL = timedelta(hours=12)
+
+# The provider caps ANY FIDS range at 12 hours. Verified live: a single
+# 00:00-23:59 request returns HTTP 400, "The requested period of time be positive
+# and must not be more than 12 hours in duration". A local day therefore takes
+# two calls, so a dated search costs 4 units where an undated one costs 2.
+#
+# The halves overlap at 12:00 deliberately. The provider does not document
+# whether a bound is inclusive, and an overlap that is deduplicated is safe
+# either way, where a seam at 11:59/12:00 would silently drop a noon departure if
+# both ends turned out to be exclusive.
+ROUTE_DAY_WINDOWS = (("00:00", "12:00"), ("12:00", "23:59"))
+
+# The BASIC plan rejects a second request inside the same second with HTTP 429 —
+# observed live, the second window coming back 429 while the first succeeded. The
+# app has spaced its saved-flight refreshes past this ceiling since the original
+# 429 diagnosis; a dated board is the first place the BACKEND makes two calls in
+# a row, so it needs the same treatment. Applied between windows only: never
+# before the first, never after the last.
+ROUTE_WINDOW_SPACING_SECONDS = 1.3
+
+# The diagnostic verified 7, 30 and 60 days ahead on this plan. 60 is where the
+# evidence stops, so it is where we stop: beyond it we would be guessing.
+ROUTE_MAX_FUTURE_DAYS = 60
+
+# Local dates run from UTC-12 to UTC+14, so an airport's own calendar date can be
+# a day behind the server's UTC date. One day of slack lets a genuinely-today
+# request through for those airports without opening up real history.
+ROUTE_MAX_PAST_DAYS = 1
+
 _IATA_RE = re.compile(r"^[A-Z]{3}$")
+_ROUTE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# One-shot: confirms the departures payload shape on the first live board.
-_ROUTE_SHAPE_LOGGED = False
-
-
-# ── TEMPORARY DIAGNOSTICS ──────────────────────────────────────────────
-# _route_diag and _route_diag_quota, and every call to them, are scaffolding.
-# Strip them once the board payload shape is confirmed in production logs.
-# At most two lines per request: a quota line only when an upstream call is
-# actually made, and exactly one outcome line.
-def _route_diag(line: str) -> None:
-    """One bounded diagnostic line. Filter Cloud Run logs on the FLIGHTDIAG marker."""
-    print(f"FLIGHTDIAG {line}"[:400])
-
-
-def _route_diag_quota(resp) -> None:
-    """RapidAPI rate-limit counters only. Never key- or auth-shaped headers."""
-    try:
-        headers = {
-            name.lower(): value
-            for name, value in resp.headers.items()
-            if "key" not in name.lower() and "authorization" not in name.lower()
-        }
-    except Exception:
-        headers = {}
-
-    parts = []
-    for label, prefix in (("requests", "x-ratelimit-requests"),
-                          ("units", "x-ratelimit-api-units")):
-        limit = headers.get(prefix + "-limit")
-        remaining = headers.get(prefix + "-remaining")
-        reset = headers.get(prefix + "-reset")
-        if limit is None and remaining is None:
-            continue
-        parts.append(f"{label}={remaining}/{limit} reset={reset}")
-    _route_diag("route quota " + (" ".join(parts) if parts else "none-present"))
-# ── END TEMPORARY DIAGNOSTICS ──────────────────────────────────────────
-
+# Identical on both the relative and the absolute path, so neither can drift.
+_ROUTE_FLAGS = {
+    "direction": "Departure",
+    # Strings, not Python bools: requests would encode those as
+    # "True"/"False", which the provider does not accept.
+    "withLeg": "true",
+    "withCancelled": "false",
+    "withCodeshared": "false",
+    "withCargo": "false",
+    "withPrivate": "false",
+    "withLocation": "false",
+}
 
 def _build_route_row(item):
     """One compact board row, or None when the item cannot be used.
@@ -586,7 +598,20 @@ def _build_route_row(item):
         "departure_scheduled": format_time(dep_local, dep_tz),
         "departure_scheduled_iso": _to_wire_iso(dep_local, dep_utc_raw),
         "departure_timezone": dep_tz,
-        "arrival_scheduled": format_time(arr_local, arr_tz),
+        # None, never the string "N/A". A board row can carry a destination
+        # airport and no arrival time at all: the provider sends the arrival
+        # airport plus an empty quality array and nothing else. format_time
+        # answers "N/A" to an absent value, and that sentinel is what put the
+        # literal "N/A" on screen. arrival_scheduled_iso was already None in
+        # exactly this case, so the two now agree.
+        #
+        # The KEY is still emitted, carrying null. Nothing is dropped from the
+        # payload, so the frontend contract keeps its shape.
+        #
+        # Same conditional form _build_movement already uses for "estimated" and
+        # "runway_time". format_time is not modified: the flight-number path and
+        # the saved-flight store both depend on its "N/A".
+        "arrival_scheduled": format_time(arr_local, arr_tz) if arr_local else None,
         "arrival_scheduled_iso": _to_wire_iso(arr_local, arr_utc_raw),
         "arrival_timezone": arr_tz,
         "status": map_status(it.get("status")),
@@ -596,81 +621,115 @@ def _build_route_row(item):
     }
 
 
-def _fetch_board(code: str):
-    """Trimmed departure board for one airport, cached for ROUTE_CACHE_TTL.
+def _fetch_board_window(code: str, day, start, end):
+    """Exactly one upstream call. Returns the board rows, or None on failure.
 
-    Returns (rows, age_seconds, cache_hit, note). rows is None on any failure,
-    with note carrying the reason. Only a cleanly parsed board is ever cached,
-    and only the trimmed rows: the raw response is never retained.
+    day is None for the relative form (a rolling window from now), or a local
+    "YYYY-MM-DD" for the absolute form, in which case start and end are local
+    "HH:MM" bounds at that airport.
     """
-    global _ROUTE_SHAPE_LOGGED
-
-    cached = _ROUTE_CACHE.get(code)
-    if cached is not None:
-        cached_at, rows = cached
-        age = datetime.now(timezone.utc) - cached_at
-        if age < ROUTE_CACHE_TTL:
-            return rows, int(age.total_seconds()), True, ""
+    if day is None:
+        url = f"https://{AERODATABOX_HOST}/flights/airports/iata/{code}"
+        params = {
+            "offsetMinutes": 0,
+            "durationMinutes": ROUTE_WINDOW_MINUTES,
+            **_ROUTE_FLAGS,
+        }
+    else:
+        # Absolute form: the bounds live in the path and are LOCAL to the
+        # airport, so offsetMinutes and durationMinutes have no meaning here and
+        # are omitted entirely.
+        url = (f"https://{AERODATABOX_HOST}/flights/airports/iata/{code}"
+               f"/{day}T{start}/{day}T{end}")
+        params = dict(_ROUTE_FLAGS)
 
     try:
         response = _SESSION.get(
-            f"https://{AERODATABOX_HOST}/flights/airports/iata/{code}",
+            url,
             headers={
                 "X-RapidAPI-Key": RAPIDAPI_KEY,
                 "X-RapidAPI-Host": AERODATABOX_HOST,
             },
-            params={
-                "offsetMinutes": 0,
-                "durationMinutes": ROUTE_WINDOW_MINUTES,
-                "direction": "Departure",
-                # Strings, not Python bools: requests would encode those as
-                # "True"/"False", which the provider does not accept.
-                "withLeg": "true",
-                "withCancelled": "false",
-                "withCodeshared": "false",
-                "withCargo": "false",
-                "withPrivate": "false",
-                "withLocation": "false",
-            },
+            params=params,
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
-    except requests.RequestException as exc:
-        return None, None, False, f"request-exception={type(exc).__name__}"
-
-    _route_diag_quota(response)
+    except requests.RequestException:
+        return None
 
     if response.status_code != 200 or not response.content:
-        return None, None, False, f"upstream-not-ok status={response.status_code}"
+        return None
 
     try:
         payload = response.json()
     except ValueError:
-        return None, None, False, "bad-json"
+        return None
 
     if not isinstance(payload, dict):
-        return None, None, False, f"top-level-not-an-object type={type(payload).__name__}"
-
-    # The documented shape is {"departures": [...]}, but that is not assumed:
-    # the keys are reported once so the assumption can be confirmed from logs.
-    note = ""
-    if not _ROUTE_SHAPE_LOGGED:
-        _ROUTE_SHAPE_LOGGED = True
-        note = f"top-level-keys={sorted(payload.keys())}"
+        return None
 
     items = payload.get("departures")
     if items is None:
         # Absent or null is a legitimately empty board, not a failure.
         items = []
     if not isinstance(items, list):
-        return None, None, False, f"departures-not-a-list type={type(items).__name__}"
+        return None
 
-    rows = [r for r in (_build_route_row(it) for it in items) if r is not None]
-    _ROUTE_CACHE[code] = (datetime.now(timezone.utc), rows)
-    return rows, 0, False, note
+    return [r for r in (_build_route_row(it) for it in items) if r is not None]
+
+
+def _fetch_board(code: str, day: str | None = None):
+    """Trimmed departure board for one airport, cached.
+
+    day is None for the rolling window from now — one call, ROUTE_CACHE_TTL — or a
+    local "YYYY-MM-DD", which takes one call per entry in ROUTE_DAY_WINDOWS and
+    lives for ROUTE_FUTURE_CACHE_TTL.
+
+    Returns (rows, age_seconds, cache_hit). rows is None on any failure. Only a
+    cleanly parsed board is ever cached, and only the trimmed rows: the raw
+    response is never retained.
+    """
+    # The date is PART OF THE KEY. Keyed on the code alone, a dated search would
+    # be served the rolling board silently — right shape, wrong day, no error.
+    key = (code, day)
+    ttl = ROUTE_CACHE_TTL if day is None else ROUTE_FUTURE_CACHE_TTL
+
+    cached = _ROUTE_CACHE.get(key)
+    if cached is not None:
+        cached_at, rows = cached
+        age = datetime.now(timezone.utc) - cached_at
+        if age < ttl:
+            return rows, int(age.total_seconds()), True
+
+    if day is None:
+        rows = _fetch_board_window(code, None, None, None)
+        if rows is None:
+            return None, None, False
+    else:
+        rows, seen = [], set()
+        for index, (start, end) in enumerate(ROUTE_DAY_WINDOWS):
+            # Between windows only, so a single-window day would wait no longer
+            # than it does today.
+            if index > 0:
+                time.sleep(ROUTE_WINDOW_SPACING_SECONDS)
+            part = _fetch_board_window(code, day, start, end)
+            if part is None:
+                # Fail closed. Half a day presented as a whole one is the same
+                # class of defect as serving the wrong day: wrong, and silent.
+                return None, None, False
+            for r in part:
+                # The halves overlap at 12:00, so a noon departure arrives twice.
+                marker = (r["flight_number"], r["_dep_utc"])
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                rows.append(r)
+
+    _ROUTE_CACHE[key] = (datetime.now(timezone.utc), rows)
+    return rows, 0, False
 
 
 def _route_result(origin, destination, hours, flights=None, total_found=0,
-                  data_age_seconds=None, error=None) -> dict:
+                  data_age_seconds=None, error=None, date=None) -> dict:
     """Every response carries the same keys, so a caller never branches on
     key presence — only on whether "error" is None."""
     flights = flights or []
@@ -678,6 +737,9 @@ def _route_result(origin, destination, hours, flights=None, total_found=0,
         "origin": origin,
         "destination": destination,
         "window_hours": hours,
+        # None for the rolling window; a local calendar date when one was asked
+        # for. window_hours does not apply to a dated search, which is the day.
+        "date": date,
         "count": len(flights),
         "total_found": total_found,
         "truncated": total_found > len(flights),
@@ -687,7 +749,34 @@ def _route_result(origin, destination, hours, flights=None, total_found=0,
     }
 
 
-def fetch_route(origin, destination, hours=12) -> dict:
+def _validate_route_date(raw):
+    """(day, error). day is None for a rolling search, a "YYYY-MM-DD" string for a
+    dated one. Every rejection happens before any network call, so a malformed
+    date costs nothing upstream.
+    """
+    if raw is None or str(raw).strip() == "":
+        return None, None
+
+    day = str(raw).strip()
+    if not _ROUTE_DATE_RE.match(day):
+        return None, "Date must be in YYYY-MM-DD form."
+
+    try:
+        asked = datetime.strptime(day, "%Y-%m-%d").date()
+    except ValueError:
+        return None, f"{day} is not a real calendar date."
+
+    # Bounded against the SERVER's UTC date. An airport's own date can sit a day
+    # either side of that, which ROUTE_MAX_PAST_DAYS absorbs at the near end.
+    today = datetime.now(timezone.utc).date()
+    if asked < today - timedelta(days=ROUTE_MAX_PAST_DAYS):
+        return None, "Route search does not cover past dates."
+    if asked > today + timedelta(days=ROUTE_MAX_FUTURE_DAYS):
+        return None, f"Route search reaches {ROUTE_MAX_FUTURE_DAYS} days ahead at most."
+    return day, None
+
+
+def fetch_route(origin, destination, hours=12, date=None) -> dict:
     """Scheduled departures from origin to destination within the next `hours`.
 
     Every rejection here happens before any network call, so a malformed request
@@ -703,39 +792,49 @@ def fetch_route(origin, destination, hours=12) -> dict:
         window = 12
     window = max(1, min(12, window))
 
+    day, date_error = _validate_route_date(date)
+    if date_error is not None:
+        return _route_result(o, d, window, error=date_error)
+
     if not _IATA_RE.match(o) or not _IATA_RE.match(d):
-        _route_diag(f"route {o or '<empty>'}->{d or '<empty>'} rejected=bad-iata no-upstream-call")
         return _route_result(o, d, window,
-                             error="Origin and destination must both be 3-letter IATA codes.")
+                             error="Origin and destination must both be 3-letter IATA codes.",
+                             date=day)
     if o == d:
-        _route_diag(f"route {o}->{d} rejected=same-airport no-upstream-call")
         return _route_result(o, d, window,
-                             error="Origin and destination must be different airports.")
+                             error="Origin and destination must be different airports.",
+                             date=day)
     if not RAPIDAPI_KEY:
-        _route_diag(f"route {o}->{d} rejected=no-api-key no-upstream-call")
         return _route_result(o, d, window,
-                             error="Route lookup is not configured: RAPIDAPI_KEY is not set.")
+                             error="Route lookup is not configured: RAPIDAPI_KEY is not set.",
+                             date=day)
 
-    rows, age_seconds, cache_hit, note = _fetch_board(o)
+    # _fetch_board still reports whether it served the cache; nothing here needs
+    # it now that the diagnostic line is gone.
+    rows, age_seconds, _ = _fetch_board(o, day)
     if rows is None:
-        _route_diag(f"route {o}->{d} board-failed {note}")
         return _route_result(o, d, window,
-                             error=f"Could not load the departure board for {o}.")
+                             error=f"Could not load the departure board for {o}.",
+                             date=day)
 
-    now = datetime.now(timezone.utc)
-    horizon = now + timedelta(hours=window)
+    if day is None:
+        # Unchanged: the rolling window from now.
+        now = datetime.now(timezone.utc)
+        horizon = now + timedelta(hours=window)
+        def in_window(r):
+            return now <= r["_dep_utc"] <= horizon
+    else:
+        # The first ten characters of departure_scheduled_iso are the LOCAL
+        # calendar date at the origin, so this needs no timezone knowledge and
+        # cannot drift with the server's clock.
+        def in_window(r):
+            return (r.get("departure_scheduled_iso") or "")[:10] == day
+
     matched = sorted(
-        (r for r in rows
-         if r["destination_iata"] == d and now <= r["_dep_utc"] <= horizon),
+        (r for r in rows if r["destination_iata"] == d and in_window(r)),
         key=lambda r: r["_dep_utc"],
     )
     kept = matched[:ROUTE_MAX_RESULTS]
-
-    _route_diag(
-        f"route {o}->{d} hours={window} cache={'hit' if cache_hit else 'miss'} "
-        f"age_s={age_seconds} board={len(rows)} matched={len(matched)} "
-        f"returned={len(kept)}{(' ' + note) if note else ''}"
-    )
 
     return _route_result(
         o, d, window,
@@ -743,6 +842,7 @@ def fetch_route(origin, destination, hours=12) -> dict:
         flights=[{k: v for k, v in r.items() if k != "_dep_utc"} for r in kept],
         total_found=len(matched),
         data_age_seconds=age_seconds,
+        date=day,
     )
 
 
