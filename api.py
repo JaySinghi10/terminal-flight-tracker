@@ -11,6 +11,7 @@ from mcp_server import (
     fetch_flight_full,
     extract_flight_number,
     fetch_route,
+    quota_status,
     _validate_route_date,
 )
 
@@ -76,6 +77,16 @@ def get_route(origin: str, destination: str, hours: int = 12, date: str | None =
     return fetch_route(origin, destination, hours, date)
 
 
+# Its own endpoint, deliberately, rather than a key on the route and flight
+# envelopes. Those answer "what is this search", and a cached one involves no
+# provider call at all — a units figure sitting in that payload would read as
+# measured now when it could be hours old. Here the age travels with the number.
+# Costs nothing: it reports what earlier calls already told us.
+@app.get("/quota")
+def get_quota():
+    return quota_status()
+
+
 TOOLS = [
     {
         "name": "check_my_flight",
@@ -135,9 +146,47 @@ def run_tool(name: str, inputs: dict, gmail_token: str = None) -> tuple[str, dic
     return (f"Unknown tool: {name}", None)
 
 
+# HUNK 5. The tool set is three tools deep and the longest honest path is two
+# rounds: find the number in Gmail, then look that number up, then answer. Four
+# leaves room for one wrong turn and still terminates. Each round is a full
+# model call, so an uncapped loop is a bill and a hung request, not just a bug.
+CHAT_MAX_TOOL_ROUNDS = 4
+
+# HUNK 4. What the app is allowed to show. Fixed strings, never the provider's
+# own message: an upstream error can quote a key, an account identifier or an
+# internal endpoint, and none of that may reach a client.
+CHAT_ERROR_GENERIC = "The assistant is unavailable right now. Please try again."
+CHAT_ERROR_BUSY = "The assistant is busy right now. Please try again in a moment."
+CHAT_ERROR_CREDIT = "The assistant has run out of credit and cannot answer right now."
+CHAT_ERROR_CONFIG = "The assistant is not configured correctly."
+CHAT_ERROR_TOO_MANY_STEPS = (
+    "The assistant took too many steps to answer that. Please rephrase and try again."
+)
+
+
 class ChatRequest(BaseModel):
     message: str
     gmail_token: str | None = None
+
+
+def _chat_error(exc: Exception) -> str:
+    """One of the fixed strings above. Never the exception's own text.
+
+    Credit exhaustion arrives as a 400 invalid_request_error rather than as a
+    billing-specific class, so it is identified by substring and then answered
+    with our own wording — the provider's message is read, never forwarded.
+    """
+    if isinstance(exc, anthropic.AuthenticationError):
+        return CHAT_ERROR_CONFIG
+    if isinstance(exc, anthropic.PermissionDeniedError):
+        return CHAT_ERROR_CONFIG
+    if isinstance(exc, anthropic.RateLimitError):
+        return CHAT_ERROR_BUSY
+    if isinstance(exc, anthropic.BadRequestError):
+        if "credit balance" in str(exc).lower():
+            return CHAT_ERROR_CREDIT
+        return CHAT_ERROR_CONFIG
+    return CHAT_ERROR_GENERIC
 
 
 @app.post("/chat")
@@ -164,14 +213,20 @@ def chat(req: ChatRequest):
 
     captured_flight = None
 
-    while True:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system,
-            tools=TOOLS,
-            messages=messages,
-        )
+    for _round in range(CHAT_MAX_TOOL_ROUNDS):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=system,
+                tools=TOOLS,
+                messages=messages,
+            )
+        except Exception as exc:
+            # The app renders `error`; without this the exception escaped as a
+            # bare 500 whose body has no `error` key at all, which is why every
+            # failure looked like "Something went wrong".
+            return {"error": _chat_error(exc), "response": None, "flight": captured_flight}
 
         if response.stop_reason == "end_turn":
             text = next((b.text for b in response.content if b.type == "text"), "")
@@ -192,6 +247,17 @@ def chat(req: ChatRequest):
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_results})
         else:
-            break
+            # Any other stop reason — max_tokens, refusal, something new. If the
+            # model said anything at all, that is better than a canned line.
+            text = next((b.text for b in response.content if b.type == "text"), "")
+            if text:
+                return {"response": text, "flight": captured_flight}
+            return {"error": CHAT_ERROR_GENERIC, "response": None, "flight": captured_flight}
 
-    return {"response": "No response generated", "flight": captured_flight}
+    # The loop ran out of rounds. Anything already found still goes back, so a
+    # flight the tools did retrieve is not thrown away with the conversation.
+    return {
+        "error": CHAT_ERROR_TOO_MANY_STEPS,
+        "response": None,
+        "flight": captured_flight,
+    }

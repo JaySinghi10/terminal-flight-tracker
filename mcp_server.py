@@ -15,6 +15,17 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 AERODATABOX_HOST = "aerodatabox.p.rapidapi.com"
 REQUEST_TIMEOUT_SECONDS = 10
 
+# The provider reports the monthly budget it has left on EVERY response, so the
+# number is free: it is read off calls that were being made anyway and never by
+# asking for it. There is no endpoint that reports quota without spending units,
+# and adding one would defeat the purpose.
+AERODATABOX_UNITS_HEADER = "x-ratelimit-api-units-remaining"
+
+# Last reported value and when it was reported. Process-local, so it is empty
+# after a cold start — Cloud Run scales to zero — which quota_status reports as
+# an absence rather than as a zero.
+_QUOTA = {"remaining": None, "at": None}
+
 # One connection pool for the process. requests.get() builds and discards a
 # Session per call, so every lookup previously paid a fresh DNS resolution, TCP
 # connect and TLS handshake to RapidAPI.
@@ -190,6 +201,46 @@ def _delay_minutes(scheduled_utc, comparison_utc):
 # ──────────────────────────────────────────────
 # FORMAT TIME
 # ──────────────────────────────────────────────
+def _record_quota(response) -> None:
+    """Remember what the provider says is left. Never raises, never blocks.
+
+    Called on every response including failures: a 4xx still carries the header,
+    and a rejected call still spent nothing, so the number is still true.
+    """
+    try:
+        raw = response.headers.get(AERODATABOX_UNITS_HEADER)
+        if raw is None:
+            return
+        _QUOTA["remaining"] = int(str(raw).strip())
+        _QUOTA["at"] = datetime.now(timezone.utc)
+    except (AttributeError, TypeError, ValueError):
+        return
+
+
+def quota_status() -> dict:
+    """The provider's own count, and how old it is.
+
+    The age is what keeps this honest. A cached route or flight answer involves
+    no provider call, so attaching a units figure to it would report a number
+    from some earlier call as though it had just been measured. Here the caller
+    is told exactly when it was last true and can decide for itself.
+
+    Never triggers a call.
+    """
+    at = _QUOTA["at"]
+    if at is None:
+        return {
+            "units_remaining": None,
+            "as_of_seconds_ago": None,
+            "error": "No provider call has been made since this server started.",
+        }
+    return {
+        "units_remaining": _QUOTA["remaining"],
+        "as_of_seconds_ago": int((datetime.now(timezone.utc) - at).total_seconds()),
+        "error": None,
+    }
+
+
 def format_time(time_str, tz_name=None):
     if not time_str:
         return "N/A"
@@ -491,6 +542,7 @@ def fetch_flight_full(flight_number: str, date: str | None = None) -> tuple[str,
         )
     except requests.RequestException:
         return not_found
+    _record_quota(response)
 
     # 204 and an empty body both mean "nothing known"; .json() would raise.
     if response.status_code != 200 or not response.content:
@@ -678,6 +730,7 @@ def _fetch_board_window(code: str, day, start, end):
         )
     except requests.RequestException:
         return None
+    _record_quota(response)
 
     if response.status_code != 200 or not response.content:
         return None
