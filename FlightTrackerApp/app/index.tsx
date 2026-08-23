@@ -238,6 +238,9 @@ const ROUTE_SCROLL_PAD = 20;    // s.scroll paddingHorizontal
 const ROUTE_PILL_CHROME = 28;   // 16 padding + 2 border + 4 chevron margin + 6 chevron
 const ROUTE_PILL_GAP = 8;       // s.routePillRow gap
 const ROUTE_MONO_ADVANCE = 6.6; // JetBrains Mono, fontSize 11
+// The picker's "from"/"to" caption sits OUTSIDE the pill, so it comes off the
+// pill's budget: s.routeEndSide's 28pt width plus its 8pt marginRight.
+const ROUTE_END_SIDE_WIDTH = 36;
 
 // A cap on how wide the panel may GROW, so a long airline name wraps inside it
 // rather than running off the right of a 320pt display. "Pakistan International
@@ -684,6 +687,51 @@ function trimAirportName(name: string) {
   if (typeof name !== 'string') return '';
   const i = name.indexOf(' (');
   return (i >= 0 ? name.slice(0, i) : name).trim();
+}
+
+// "London Gatwick Airport" -> "London Gatwick".
+//
+// Past trimAirportName's parenthetical, two words carry nothing on a control
+// that is already an airport picker. Both are dropped ANYWHERE they appear, not
+// just at the end: BWI is "Baltimore/Washington International Thurgood Marshall
+// Airport" and EZE is "Ezeiza International Airport - Ministro Pistarini", so a
+// trailing-only rule would miss both.
+function routeAirportShort(name: string): string {
+  const base = trimAirportName(name);
+  const cut = base
+    .replace(/\bInternational\b/gi, ' ')
+    .replace(/\bAirports?\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s\u2013-]+|[\s\u2013-]+$/g, '');
+  return cut === '' ? base : cut;
+}
+
+// Clips to `room` characters INCLUDING the ellipsis, at a word boundary when
+// that does not throw away more than half of what was asked for.
+function routeClip(text: string, room: number): string {
+  if (text.length <= room) return text;
+  const head = text.slice(0, room - 1);
+  const space = head.lastIndexOf(' ');
+  const cut = space >= Math.ceil(room / 2) ? head.slice(0, space) : head;
+  return `${cut.replace(/[\s\u2013,-]+$/, '')}\u2026`;
+}
+
+// The airport picker's label: the airport, and nothing else.
+//
+//   1. name and code   "London Gatwick (LGW)"
+//   2. name alone      "Tenerife Norte-Ciudad de La Laguna"
+//   3. name clipped    "Sao Paulo/Guarulhos-Governor..."
+//
+// No count. A "+3 more" beside one airport name reads as three things selected
+// rather than three available, and the chevron already says the control opens.
+// Dropping it gives the name and the code six more characters, which is why
+// both now survive at 320pt for every airport a curated city can offer.
+function routeEndLabel(code: string, name: string, cap: number): string {
+  const short = routeAirportShort(name);
+  const withCode = `${short} (${code})`;
+  if (withCode.length <= cap) return withCode;
+  if (short.length <= cap) return short;
+  return routeClip(short, cap);
 }
 
 // "Chhatrapati Shivaji, Mumbai" when the provider supplies both parts and they
@@ -2278,6 +2326,14 @@ export default function Index() {
     !ROUTE_BANDS.every(b => routeDepBands[b])
     || !ROUTE_BANDS.every(b => routeArrBands[b])
     || routeAirlinesOff.length > 0;
+  // Characters available inside the picker pill, which shares its row with the
+  // "from"/"to" caption. One number for both pills, sized on the wider caption,
+  // so the two can never disagree about how much of a name fits.
+  const routeEndCharBudget = () => Math.floor(
+    (routeWinWidth - 2 * ROUTE_SCROLL_PAD - ROUTE_END_SIDE_WIDTH - ROUTE_PILL_CHROME)
+    / ROUTE_MONO_ADVANCE,
+  );
+
   // Characters available inside ONE pill of a row of n, at the width the app is
   // actually running at. Every pill in the row gets the same, because every pill
   // is the same width.
@@ -2680,27 +2736,34 @@ export default function Index() {
     const list = which === 'orig' ? routePick.from : routePick.to;
     if (list.length < 2) return null;
     const code = which === 'orig' ? routeResult.origin : routeResult.destination;
-    const airport = airportByCode(code);
+    // From the option list, so the pill and the panel can never name the same
+    // airport differently.
+    const airport = list.find(a => a.iata === code) ?? airportByCode(code);
     const open = routeOpenDrop === which;
     return (
-      <View
-        style={s.routeEndPickRow}
-        collapsable={false}
-        ref={node => { routeAnchorRefs.current[which] = node; }}
-      >
-        <TouchableOpacity
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          onPress={() => { if (open) closeRouteDrop(); else openRouteDrop(which); }}
+      <View style={s.routeEndPickRow}>
+        <Text style={s.routeEndSide}>{label}</Text>
+        {/* The ref is on the PILL, not on the row: the panel anchors to the
+            control the user tapped, so the caption beside it must not shift
+            where the panel opens. */}
+        <View
+          collapsable={false}
+          ref={node => { routeAnchorRefs.current[which] = node; }}
         >
-          <Text style={s.routeEndPick} numberOfLines={1}>
-            {`${label} `}
-            <Text style={s.routeEndPickName}>
-              {`${trimAirportName(airport?.name ?? code)} (${code})`}
+          <TouchableOpacity
+            style={s.routeDrop}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => { if (open) closeRouteDrop(); else openRouteDrop(which); }}
+          >
+            {/* The NAME leads: a code names the airport only to someone who
+                already knows it. */}
+            <Text style={s.routeDropTxt} numberOfLines={1}>
+              {routeEndLabel(code, airport?.name ?? code, routeEndCharBudget())}
             </Text>
-            {`  ·  change`}
-          </Text>
-        </TouchableOpacity>
+            <View style={[s.routeDropChev, { transform: [{ rotate: open ? '-135deg' : '45deg' }] }]} />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -3235,10 +3298,6 @@ export default function Index() {
                 <Text style={[s.routeNote, routeResult.date === null && { marginTop: 12 }]}>
                   {'Times are local to each airport'}
                 </Text>
-                {/* Reassurance for a short or empty list, not permanent small print. */}
-                {routeSorted.length <= 3 && (
-                  <Text style={s.routeNote}>{'Direct flights only, no connections'}</Text>
-                )}
 
                 {/* TWO ROWS, never three, in every label state.
 
@@ -3316,18 +3375,38 @@ export default function Index() {
                 </View>
 
                 {routeResult.count === 0 ? (
-                  <Text style={s.routeEmpty}>
-                    {`No departures found in the next ${routeResult.window_hours} `
-                      + `${routeResult.window_hours === 1 ? 'hour' : 'hours'}`}
-                  </Text>
+                  /* NOTHING CAME BACK. One line and no explanation. The two
+                     cases are different questions and must not share a
+                     sentence: an undated search saw a rolling window, a dated
+                     one saw a whole day. routeResult.date is what the backend
+                     actually filtered on, so this cannot drift from what was
+                     asked. "This route" and not "these airports": it is the
+                     pairing that is quiet, and both ends may be busy. */
+                  <View style={s.routeEmptyWrap}>
+                    <Text style={s.routeEmptyHead}>
+                      {routeResult.date === null
+                        ? `This route is quiet for the next ${routeResult.window_hours} `
+                          + `${routeResult.window_hours === 1 ? 'hour' : 'hours'}`
+                        : `This route is quiet on ${routeDateLabel(routeResult.date)}`}
+                    </Text>
+                  </View>
                 ) : (
                   <>
                     {routeSorted.length === 0 ? (
-                      <Text style={s.routeEmpty}>
-                        {`All ${routeResult.count} ${routeResult.count === 1 ? 'flight is' : 'flights are'} `
-                          + `hidden by the ${routeActiveFilters.join(' and ')} `
-                          + `${routeActiveFilters.length === 1 ? 'filter' : 'filters'} \u2014 relax one to see them`}
-                      </Text>
+                      /* FLIGHTS CAME BACK AND THE FILTERS HID THEM ALL. A
+                         different fact from the one above, and the count proves
+                         it: there are flights, they are just not shown. */
+                      <View style={s.routeEmptyWrap}>
+                        <Text style={s.routeEmptyHead}>
+                          {`All ${routeResult.count} `
+                            + `${routeResult.count === 1 ? 'flight is' : 'flights are'} hidden`}
+                        </Text>
+                        <Text style={s.routeEmptyBody}>
+                          {`by the ${routeActiveFilters.join(' and ')} `
+                            + `${routeActiveFilters.length === 1 ? 'filter' : 'filters'}. `
+                            + 'Relax one, or Reset.'}
+                        </Text>
+                      </View>
                     ) : (
                       <>
                         {/* Above the list and removed from it, so it renders
@@ -3664,9 +3743,23 @@ const s = StyleSheet.create({
     fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO,
     letterSpacing: 1, marginTop: 4,
   },
-  routeEndPickRow: { alignSelf: "flex-start", marginTop: 6 },
-  routeEndPick: { fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO },
-  routeEndPickName: { color: "rgba(226,226,226,0.75)", fontFamily: MONO_BOLD },
+  // Content-sized, so the pill is as wide as its label rather than a third of
+  // the row: these are not part of the view-control grid and must not line up
+  // with it. One per row, because two airport names side by side do not fit at
+  // 320pt.
+  routeEndPickRow: {
+    alignSelf: "flex-start", marginTop: 8,
+    flexDirection: "row", alignItems: "center",
+  },
+  // "from" and "to" sit OUTSIDE the pill so the pill carries only the airport.
+  // A FIXED width, not content width: it lines the two pills up with each
+  // other, which is what makes the pair read as one control of two rows rather
+  // than as two loose words. 28pt holds "from" at 6.6pt per character. Same
+  // 11pt mono grey as the codes line directly above them.
+  routeEndSide: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO,
+    width: 28, marginRight: 8,
+  },
   // Flat rows. Separation is the file's existing hairline, the same one sf.row
   // and ir.row use; the breathing room comes from paddingVertical, not a box.
   routeFlatRow: {
@@ -3893,7 +3986,40 @@ const s = StyleSheet.create({
   routePinHead: { color: "#4ade80" },
   routeNote: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginBottom: 10 },
   routeCap: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginTop: 10 },
-  routeEmpty: { fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: SANS },
+  // THE ROOM THE LIST WOULD HAVE HAD.
+  //
+  // 56 top and bottom is about the height of two flat rows, so the message
+  // occupies the area the results would have filled instead of tucking under
+  // the controls. That vertical space is the whole point: it is what turns a
+  // line of text into an answer, and it is why the type below can stop trying.
+  //
+  // Centred, because a single line with nothing beneath it has no column to
+  // align to — left-aligned, it read as the first item of a list that never
+  // arrived. 24 of horizontal padding so a wrapped line breaks well short of
+  // the edges rather than running the full width.
+  //
+  // Both empty cases share all of this, so they cannot drift apart.
+  routeEmptyWrap: {
+    alignItems: "center",
+    paddingVertical: 56,
+    paddingHorizontal: 24,
+  },
+  // Still 20: with no list under it this IS the result, and shrinking it would
+  // make it a caption again. What changes is the emphasis — SANS rather than
+  // SANS_SEMI, and 0.6 of the grey ramp rather than pure white. Semibold white
+  // on the left margin read as a headline announcing a failure; the space above
+  // now carries the weight, so the letters do not have to.
+  routeEmptyHead: {
+    fontSize: 20, color: "rgba(226,226,226,0.6)", fontFamily: SANS,
+    textAlign: "center", lineHeight: 28,
+  },
+  // Dimmer than the headline rather than level with it, so the two read in
+  // order. The margin lives here and not on the headline above, which means the
+  // case with no second line carries no dangling space.
+  routeEmptyBody: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS,
+    textAlign: "center", lineHeight: 18, marginTop: 10,
+  },
 });
 
 const pm = StyleSheet.create({
