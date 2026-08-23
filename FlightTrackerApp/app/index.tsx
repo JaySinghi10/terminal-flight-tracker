@@ -21,6 +21,7 @@ import {
   Modal,
   Pressable,
   Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -36,6 +37,11 @@ import {
   mergeGuestInto,
 } from '../lib/storage';
 import { airlineFromFlightNumber } from '../lib/airlines';
+import {
+  Airport,
+  airportByCode,
+  resolveAirportName,
+} from '../lib/airports';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
@@ -68,6 +74,131 @@ function routeCodes(q: string): { from: string; to: string; sameAirport: boolean
   return { from: m[1], to: m[2], sameAirport: m[1] === m[2] };
 }
 
+// What a person writes between two places, longest first so " to " is tried
+// before a bare ">". A hyphen must be spaced: "Baden-Baden" is a city, and
+// splitting inside it would lose the search.
+const ROUTE_SEPARATORS = [' to ', ' \u2192 ', '\u2192', ' > ', '>', ' - '];
+
+// "Thiruvananthapuram to New York City" is five. Anything longer is prose.
+const ROUTE_MAX_WORDS = 6;
+
+// Words that are never a place. Used for one decision only: telling "Mumbai to
+// Xyzzy" — a route naming somewhere this app cannot resolve, which has to be
+// reported — from "flight to Mumbai", which is a question and belongs to /chat.
+// Checked against the dataset: none of these is a city or an airport name.
+const NOT_A_PLACE = new Set([
+  'a', 'an', 'the', 'my', 'me', 'is', 'are', 'was', 'do', 'does', 'did',
+  'what', 'when', 'where', 'which', 'who', 'why', 'how', 'get',
+  'flight', 'flights', 'fly', 'flying', 'plane', 'time', 'times', 'status',
+  'arrive', 'arrives', 'arrival', 'depart', 'departs', 'departure', 'land',
+  'today', 'tomorrow', 'tonight', 'next', 'cheap', 'cheapest', 'book',
+]);
+
+type RouteEnd = { airport: Airport; options: Airport[] };
+
+// One end of a route.
+//
+// A three-letter string is tested as a CODE FIRST and only falls through to
+// name matching when it is not a code at all. So "GOA" is Genoa, never Goa —
+// a real code is unambiguous and wins — while "Rio", which is no airport's
+// code, is still free to match a city.
+function resolveRouteEnd(text: string): RouteEnd | null {
+  const t = text.trim();
+  if (/^[A-Za-z]{3}$/.test(t)) {
+    const a = airportByCode(t);
+    if (a !== null) return { airport: a, options: [a] };
+  }
+  const hit = resolveAirportName(t);
+  return hit === null ? null : { airport: hit.airport, options: hit.options };
+}
+
+// Every way the command line could be cut into two places, best candidate
+// first: the explicit separator if there is one, then whitespace splits with
+// the LONGEST left-hand side first — which is what makes "New York London"
+// break after "York" rather than after "New".
+function routeSplits(q: string): [string, string][] {
+  const norm = q.trim().replace(/\s+/g, ' ');
+  const lower = norm.toLowerCase();
+  const out: [string, string][] = [];
+  for (const sep of ROUTE_SEPARATORS) {
+    const i = lower.indexOf(sep);
+    if (i > 0 && i + sep.length < norm.length) {
+      out.push([norm.slice(0, i), norm.slice(i + sep.length)]);
+      break;                          // one explicit separator is enough
+    }
+  }
+  const words = norm.split(' ');
+  // A route is at most a few words each side. Past that the input is prose, and
+  // trying every cut of a sentence only costs time and invents coincidences.
+  if (words.length <= ROUTE_MAX_WORDS) {
+    for (let k = words.length - 1; k >= 1; k--) {
+      out.push([words.slice(0, k).join(' '), words.slice(k).join(' ')]);
+    }
+  }
+  return out;
+}
+
+// What handleSearch should do with the command line, decided entirely on this
+// device. Three outcomes, and the third is the one that keeps /chat working:
+//
+//   ok     a route to look up, both ends resolved to a real airport
+//   error  route-shaped but unresolvable — reported, and nothing is spent
+//   null   not a route at all, and falls through to /chat exactly as before
+type RouteParse =
+  | { kind: 'ok'; from: RouteEnd; to: RouteEnd }
+  | { kind: 'error'; message: string }
+  | null;
+
+function parseRouteQuery(q: string): RouteParse {
+  // Codes first, on the whole string, exactly as this has always worked. Three
+  // letters, an optional separator, three letters — and now both are checked
+  // against the dataset before anything is spent on them.
+  const codes = routeCodes(q);
+  if (codes !== null) {
+    const from = airportByCode(codes.from);
+    const to = airportByCode(codes.to);
+    // A three-letter code that is not in the dataset is KNOWN to be wrong here.
+    // Rejecting it on the device is what stops a typo costing a board fetch:
+    // failures are not cached, so the same typo used to spend every time.
+    if (from === null || to === null) {
+      const bad = from === null ? codes.from : codes.to;
+      return { kind: 'error', message: `${bad} is not an airport code I know` };
+    }
+    if (codes.sameAirport) {
+      return { kind: 'error', message: 'origin and destination must be different airports' };
+    }
+    return {
+      kind: 'ok',
+      from: { airport: from, options: [from] },
+      to: { airport: to, options: [to] },
+    };
+  }
+
+  // A split is only taken when BOTH ends resolve, so a question can never be
+  // mistaken for a route.
+  let orphan: string | null = null;
+  for (const [left, right] of routeSplits(q)) {
+    const from = resolveRouteEnd(left);
+    const to = resolveRouteEnd(right);
+    if (from !== null && to !== null) {
+      if (from.airport.iata === to.airport.iata) {
+        return { kind: 'error', message: 'origin and destination must be different airports' };
+      }
+      return { kind: 'ok', from, to };
+    }
+    // One end is a place and the other is short and says nothing else it could
+    // be. That is a route with a name this app does not know, and saying so is
+    // better than sending the whole line to the LLM.
+    if (orphan === null && (from === null) !== (to === null)) {
+      const unknown = (from === null ? left : right).trim();
+      const words = unknown.toLowerCase().split(' ');
+      if (words.length <= 3 && words.every(w => !NOT_A_PLACE.has(w))) orphan = unknown;
+    }
+  }
+  if (orphan !== null) return { kind: 'error', message: `no airport matches "${orphan}"` };
+  return null;
+}
+
 // These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
 const AUTO_REFRESH_MAX_FLIGHTS = 2;
@@ -85,6 +216,28 @@ const ROUTE_TODAY_HOURS = 12;
 // Matches ROUTE_MAX_FUTURE_DAYS on the backend. Checked here too so an
 // out-of-range date never reaches the network: a dated search costs 4 units.
 const ROUTE_MAX_DATE_DAYS = 60;
+
+// THE LABEL BUDGET, in the pieces it is computed from.
+//
+// The pills STRETCH: each is flex: 1, so a row of n divides the screen evenly
+// and every pill's width is known from the layout alone —
+//
+//     pill = (screen - 2 x SCROLL_PAD - (n-1) x GAP) / n
+//     text = pill - CHROME,  and one character is 6.6pt
+//
+// which makes the budget per-pill and fixed, not shared across the row. There is
+// nothing left to allocate between pills, so the round-robin that used to hand
+// out a row-wide budget is gone with the content sizing that needed it.
+//
+// CHROME is 28, not the 36 it was. Stretched thirds are narrow — 88pt at 320pt —
+// and at 36 the text budget came to 7 characters, which is under "Departure",
+// "duration" and "Filters 3", all of which render today. Trimming the pill's
+// horizontal padding from 10 to 8 and the chevron's left margin from 8 to 4
+// buys 9 characters and keeps every existing label intact.
+const ROUTE_SCROLL_PAD = 20;    // s.scroll paddingHorizontal
+const ROUTE_PILL_CHROME = 28;   // 16 padding + 2 border + 4 chevron margin + 6 chevron
+const ROUTE_PILL_GAP = 8;       // s.routePillRow gap
+const ROUTE_MONO_ADVANCE = 6.6; // JetBrains Mono, fontSize 11
 
 // A cap on how wide the panel may GROW, so a long airline name wraps inside it
 // rather than running off the right of a 320pt display. "Pakistan International
@@ -136,6 +289,16 @@ const ROUTE_SORT_DEFAULT: RouteSort = 'departure';
 const ROUTE_SORT_LABELS: Record<RouteSort, string> = {
   departure: 'departure time',
   arrival: 'arrival time',
+  duration: 'duration',
+};
+
+// What the SORT PILL shows, which is not the same thing. The panel has room to
+// spell it out; the pill has an 8-character cap, and the default shows the noun
+// rather than its value because a pill reading "departure" would look like a
+// filter. These are the panel's own words minus the redundant "time".
+const ROUTE_SORT_PILL: Record<RouteSort, string> = {
+  departure: 'Sort',
+  arrival: 'arrival',
   duration: 'duration',
 };
 
@@ -461,6 +624,17 @@ function routeDateLabel(iso: string | null): string {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
   return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+// "16 Sep" for the date pill, where routeDateLabel's "Sat 29 Aug" costs four
+// characters the row cannot spare. The weekday is the first thing to go: the
+// applied-date line above the list still spells it out in full, so nothing is
+// lost, and a day and month alone are unambiguous inside a 60-day window.
+function routeShortDate(iso: string | null): string {
+  if (!iso) return 'Today';
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
 // Display-only handle. Saved flights are keyed on email, never on this.
@@ -1044,7 +1218,12 @@ export default function Index() {
   const [routeFiltersOpen, setRouteFiltersOpen] = useState(false);
   const [routeSort, setRouteSort] = useState<RouteSort>(ROUTE_SORT_DEFAULT);
   // One slot, so opening any control closes the others by construction.
-  const [routeOpenDrop, setRouteOpenDrop] = useState<null | 'sort' | 'dep' | 'arr' | 'air'>(null);
+  const [routeOpenDrop, setRouteOpenDrop] =
+    useState<null | 'sort' | 'dep' | 'arr' | 'air' | 'orig' | 'dest'>(null);
+  // What each end of the current result COULD have meant. Length 1 is the
+  // ordinary case and renders nothing; longer means the name did not choose
+  // between airports, and the picker under the heading says which one won.
+  const [routePick, setRoutePick] = useState<{ from: Airport[]; to: Airport[] } | null>(null);
   // The flight number currently being looked up and saved from a route row, or
   // null. A single slot, not a set: it doubles as the guard that stops a user
   // firing several 2-unit lookups by tapping down the list.
@@ -1078,6 +1257,9 @@ export default function Index() {
   const [toastMsg, setToastMsg] = useState("");
   const [toastCounter, setToastCounter] = useState(0);
   const insets = useSafeAreaInsets();
+  // The hook, not Dimensions.get: this has to re-render on rotation, or the
+  // labels would keep the width they were built for.
+  const { width: routeWinWidth } = useWindowDimensions();
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: '970706733452-n7ki9no870k7ad1bpkb86eu7rec0an7d.apps.googleusercontent.com',
@@ -1606,15 +1788,21 @@ export default function Index() {
 
     // Route-shaped input is answered from the departure board and must never
     // reach /chat — keeping it off the LLM is the point of the feature.
-    const route = routeCodes(query);
-    if (route) {
-      if (route.sameAirport) {
-        setError("origin and destination must be different airports");
-        setErrorCounter(c => c + 1);
-        shake();
-        return;                 // still never reaches /chat
-      }
-      await runRouteLookup(route.from, route.to, routeDate);
+    //
+    // routeCandidate, not a fresh parse: the affordance under the command line
+    // reads the same value from the same render, so what the user was shown and
+    // what Execute does cannot disagree.
+    if (routeCandidate !== null && routeCandidate.kind === 'error') {
+      // Nothing is spent here — not a board fetch, and not an LLM call.
+      setError(routeCandidate.message);
+      setErrorCounter(c => c + 1);
+      shake();
+      return;
+    }
+    if (routeCandidate !== null) {
+      setRoutePick({ from: routeCandidate.from.options, to: routeCandidate.to.options });
+      await runRouteLookup(
+        routeCandidate.from.airport.iata, routeCandidate.to.airport.iata, routeDate);
       return;
     }
 
@@ -1745,23 +1933,24 @@ export default function Index() {
   // Derived per render from a copy; savedFlights itself is never reordered.
   const sortedSaved = sortSavedByRelevance(savedFlights);
 
-  // Names come only from flights already on this device. No lookup table, no
-  // network: an unrecognised code simply renders as the bare code.
-  const airportNameFor = (iata: string): string | null => {
-    for (const f of savedFlights) {
-      for (const ep of [f.from, f.to]) {
-        if (ep.iata === iata && ep.airport) return trimAirportName(ep.airport);
-      }
-    }
-    return null;
-  };
-
-  const routeCandidate = routeCodes(query);
-  // Same-airport input is not a route: the affordance stays hidden and Execute
-  // reports it through the existing error channel.
-  const routeAffordance = routeCandidate && !routeCandidate.sameAirport ? routeCandidate : null;
-  const routeFromName = routeAffordance ? airportNameFor(routeAffordance.from) : null;
-  const routeToName = routeAffordance ? airportNameFor(routeAffordance.to) : null;
+  // Resolved from the bundled dataset. This used to read the saved flights on
+  // the device, which meant a fresh install never saw an airport name at all —
+  // and it could not tell a real code from a typo, because a code it had not
+  // seen and a code that does not exist looked identical to it.
+  //
+  // Parsed once per distinct query and cached: the parser scans the dataset,
+  // and this runs on every keystroke.
+  const routeParseCache = useRef<{ q: string; v: RouteParse }>({ q: '\u0000', v: null });
+  if (routeParseCache.current.q !== query) {
+    routeParseCache.current = { q: query, v: parseRouteQuery(query) };
+  }
+  const routeCandidate = routeParseCache.current.v;
+  // Only a resolved pair shows. An error state says its piece through the error
+  // channel on Execute, not under the command line while the user is still
+  // typing towards something valid.
+  const routeAffordance = routeCandidate !== null && routeCandidate.kind === 'ok'
+    ? routeCandidate
+    : null;
 
   // The ROUTE payload's *_iso fields carry a TRUE UTC offset, so Date.parse
   // reads them correctly. That is NOT true of the *_iso fields on the flight DTO
@@ -1774,6 +1963,15 @@ export default function Index() {
     const t = Date.parse(iso);
     return Number.isNaN(t) ? null : t;
   };
+
+  // The heading's words. Read back from the dataset rather than carried in
+  // state, so a re-run from the date control or the picker cannot leave a stale
+  // name above a fresh list. Falls back to the bare code, which is all the
+  // heading has ever shown.
+  const routeHeadFrom = routeResult === null
+    ? '' : airportByCode(routeResult.origin)?.city ?? routeResult.origin;
+  const routeHeadTo = routeResult === null
+    ? '' : airportByCode(routeResult.destination)?.city ?? routeResult.destination;
 
   const routeDepartureTs = (r: RouteFlight): number => routeTs(r.departure_scheduled_iso) ?? NO_TIME;
   const routeArrivalTs = (r: RouteFlight): number => routeTs(r.arrival_scheduled_iso) ?? NO_TIME;
@@ -1966,7 +2164,7 @@ export default function Index() {
     return (
       <TouchableOpacity
         key={routeRowKey(r)}
-        style={[s.routeFlatRow, pinned && s.routeFlatRowPinned]}
+        style={s.routeFlatRow}
         activeOpacity={0.7}
         onPress={() => runFlightLookup(r.flight_number, false, rowDate)}
       >
@@ -2068,18 +2266,6 @@ export default function Index() {
     );
   };
 
-  // Counts, not lists: four band names would not fit a pill at 320pt. "n of m"
-  // rather than a bare n, because "Departure: 2" invites reading the 2 as a
-  // time. The denominator also says how much there was to choose from.
-  const bandLabel = (sel: Record<RouteBand, boolean>) => {
-    const n = ROUTE_BANDS.filter(b => sel[b]).length;
-    return n === ROUTE_BANDS.length ? 'all' : n === 0 ? 'none' : `${n} of ${ROUTE_BANDS.length}`;
-  };
-  const airlineOnCount = routeAirlineOptions.length - routeAirlinesOff.length;
-  const airlineLabel = routeAirlinesOff.length === 0
-    ? 'all'
-    : airlineOnCount === 0 ? 'none' : `${airlineOnCount} of ${routeAirlineOptions.length}`;
-
   // Which filters are actually narrowing the list, for the all-hidden message.
   const routeActiveFilters = [
     ROUTE_BANDS.every(b => routeDepBands[b]) ? null : 'departure time',
@@ -2092,14 +2278,126 @@ export default function Index() {
     !ROUTE_BANDS.every(b => routeDepBands[b])
     || !ROUTE_BANDS.every(b => routeArrBands[b])
     || routeAirlinesOff.length > 0;
-  const routeControlsDirty = routeFiltersDirty || routeSort !== ROUTE_SORT_DEFAULT;
+  // Characters available inside ONE pill of a row of n, at the width the app is
+  // actually running at. Every pill in the row gets the same, because every pill
+  // is the same width.
+  const routePillCharBudget = (pills: number) => Math.floor(
+    ((routeWinWidth - 2 * ROUTE_SCROLL_PAD - (pills - 1) * ROUTE_PILL_GAP) / pills
+      - ROUTE_PILL_CHROME) / ROUTE_MONO_ADVANCE,
+  );
 
+  // Which single name stands in for the rest. SHORTEST wins, but a single-word
+  // name beats a multi-word one before length is even considered: "IndiGo +2"
+  // reads as a name with a remainder, where "Air India +2" reads as a phrase cut
+  // in half — and it is longer besides. Ties break alphabetically, so the choice
+  // never depends on the order the provider happened to return them in.
+  //
+  // Bands are all eleven characters and none contains a space, so for those it
+  // reduces to the alphabetical tie-break, which for "HH:MM-HH:MM" is also
+  // chronological: the earliest band is the one that stands for the others.
+  const routePickName = (names: string[]): string =>
+    [...names].sort((a, b) =>
+      Number(a.includes(' ')) - Number(b.includes(' '))
+      || a.length - b.length
+      || a.localeCompare(b))[0];
+
+  // Every form a selection pill could take, LONGEST FIRST. The last entry is the
+  // floor — what the pill falls back to when nothing else fits — and it is the
+  // floors, not the individual labels, that guarantee a row never wraps.
+  //
+  //   1. everything on   -> the noun                    "Airline"
+  //   2. the names       -> comma separated             "Air India, IndiGo"
+  //   3. one name + rest -> routePickName picks it      "IndiGo +1"
+  //   4. count of total  ->                              "Air 2/5"
+  //   5. bare count      ->                              "Air 2"
+  //
+  // A name says more than a number, so the names come first and the count is
+  // what they degrade to, never the reverse. The noun keeps its abbreviation
+  // behind it as a floor, so even a screen narrower than 320 shortens rather
+  // than truncating.
+  const routeSelChoices = (
+    noun: string,
+    abbrev: string,
+    on: string[],
+    total: number,
+  ): string[] => {
+    if (on.length === total) return [noun, abbrev];
+    const out: string[] = [];
+    if (on.length > 0) out.push(on.join(', '));
+    if (on.length > 1) out.push(`${routePickName(on)} +${on.length - 1}`);
+    out.push(`${abbrev} ${on.length}/${total}`);
+    out.push(`${abbrev} ${on.length}`);
+    return out;
+  };
+
+  // Each pill independently takes the longest form that fits ITS width. No
+  // allocation: a stretched pill's width comes from the layout, not from what
+  // its neighbours happen to be rendering, so there is no shared pot to divide.
+  //
+  // Falling back rather than truncating is the whole point of the chain — the
+  // last rung is reached only if nothing above it fits, and the chains are built
+  // so their last rung always does.
+  const routeFitRow = (choices: string[][]): string[] => {
+    const cap = routePillCharBudget(choices.length);
+    return choices.map(c => c.find(l => l.length <= cap) ?? c[c.length - 1]);
+  };
+
+  const routeAirOn = routeAirlineOptions.filter(a => !routeAirlinesOff.includes(a));
+
+  // Row one. Each takes its long form when its own third can hold it:
+  // "Sat 29 Aug" over "29 Aug", "Filters (2)" over "Filters 2", "arrival time"
+  // over "arrival". At 320pt a third is nine characters, so these three land on
+  // their shorter forms; from about 400pt the longer ones start to fit.
+  const routeRowOne = routeFitRow(
+    routeResult !== null && routeResult.count > 0
+      ? [
+        routeDate === null ? ['Today'] : [routeDateLabel(routeDate), routeShortDate(routeDate)],
+        routeActiveFilters.length === 0
+          ? ['Filters']
+          : [`Filters (${routeActiveFilters.length})`, `Filters ${routeActiveFilters.length}`],
+        routeSort === ROUTE_SORT_DEFAULT
+          ? [ROUTE_SORT_PILL.departure]
+          : [ROUTE_SORT_LABELS[routeSort], ROUTE_SORT_PILL[routeSort]],
+      ]
+      // An empty board renders the date alone, so it is budgeted alone.
+      : [routeDate === null ? ['Today'] : [routeDateLabel(routeDate), routeShortDate(routeDate)]],
+  );
+  const routeDatePill = routeRowOne[0];
+  const routeFiltersPill = routeRowOne[1];
+  const routeSortPill = routeRowOne[2];
+
+  // Row two. A band is eleven characters and a third of a 320pt row is nine, so
+  // these two settle on "Dep 2/4" there; a single band fits from about 380pt and
+  // a name-plus-remainder from around 350pt.
+  const routeRowTwo = routeFitRow([
+    routeSelChoices('Airline', 'Air', routeAirOn, routeAirlineOptions.length),
+    routeSelChoices('Departure', 'Dep', ROUTE_BANDS.filter(b => routeDepBands[b]), ROUTE_BANDS.length),
+    routeSelChoices('Arrival', 'Arr', ROUTE_BANDS.filter(b => routeArrBands[b]), ROUTE_BANDS.length),
+  ]);
+  const routeAirPill = routeRowTwo[0];
+  const routeDepPill = routeRowTwo[1];
+  const routeArrPill = routeRowTwo[2];
+
+  const routeControlsDirty =
+    routeFiltersDirty || routeSort !== ROUTE_SORT_DEFAULT || routeDate !== null;
+
+  // Clears the view controls AND the date. The view half is free; the date half
+  // is not, because a dated list has to be re-fetched for today to match the
+  // control that now says Today.
+  //
+  // Tested on routeResult.date, not routeDate: it is the list on screen that
+  // decides whether a fetch is owed. Already-today costs nothing, and a search
+  // in flight is left alone.
   const routeResetControls = () => {
     setRouteDepBands(ALL_BANDS_ON);
     setRouteArrBands(ALL_BANDS_ON);
     setRouteAirlinesOff([]);
     setRouteSort(ROUTE_SORT_DEFAULT);
-    setRouteOpenDrop(null);
+    setRouteDate(null);
+    closeRouteDrop();
+    if (loading) return;
+    if (routeResult === null || routeResult.date === null) return;
+    runRouteLookup(routeResult.origin, routeResult.destination, null);
   };
 
   // ── Calendar ──────────────────────────────────────────────────────────
@@ -2194,7 +2492,7 @@ export default function Index() {
     ]).start(() => setRouteOpenDrop(null));
   };
 
-  const openRouteDrop = (id: 'sort' | 'dep' | 'arr' | 'air') => {
+  const openRouteDrop = (id: 'sort' | 'dep' | 'arr' | 'air' | 'orig' | 'dest') => {
     const node = routeAnchorRefs.current[id];
     if (!node) return;
     node.measureInWindow((wx, wy, width, height) => {
@@ -2304,15 +2602,44 @@ export default function Index() {
       prev.includes(a) ? prev.filter(v => v !== a) : [...prev, a]),
   }));
 
+  // The two ends of an ambiguous search. Choosing one re-runs the search for
+  // that end and leaves the other alone; the applied date is carried over, not
+  // the date control's current setting, so the picker cannot silently move the
+  // results to a different day.
+  const routeEndOptions = (which: 'orig' | 'dest'): RouteOption[] => {
+    if (routeResult === null || routePick === null) return [];
+    const list = which === 'orig' ? routePick.from : routePick.to;
+    const current = which === 'orig' ? routeResult.origin : routeResult.destination;
+    return list.map(a => ({
+      key: a.iata,
+      label: `${trimAirportName(a.name)} (${a.iata})`,
+      on: a.iata === current,
+      press: () => {
+        closeRouteDrop();
+        if (a.iata === current || loading) return;
+        const origin = which === 'orig' ? a.iata : routeResult.origin;
+        const destination = which === 'dest' ? a.iata : routeResult.destination;
+        if (origin === destination) return;
+        runRouteLookup(origin, destination, routeResult.date);
+      },
+    }));
+  };
+
   const routeOpenOptions: RouteOption[] =
     routeOpenDrop === 'sort' ? routeSortOptions
       : routeOpenDrop === 'dep' ? routeDepOptions
         : routeOpenDrop === 'arr' ? routeArrOptions
           : routeOpenDrop === 'air' ? routeAirOptions
-            : [];
+            : routeOpenDrop === 'orig' ? routeEndOptions('orig')
+              : routeOpenDrop === 'dest' ? routeEndOptions('dest')
+                : [];
 
-  // One shape for all four triggers. The panel they open is no longer here —
-  // it renders in the overlay Modal below, off the layout entirely.
+  // One shape for all four triggers. The panel they open is not here — it
+  // renders in the overlay Modal below, off the layout entirely, which is what
+  // keeps the results list from moving when one opens.
+  //
+  // The wrapper is content-sized: the row holds three pills at their natural
+  // widths, and it is the LABELS that keep them on one line, not the layout.
   //
   // collapsable={false} matters on Android: without it the wrapper View can be
   // flattened away at render time and measureInWindow returns nothing usable.
@@ -2324,7 +2651,7 @@ export default function Index() {
     return (
       <View
         key={id}
-        style={s.routeDropCol}
+        style={s.routePillCol}
         collapsable={false}
         ref={node => { routeAnchorRefs.current[id] = node; }}
       >
@@ -2335,6 +2662,44 @@ export default function Index() {
         >
           <Text style={s.routeDropTxt} numberOfLines={1}>{label}</Text>
           <View style={[s.routeDropChev, { transform: [{ rotate: open ? '-135deg' : '45deg' }] }]} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Which airport an ambiguous city actually resolved to, and the way to change
+  // it. It sits directly under the heading, because the heading is the thing it
+  // modifies, and above the applied-date line so the facts read top down:
+  // where, then which airport, then which day. An end with no alternative
+  // renders nothing at all — there is nothing to disclose and nothing to pick.
+  //
+  // The search has already run by the time this appears. It is a correction, not
+  // a question, which is why it never blocks.
+  const routeEndPicker = (which: 'orig' | 'dest', label: string) => {
+    if (routeResult === null || routePick === null) return null;
+    const list = which === 'orig' ? routePick.from : routePick.to;
+    if (list.length < 2) return null;
+    const code = which === 'orig' ? routeResult.origin : routeResult.destination;
+    const airport = airportByCode(code);
+    const open = routeOpenDrop === which;
+    return (
+      <View
+        style={s.routeEndPickRow}
+        collapsable={false}
+        ref={node => { routeAnchorRefs.current[which] = node; }}
+      >
+        <TouchableOpacity
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => { if (open) closeRouteDrop(); else openRouteDrop(which); }}
+        >
+          <Text style={s.routeEndPick} numberOfLines={1}>
+            {`${label} `}
+            <Text style={s.routeEndPickName}>
+              {`${trimAirportName(airport?.name ?? code)} (${code})`}
+            </Text>
+            {`  ·  change`}
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -2697,14 +3062,18 @@ export default function Index() {
             </Animated.View>
           </Animated.View>
 
-          {/* Names only when BOTH resolve locally. A half-known pair, or a
-              dimmed bare code, reads as confirmation the app cannot give.
-              Nothing else belongs under the command line while typing: the date
-              control moved up with the other view controls above the results. */}
-          {routeAffordance && routeFromName !== null && routeToName !== null && (
+          {/* The resolved pair, with the codes, BEFORE anything is spent. This is
+              the whole protection against a code meaning somewhere else: "GOA"
+              is Genoa, and typing it here says so in words while there is still
+              time to change it. Nothing else belongs under the command line
+              while typing — the date control moved up with the other view
+              controls above the results. */}
+          {routeAffordance && (
             <View style={{ marginTop: 4, marginBottom: 10, paddingLeft: 18 }}>
               <Text style={s.routeEcho} numberOfLines={2}>
-                {`${routeFromName} → ${routeToName}`}
+                {`${routeAffordance.from.airport.city} (${routeAffordance.from.airport.iata})`}
+                {' → '}
+                {`${routeAffordance.to.airport.city} (${routeAffordance.to.airport.iata})`}
               </Text>
             </View>
           )}
@@ -2827,12 +3196,15 @@ export default function Index() {
             <Animated.View style={[s.resultWrap, { opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }]}>
               <View>
                 <View style={sf.headingRow}>
-                  {/* Interim: reads as language rather than two blocks either
-                      side of a symbol. Rebuilt once city names resolve. */}
-                  <Text style={s.routeHeadCodes} numberOfLines={1}>
-                    {routeResult.origin}
+                  {/* Cities, reading as language rather than two blocks either
+                      side of a symbol. Two lines allowed: "Thiruvananthapuram
+                      to New Delhi" does not fit on one at any phone width, and
+                      shrinking the heading to force it would cost more than the
+                      wrap does. */}
+                  <Text style={s.routeHeadCodes} numberOfLines={2}>
+                    {routeHeadFrom}
                     <Text style={s.routeHeadTo}>{'  to  '}</Text>
-                    {routeResult.destination}
+                    {routeHeadTo}
                   </Text>
                   <TouchableOpacity
                     onPress={clearResultView}
@@ -2842,6 +3214,15 @@ export default function Index() {
                     <Text style={sf.remove}>{'×'}</Text>
                   </TouchableOpacity>
                 </View>
+                {/* The codes, kept as supporting detail rather than dropped.
+                    They are what was actually asked of the provider, and they
+                    are what a reader checks when a city has more than one
+                    airport. */}
+                <Text style={s.routeHeadSub} numberOfLines={1}>
+                  {`${routeResult.origin} → ${routeResult.destination}`}
+                </Text>
+                {routeEndPicker('orig', 'from')}
+                {routeEndPicker('dest', 'to')}
                 {/* What the rows below ARE, never what the control is set to.
                     routeResult.date is the date the backend actually filtered
                     on, so this line cannot drift from the list under it. A bare
@@ -2859,19 +3240,20 @@ export default function Index() {
                   <Text style={s.routeNote}>{'Direct flights only, no connections'}</Text>
                 )}
 
-                {/* ONE TOOLBAR, not three stacked rows at three widths. Date,
-                    Filters and Sort now carry the same pill, so they read as one
-                    group of view controls; the row wraps only where it has to.
-                    Reset joins the end of the run — it belongs to the group, but
-                    unbordered it does not compete with the three it resets.
+                {/* TWO ROWS, never three, in every label state.
 
-                    Neither the date nor the Filters pill is a routeDropdown: the
-                    date opens the calendar and Filters expands the section
-                    below, while only the other four open an anchored panel. They
-                    share the styling, not the machinery. */}
+                    Row one always shows. Row two only exists while Filters is
+                    expanded, and collapsing removes it outright rather than
+                    hiding it, so the block is genuinely one row when shut.
+
+                    The pills are content-sized, so the invariant is bought
+                    entirely by the labels: routeFitRow shares the row's real
+                    character budget between the three, longest form first, and
+                    only shortens a label when the row genuinely cannot take
+                    it. */}
                 <View style={s.routeControls}>
-                  <View style={s.routeToolbar}>
-                    <View style={s.routeDropCol}>
+                  <View style={s.routePillRow}>
+                    <View style={s.routePillCol}>
                       <TouchableOpacity
                         style={s.routeDrop}
                         activeOpacity={0.7}
@@ -2881,63 +3263,55 @@ export default function Index() {
                           style={routeDate === null ? s.routeDropTxt : s.routeDropTxtOn}
                           numberOfLines={1}
                         >
-                          {`Date: ${routeDateLabel(routeDate)}`}
+                          {routeDatePill}
                         </Text>
                         <View style={[s.routeDropChev, { transform: [{ rotate: '45deg' }] }]} />
                       </TouchableOpacity>
                     </View>
 
-                    {/* An empty board has nothing to filter or sort, but the date
+                    {/* An empty board has nothing to sort or filter, but the date
                         still means something: it is the only control here that
                         changes what comes back. */}
                     {routeResult.count > 0 && (
                       <>
-                        <View style={s.routeDropCol}>
+                        {/* Not a routeDropdown: it opens the row below rather
+                            than an anchored panel, so it wears the same pill by
+                            hand instead of borrowing machinery it does not use. */}
+                        <View style={s.routePillCol}>
                           <TouchableOpacity
                             style={s.routeDrop}
                             activeOpacity={0.7}
                             onPress={() => { setRouteFiltersOpen(o => !o); setRouteOpenDrop(null); }}
                           >
                             <Text style={s.routeDropTxt} numberOfLines={1}>
-                              {routeActiveFilters.length === 0
-                                ? 'Filters'
-                                : `Filters (${routeActiveFilters.length})`}
+                              {routeFiltersPill}
                             </Text>
                             <View style={[s.routeDropChev, { transform: [{ rotate: routeFiltersOpen ? '-135deg' : '45deg' }] }]} />
                           </TouchableOpacity>
                         </View>
 
-                        {routeDropdown('sort', `Sort: ${ROUTE_SORT_LABELS[routeSort]}`)}
+                        {routeDropdown('sort', routeSortPill)}
                       </>
-                    )}
-
-                    {/* OUTSIDE the count gate. Bands and sort survive a search,
-                        so a board that came back empty used to hide every control
-                        while its filters were still on — leaving them to apply
-                        invisibly to the next search with no way to clear them.
-                        Reset now tracks the state it resets, not the size of the
-                        board.
-
-                        It still leaves the date alone: that decides what gets
-                        FETCHED, and a view reset must never silently re-spend. */}
-                    {routeControlsDirty && (
-                      <TouchableOpacity
-                        style={s.routeResetBtn}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        onPress={routeResetControls}
-                      >
-                        <Text style={s.routeReset}>{'Reset'}</Text>
-                      </TouchableOpacity>
                     )}
                   </View>
 
                   {routeResult.count > 0 && routeFiltersOpen && (
-                    <View style={s.routeFilterPills}>
-                      {routeDropdown('air', `Airline: ${airlineLabel}`)}
-                      {routeDropdown('dep', `Departure: ${bandLabel(routeDepBands)}`)}
-                      {routeDropdown('arr', `Arrival: ${bandLabel(routeArrBands)}`)}
+                    <View style={s.routePillRow}>
+                      {routeDropdown('air', routeAirPill)}
+                      {routeDropdown('dep', routeDepPill)}
+                      {routeDropdown('arr', routeArrPill)}
                     </View>
+                  )}
+
+                  {routeControlsDirty && (
+                    <TouchableOpacity
+                      style={s.routeResetBtn}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={routeResetControls}
+                    >
+                      <Text style={s.routeReset}>{'Reset'}</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
 
@@ -3283,6 +3657,16 @@ const s = StyleSheet.create({
 
   // Route search. Row metrics deliberately match sf.row and ir.row exactly.
   routeEcho: { fontSize: 13, color: "rgba(226,226,226,0.55)", fontFamily: SANS },
+  // The codes under the heading, and the airport picker under those. Both are
+  // supporting detail at the smallest size in the scale, separated from the
+  // heading by weight and opacity rather than by a rule.
+  routeHeadSub: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO,
+    letterSpacing: 1, marginTop: 4,
+  },
+  routeEndPickRow: { alignSelf: "flex-start", marginTop: 6 },
+  routeEndPick: { fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: MONO },
+  routeEndPickName: { color: "rgba(226,226,226,0.75)", fontFamily: MONO_BOLD },
   // Flat rows. Separation is the file's existing hairline, the same one sf.row
   // and ir.row use; the breathing room comes from paddingVertical, not a box.
   routeFlatRow: {
@@ -3369,33 +3753,27 @@ const s = StyleSheet.create({
   // bottom edge is therefore the same distance from the first result whether the
   // filter section is open or shut.
   routeControls: { marginTop: 24, marginBottom: 24 },
-  // Wraps rather than scrolls: a horizontal scroller inside a vertical
-  // ScrollView fights its parent for the gesture on a narrow screen. At 320pt
-  // the three pills want 374.8pt against 280 available, so Sort takes a second
-  // line with Reset beside it while Date and Filters share the first at 198.8pt.
-  // alignItems centres Reset, which is shorter than a pill, on their centre line.
-  routeToolbar: {
-    flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8,
+  // No flexWrap. Wrapping is what this layout is built to make impossible, and
+  // leaving it on would hide a label that outgrew its cap instead of showing it.
+  routePillRow: {
+    flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8,
   },
-  // Deliberately tighter than the group's own margins: these belong to the
-  // Filters pill directly above them and have to read as attached to it.
-  routeFilterPills: {
-    flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8,
-    marginTop: 14,
-  },
-  // A control, not a run of text. Same height and corner as the pills beside it
-  // — paddingVertical 5 over a 1pt border — but a 0.07 edge against their 0.12
-  // and no fill and no chevron, so it reads as subordinate to the three it
-  // resets rather than as a fourth filter.
+  // Stretched, not content-sized: three equal thirds, so a row is always full to
+  // its right edge whatever the labels inside it say. This is also what makes
+  // each pill's width knowable without measuring it.
+  routePillCol: { flex: 1 },
+  // Last, below both rows and outside every panel, because it acts on all five
+  // controls at once. Content-sized and left-aligned so it reads as subordinate
+  // to the rows rather than as another pill in them.
   routeResetBtn: {
+    alignSelf: "flex-start",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
     borderRadius: 4,
     paddingVertical: 5,
     paddingHorizontal: 10,
+    marginTop: 6,
   },
-  // No marginBottom. It carried one to sit level with the old heading's; in a
-  // centre-aligned toolbar that would lift the word off the pills' centre line.
   routeReset: { fontSize: 11, color: "rgba(226,226,226,0.5)", fontFamily: MONO },
 
   // The date the rows ARE for. MONO_BOLD at 13 rather than the 11pt 0.3 SANS the
@@ -3450,28 +3828,30 @@ const s = StyleSheet.create({
   routeCalDay: { fontSize: 13, color: "#ffffff", fontFamily: MONO },
   routeCalDayOn: { fontSize: 13, color: "#4ade80", fontFamily: MONO_BOLD },
   routeCalDayOff: { fontSize: 13, color: "rgba(226,226,226,0.25)", fontFamily: MONO },
-  // No flex: each control is as wide as its own label, so they read as pills
-  // rather than form fields spanning the screen.
-  routeDropCol: { alignSelf: "flex-start" },
+  // space-between puts the chevron on the pill's right edge now that the pill is
+  // wider than its label. paddingHorizontal is 8 rather than 10: see
+  // ROUTE_PILL_CHROME — those four points are two characters of label at 320pt.
   routeDrop: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
     backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: 4,
     paddingVertical: 5,
-    paddingHorizontal: 10,
-    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 8,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
   routeDropTxt: { fontSize: 11, color: "#ffffff", fontFamily: MONO, flexShrink: 1 },
   // A chosen date is one of the three things green is allowed to mark.
   routeDropTxtOn: { fontSize: 11, color: "#4ade80", fontFamily: MONO_BOLD, flexShrink: 1 },
   // Two borders of a square, same trick as the connector's arrowhead: a real
   // chevron with a controllable weight, where a glyph gave a thin triangle.
+  // marginLeft 4, not 8: with space-between the gap is whatever the pill has
+  // spare, and this is only the minimum. Used by the pill triggers alone.
   routeDropChev: {
     width: 6, height: 6,
     borderRightWidth: 1.5, borderBottomWidth: 1.5,
     borderColor: "rgba(226,226,226,0.5)",
-    marginLeft: 8,
+    marginLeft: 4,
   },
   // Same border as the trigger. The open state is already unmistakable from the
   // panel existing at all and the chevron flipping; a heavier edge is not needed
@@ -3508,13 +3888,8 @@ const s = StyleSheet.create({
   // Its own size and family: it sits in the row's flag group, not inside a
   // parent Text it could inherit from.
   routeFastest: { fontSize: 11, color: "#4ade80", fontFamily: MONO },
-  // The one row on screen allowed to draw the eye. A tint and a hairline, both
-  // opacity variations of the existing accent — no geometry changes at all, so
-  // the pinned row's columns still line up with every row below it.
-  routeFlatRowPinned: {
-    backgroundColor: "rgba(74,222,128,0.06)",
-    borderBottomColor: "rgba(74,222,128,0.25)",
-  },
+  // The pinned row renders exactly as a list row does. Its whole marking is the
+  // green heading above it — nothing on the row, no geometry anywhere.
   routePinHead: { color: "#4ade80" },
   routeNote: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginBottom: 10 },
   routeCap: { fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginTop: 10 },
