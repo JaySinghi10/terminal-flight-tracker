@@ -398,8 +398,14 @@ type FlightData = {
   to: string;
   toFull: string;
   toCity: string;
+  // The backend's formatted string, kept ONLY as the fallback clock24 needs
+  // when there is no ISO to read. Never rendered on its own.
   dep: string;
   arr: string;
+  // What is actually rendered, once clock24 has read the digits out of it.
+  // Null on a pre-v3 saved record, which is the one case that falls back.
+  depIso: string | null;
+  arrIso: string | null;
   depTimeLabel: string;
   depTimeValue: string;
   arrTimeLabel: string;
@@ -570,8 +576,17 @@ function flightDataFromApi(data: any): FlightData {
   const dep = data?.departure ?? {};
   const arr = data?.arrival ?? {};
   const status = displayStatus((data?.status || "unknown").toLowerCase(), dep.delay);
-  const depCell = movementTimeCell(dep.actual, dep.estimated, dep.actual_source, dep.estimated_source, true);
-  const arrCell = movementTimeCell(arr.actual, arr.estimated, arr.actual_source, arr.estimated_source, false);
+  // Formatted BEFORE the cell is chosen, because the cell appends "(predicted)"
+  // or "(wheels up)" to the value and there would be no way to reach the time
+  // again afterwards. clock24 leaves "N/A" alone, so hasTime still recognises it.
+  const depCell = movementTimeCell(
+    clock24(dep.actual_iso ?? null, dep.actual),
+    clock24(dep.estimated_iso ?? null, dep.estimated),
+    dep.actual_source, dep.estimated_source, true);
+  const arrCell = movementTimeCell(
+    clock24(arr.actual_iso ?? null, arr.actual),
+    clock24(arr.estimated_iso ?? null, arr.estimated),
+    arr.actual_source, arr.estimated_source, false);
   const delay = delayCell(dep.delay);
   return {
     flight: data?.flight_number || "—",
@@ -589,6 +604,8 @@ function flightDataFromApi(data: any): FlightData {
     toCity: arr.city || arr.airport || "—",
     dep: dep.scheduled || "N/A",
     arr: arr.scheduled || "N/A",
+    depIso: dep.scheduled_iso ?? null,
+    arrIso: arr.scheduled_iso ?? null,
     depTimeLabel: depCell.label,
     depTimeValue: depCell.value,
     arrTimeLabel: arrCell.label,
@@ -721,20 +738,37 @@ function stripZoneLabel(t: string): string {
   return m ? m[1] : t;
 }
 
-// "2026-08-21T15:45+05:30" -> "15:45". These are the airport's wall-clock digits
-// and are already zero-padded upstream, so every result is exactly five
-// characters — which is what lets both time cells share one fixed width.
+// "2026-08-21T15:45+05:30" -> "15:45". Every time in the app comes through
+// here: route rows, the flight card, and the saved list. There is no second way
+// to format a time in this file, and no time is displayed as the backend
+// formatted it while an ISO value for it exists.
 //
-// Read as text, never through Date: new Date(iso).getHours() would re-express
-// the instant in the DEVICE's zone and silently shift every time on the board.
-// ROUTE ROWS ONLY. The flight card and saved rows render strings the backend
-// formatted, and are converted separately.
+// READ AS TEXT, never through Date. That is what makes one helper correct for
+// both kinds of ISO this app handles, which are not the same:
+//
+//   ROUTE rows      local digits + a TRUE offset      "...T15:45+05:30"
+//   FLIGHT DTO      local digits + a bogus "+00:00"   "...T15:45+00:00"
+//
+// The offsets differ and cannot be compared, but the DIGITS BEFORE THEM are the
+// airport's own wall clock in both — which is precisely the value being
+// rendered. new Date(iso).getHours() would re-express the instant in the
+// DEVICE's zone and silently shift every time on screen, and it would shift the
+// two kinds differently. zonedIsoToTs exists for the other question, "what
+// instant is this", and must not be used for display.
+//
+// Already zero-padded upstream, so every result is exactly five characters —
+// which is what lets both route time cells share one fixed width.
 const ISO_CLOCK_RE = /T(\d{2}:\d{2})/;
 
-function routeClock(iso: string | null, fallback: string): string {
+function clock24(iso: string | null, fallback: string): string {
   if (!iso) return fallback;
   const m = ISO_CLOCK_RE.exec(iso);
-  return m ? m[1] : fallback;   // unparseable: show what the backend sent, untouched
+  // Unparseable, or a record saved before the schema carried ISO at all: show
+  // what was stored, untouched. A pre-v3 saved flight has no ISO to convert
+  // from and would otherwise render nothing; a stale 12-hour value is worse
+  // than the rest of the card but far better than a blank, and it corrects
+  // itself the first time that flight is refreshed.
+  return m ? m[1] : fallback;
 }
 
 // Shown when a row has no arrival time of any kind. An em dash says "not known"
@@ -884,9 +918,13 @@ function delaySegment(ep: SavedFlightEndpoint, status: string): LineSeg | null {
 
 function absoluteTime(f: SavedFlight): string {
   const s = f.status.toLowerCase();
-  if (s === 'landed') return f.to.actual && f.to.actual !== 'N/A' ? f.to.actual : f.to.scheduled;
-  if (s === 'active') return f.to.scheduled;
-  return f.from.scheduled;
+  if (s === 'landed') {
+    return f.to.actual && f.to.actual !== 'N/A'
+      ? clock24(f.to.actualIso, f.to.actual)
+      : clock24(f.to.scheduledIso, f.to.scheduled);
+  }
+  if (s === 'active') return clock24(f.to.scheduledIso, f.to.scheduled);
+  return clock24(f.from.scheduledIso, f.from.scheduled);
 }
 
 // Line-2 / card status line. Always leads with the coloured status word so the
@@ -1695,8 +1733,14 @@ export default function Index() {
     setRouteResult(null);
     setFlightRecord(saved);
     const savedStatus = displayStatus(saved.status.toLowerCase(), saved.from.delay);
-    const depCell = movementTimeCell(saved.from.actual, saved.from.estimated, saved.from.actualSource, saved.from.estimatedSource, true);
-    const arrCell = movementTimeCell(saved.to.actual, saved.to.estimated, saved.to.actualSource, saved.to.estimatedSource, false);
+    const depCell = movementTimeCell(
+      clock24(saved.from.actualIso, saved.from.actual),
+      clock24(saved.from.estimatedIso, saved.from.estimated),
+      saved.from.actualSource, saved.from.estimatedSource, true);
+    const arrCell = movementTimeCell(
+      clock24(saved.to.actualIso, saved.to.actual),
+      clock24(saved.to.estimatedIso, saved.to.estimated),
+      saved.to.actualSource, saved.to.estimatedSource, false);
     const savedDelay = delayCell(saved.from.delay);
     setFlight({
       flight: saved.flightNumber,
@@ -1713,6 +1757,8 @@ export default function Index() {
       toCity: saved.to.city || saved.to.airport,
       dep: saved.from.scheduled || "N/A",
       arr: saved.to.scheduled || "N/A",
+      depIso: saved.from.scheduledIso,
+      arrIso: saved.to.scheduledIso,
       depTimeLabel: depCell.label,
       depTimeValue: depCell.value,
       arrTimeLabel: arrCell.label,
@@ -2063,9 +2109,12 @@ export default function Index() {
   // The ROUTE payload's *_iso fields carry a TRUE UTC offset, so Date.parse
   // reads them correctly. That is NOT true of the *_iso fields on the flight DTO
   // path: those carry a bogus +00:00 over local wall-clock digits and must go
-  // through zonedIsoToTs. The two paths deliberately do not share a time helper,
-  // because one correct-looking swap would silently shift every value.
-  // Everything below parses through this one function.
+  // through zonedIsoToTs. The two paths deliberately do not share a helper for
+  // turning an ISO into an INSTANT, because one correct-looking swap would
+  // silently shift every value. clock24 is not an exception to that: it reads
+  // the digits as text and never computes an instant at all, which is exactly
+  // why one of it can serve both paths. Everything below parses through this
+  // one function.
   const routeTs = (iso: string | null): number | null => {
     if (!iso) return null;
     const t = Date.parse(iso);
@@ -2338,7 +2387,7 @@ export default function Index() {
               rather than by tuning. */}
           <View style={s.routeFlatTop}>
             <Text style={s.routeFlatTime} numberOfLines={1}>
-              {routeClock(r.departure_scheduled_iso, r.departure_scheduled)}
+              {clock24(r.departure_scheduled_iso, r.departure_scheduled)}
             </Text>
             <View style={s.routeConn}>
               {ms !== null && (
@@ -2354,7 +2403,7 @@ export default function Index() {
                 the same 60pt cell a time does, so the arrival still ends on the
                 row's right edge and the connector's share is unchanged. */}
             <Text style={[s.routeFlatTime, s.routeFlatTimeEnd]} numberOfLines={1}>
-              {routeClock(
+              {clock24(
                 r.arrival_scheduled_iso,
                 r.arrival_scheduled === null ? ROUTE_NO_TIME : stripZoneLabel(r.arrival_scheduled),
               )}
@@ -3684,7 +3733,7 @@ export default function Index() {
                 <View style={s.routeLeft}>
                   <Text style={s.routeIATA}>{flight.from}</Text>
                   <Text style={s.routeCity} numberOfLines={2}>{trimAirportName(flight.fromCity)}</Text>
-                  <Text style={s.routeTime}>{flight.dep}</Text>
+                  <Text style={s.routeTime}>{clock24(flight.depIso, flight.dep)}</Text>
                 </View>
                 <View style={s.routeMid}>
                   {flight.duration !== null && <Text style={s.routeDuration}>{flight.duration}</Text>}
@@ -3694,7 +3743,7 @@ export default function Index() {
                 <View style={s.routeRight}>
                   <Text style={s.routeIATA}>{flight.to}</Text>
                   <Text style={s.routeCity} numberOfLines={2}>{trimAirportName(flight.toCity)}</Text>
-                  <Text style={s.routeTime}>{flight.arr}</Text>
+                  <Text style={s.routeTime}>{clock24(flight.arrIso, flight.arr)}</Text>
                 </View>
               </View>
 
@@ -3710,9 +3759,9 @@ export default function Index() {
               <View style={{ marginTop: 8 }}>
                 <Text style={s.detailsTitle}>Flight Details</Text>
                 <InfoRow label="Date" value={flight.date} />
-                <InfoRow label="Scheduled Departure" value={flight.dep} />
+                <InfoRow label="Scheduled Departure" value={clock24(flight.depIso, flight.dep)} />
                 <InfoRow label={flight.depTimeLabel} value={flight.depTimeValue} />
-                <InfoRow label="Scheduled Arrival" value={flight.arr} />
+                <InfoRow label="Scheduled Arrival" value={clock24(flight.arrIso, flight.arr)} />
                 <InfoRow label={flight.arrTimeLabel} value={flight.arrTimeValue} />
                 <InfoRow label="Terminal" value={flight.terminal} />
                 <InfoRow label="Gate" value={flight.gate} />
