@@ -391,6 +391,69 @@ const SHEET_RULE = 'rgba(255,255,255,0.07)';
 // It is a sibling rather than a border on sheetShell so that adding it costs no
 // layout: a border there would inset the content box by 1pt on every side.
 const SHEET_EDGE = 'rgba(255,255,255,0.08)';
+
+// THE SCRIM behind every glass surface. One value, three users: the archive
+// sheet, the calendar sheet and the anchored dropdown panels, plus the profile
+// sheet's backdrop. It was three different values before — 0.40, 0.35 and 0.72
+// — which is exactly the drift this constant exists to stop.
+const SHEET_SCRIM = 'rgba(0,0,0,0.40)';
+
+// THE PROFILE SHEET'S OWN DENSITY, and it is deliberately NOT a second version
+// of the material.
+//
+// GlassLayers is untouched and every surface still renders exactly it: one
+// blur, one SHEET_FILL tint, spelled once. This is an EXTRA layer drawn on top
+// of that pair inside the profile sheet only — composition rather than a fork,
+// so there is still nothing to drift out of step. Adding a local layer cannot
+// change what the shared one does.
+//
+// The profile sheet is the one surface that is nearly all text at reading
+// weight, over the whole width of the screen, and it is the only one you sign
+// in through. It wants to be a room rather than a window.
+//
+// 0.45 black over the shared 0.22 is an effective fill of
+// 1 - (1 - 0.22)(1 - 0.45) = 0.57, which takes transmission from 35.6% to 19.6%
+// and the ground from rgb(1.78) to rgb(0.98). Still glass, and still the same
+// blur behind it — about half as much of the page gets through.
+const PROFILE_FILL = 'rgba(0,0,0,0.45)';
+
+// THE MATERIAL, as one component, so it cannot be spelled differently in two
+// places. Every glass surface renders this pair behind its content and nothing
+// else: the blur samples what is behind the surface, then the tint darkens the
+// result.
+//
+// Both layers are position: absolute, which matters more here than it does in
+// the sheets. The dropdown panel is measured by onLayout to decide whether it
+// flips above its trigger, and Yoga skips absolutely-positioned children when
+// it collects a container's flex lines — FlexLine.cpp continues past any child
+// whose positionType is Absolute — so neither layer can contribute to the size
+// the panel reports.
+//
+// dimezisBlurView is not optional on Android. expo-blur's own default is
+// 'none', which paints a flat colour and no blur at all.
+//
+// EVERY glass surface goes through here: both centred sheets, the anchored
+// dropdown panels and the profile sheet. The two sheets used to spell the pair
+// out inline, which is the drift this exists to stop — there is no second copy
+// of the material left to fall out of step.
+//
+// A fragment, so it contributes no host view of its own and the layers stay
+// direct children of whatever renders them. The output is the same two views
+// in the same order that each caller had before.
+function GlassLayers() {
+  return (
+    <>
+      <BlurView
+        intensity={SHEET_BLUR}
+        tint="systemChromeMaterialDark"
+        experimentalBlurMethod="dimezisBlurView"
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      <View style={[StyleSheet.absoluteFill, s.sheetTint]} pointerEvents="none" />
+    </>
+  );
+}
 // Rows fade up as the sheet arrives, each a little after the one above it.
 // Expressed as FRACTIONS of the sheet's own 0->1 travel rather than as
 // milliseconds, so the cascade is driven by the existing archiveAnim and cannot
@@ -1391,6 +1454,9 @@ function ProfileModal({
       <View style={pm.backdrop}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={pm.sheet}>
+            <GlassLayers />
+            {/* On top of the shared pair, not instead of it. See PROFILE_FILL. */}
+            <View style={[StyleSheet.absoluteFill, pm.tint]} pointerEvents="none" />
             <TouchableOpacity style={pm.closeBtn} onPress={askName ? onSkipName : onClose}>
               <Text style={pm.closeTxt}>X</Text>
             </TouchableOpacity>
@@ -3434,6 +3500,12 @@ export default function Index() {
                 },
               ]}
             >
+              {/* Behind the options and clipped by the overflow above. It cannot
+                  disturb the onLayout measurement this panel's placement depends
+                  on: both its layers are absolutely positioned, and Yoga leaves
+                  absolute children out of the flex line it sizes the container
+                  from. */}
+              <GlassLayers />
               {/* Scrolls only when the cap above actually bites, and stops the
                   tap reaching the scrim behind and closing the panel. */}
               <ScrollView
@@ -3487,17 +3559,10 @@ export default function Index() {
                 exactly where the panel does; the third carries its own matching
                 radius and lands on that same edge.
 
-                dimezisBlurView is not optional on Android. expo-blur's own
-                default is 'none', which paints a flat colour and no blur at
-                all — verified in the installed package, not assumed. */}
-            <BlurView
-              intensity={SHEET_BLUR}
-              tint="systemChromeMaterialDark"
-              experimentalBlurMethod="dimezisBlurView"
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <View style={[StyleSheet.absoluteFill, s.sheetTint]} pointerEvents="none" />
+                The first two now come from GlassLayers, which every other glass
+                surface renders too. They were written out here once; that was
+                one copy of the material too many. */}
+            <GlassLayers />
             <View style={s.sheetEdge} pointerEvents="none" />
             {/* Swallows the tap so the scrim's dismiss does not fire through. */}
             <Pressable style={[s.sheetBody, s.sheetBodyFill]}>
@@ -3586,14 +3651,7 @@ export default function Index() {
           >
             {/* The same three layers, in the same order, as the archive sheet.
                 Two centred sheets, one treatment. */}
-            <BlurView
-              intensity={SHEET_BLUR}
-              tint="systemChromeMaterialDark"
-              experimentalBlurMethod="dimezisBlurView"
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <View style={[StyleSheet.absoluteFill, s.sheetTint]} pointerEvents="none" />
+            <GlassLayers />
             <View style={s.sheetEdge} pointerEvents="none" />
             <Pressable style={s.sheetBody}>
               <View style={s.routeCalNav}>
@@ -4524,9 +4582,10 @@ const s = StyleSheet.create({
   // Layout only. The dim that used to live here is now a sibling layer, so it
   // can fade on its own value.
   routeOverlayScrim: { flex: 1 },
-  // Light: the panel is small and the list behind it should stay readable. It
-  // still separates the two planes, and makes tap-to-dismiss look like it works.
-  routePanelDim: { backgroundColor: "rgba(0,0,0,0.35)" },
+  // The sheets' scrim exactly, up from its own 0.35. The panel is glass now and
+  // glass needs the same ground under it as the sheets have, or the two read as
+  // different materials lit differently.
+  routePanelDim: { backgroundColor: SHEET_SCRIM },
 
   // Centred, unlike pm.backdrop which anchors its sheet to the bottom.
   routeCalScrim: {
@@ -4564,9 +4623,10 @@ const s = StyleSheet.create({
   //
   // Shared with the calendar sheet, deliberately: both are centred sheets that
   // take over the screen, and a scrim that means one thing on one and another
-  // on the other would be a bug in waiting. The dropdown panels keep their own
-  // routePanelDim at 0.35, which is light on purpose.
-  routeCalDim: { backgroundColor: "rgba(0,0,0,0.40)" },
+  // on the other would be a bug in waiting. The dropdown panels now take this
+  // same value through SHEET_SCRIM rather than the lighter one of their own
+  // they used to carry.
+  routeCalDim: { backgroundColor: SHEET_SCRIM },
   // THE SHELL. Deliberately generic: the dropdown panels take this same
   // treatment by swapping routePanel's background, border and radius for these
   // and putting the same BlurView and sheetTint in behind their content.
@@ -4672,11 +4732,40 @@ const s = StyleSheet.create({
   // space-between puts the chevron on the pill's right edge now that the pill is
   // wider than its label. paddingHorizontal is 8 rather than 10: see
   // ROUTE_PILL_CHROME — those four points are two characters of label at 320pt.
+  // THE SAME EDGE, and only the edge.
+  //
+  // A pill is about 24pt tall and sits in the page's own flow rather than over a
+  // scrim, and two of the four layers stop making sense at that size.
+  //
+  // No blur: what is behind a pill is the page background, a flat #050505.
+  // Blurring a flat colour returns the same flat colour, so six BlurViews would
+  // buy nothing and cost a captured, downscaled redraw each per frame.
+  //
+  // No SHEET_FILL either, and this is the one that looks wrong until the
+  // arithmetic is done. That fill is black; its job is to darken a BLURRED
+  // IMAGE. Over an opaque page there is no image, so 0.22 black on rgb(5) lands
+  // at rgb(4) — it would take away the 0.03 white lift that is currently the
+  // only thing separating a pill from the page and give nothing back. The lift
+  // stays as it is.
+  //
+  // The radius is 8, up from 4 and not the sheets' 16. A pill is about 24pt
+  // tall — 11pt of MONO between 5pt of padding each side — so its capsule
+  // radius, the point past which the ends are pure semicircles and the shape
+  // stops being a rectangle at all, is exactly half that: 12. SHEET_RADIUS at 16
+  // is beyond even that and would simply be clamped to a capsule.
+  //
+  // 8 is two thirds of the way there. It leaves 24 - 16 = 8pt of straight run
+  // down each side, which is what keeps the pill reading as a rounded rectangle
+  // rather than a lozenge, and it is double what it was.
+  //
+  // So one thing translates, and it is the one that reads as material rather
+  // than as size: the hairline, at the same 0.08 as every other glass edge,
+  // down from its own 0.12.
   routeDrop: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: SHEET_EDGE,
     backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 4,
+    borderRadius: 8,
     paddingVertical: 5,
     paddingHorizontal: 8,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -4704,11 +4793,13 @@ const s = StyleSheet.create({
   // calendar sheet.
   routeDropPanel: {
     maxWidth: ROUTE_PANEL_MAX_WIDTH,
+    // NO backgroundColor. It was an opaque #050505, which is what made the panel
+    // a solid card rather than a surface. The fill is now a sibling drawn AFTER
+    // the blur, inside GlassLayers.
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "#050505",
-    borderRadius: 4,
-    // Keeps the scrolling contents inside the rounded corners.
+    borderColor: SHEET_EDGE,
+    borderRadius: SHEET_RADIUS,
+    // Keeps the scrolling contents — and now the blur — inside the corners.
     overflow: "hidden",
   },
   routeDropItem: {
@@ -4773,22 +4864,38 @@ const s = StyleSheet.create({
 const pm = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    // The shared scrim, down from its own 0.72. That value was set when the
+    // sheet behind it was opaque and nothing had to be seen through it.
+    backgroundColor: SHEET_SCRIM,
     justifyContent: 'flex-end',
   },
+  // A BOTTOM sheet, which is the one structural difference from the others: it
+  // is flush with the bottom of the screen, so it has three edges rather than
+  // four and two rounded corners rather than four. "The same edge" therefore
+  // means the same colour and the same weight on the edges it actually has —
+  // a fourth line across the bottom would be an edge where the sheet does not
+  // end. The per-side WIDTHS stay as they are, and only the colour is shared:
+  // it is mismatched border COLOURS that make React Native abandon the corner
+  // radius and split each arc, and every side here still agrees on 0.08.
   sheet: {
-    backgroundColor: '#050505',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    // NO backgroundColor: the blur samples what is behind it, and an ancestor's
+    // fill would be flattened into the result. GlassLayers carries both.
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: SHEET_EDGE,
+    // Clips the blur to the two rounded corners.
+    overflow: 'hidden',
     paddingHorizontal: 28,
     paddingTop: 40,
     paddingBottom: 52,
     alignItems: 'center',
   },
+  // Drawn over GlassLayers and under the content, the same slot the shared
+  // tint occupies inside it.
+  tint: { backgroundColor: PROFILE_FILL },
   closeBtn: {
     position: 'absolute',
     top: 20,
