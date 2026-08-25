@@ -589,6 +589,17 @@ _ROUTE_CACHE = {}
 ROUTE_WINDOW_MINUTES = 720
 ROUTE_MAX_RESULTS = 25
 
+# General aviation, dropped explicitly. withPrivate=false is already in
+# _ROUTE_FLAGS and the provider ignores it: a twelve-hour DEL board carries five
+# "Private" rows, ZZ-numbered, off the general aviation terminal. A missing IATA
+# code used to drop them by accident. Now that a name alone is enough to keep a
+# row, they have to be excluded on purpose or the board fills with private jets.
+ROUTE_EXCLUDED_AIRLINES = ("Private",)
+
+# How many name-only rows travel per response. They are candidates, not matches,
+# and the client discards most of them: ten survived on a 271-row DEL board.
+ROUTE_MAX_UNRESOLVED = 25
+
 # A dated board is a published schedule, not a live one: it moves when an airline
 # retimes or swaps equipment, which is days apart, not minutes. Twelve hours
 # means at most two refreshes per date per day of interest while still catching a
@@ -654,10 +665,20 @@ def _build_route_row(item):
     dest_airport = arrival.get("airport") or {}
 
     dest_iata = dest_airport.get("iata")
+    dest_name = dest_airport.get("name")
     dep_utc = _movement_utc(it, "departure")
-    # Without a destination there is nothing to match on, and without a departure
-    # UTC the row can be neither sorted nor windowed. Either way it is unusable.
-    if not dest_iata or dep_utc is None:
+
+    if str((it.get("airline") or {}).get("name") or "").strip() in ROUTE_EXCLUDED_AIRLINES:
+        return None
+
+    # A destination IDENTIFIER of some kind, and a departure UTC. The code is no
+    # longer required: the provider frequently knows the airport by name only,
+    # and fifteen rows of a twelve-hour DEL board were being discarded for it —
+    # ten of them real commercial flights, including AI 2795 to Bengaluru. The
+    # name travels instead and the client resolves it against the airport data
+    # it already ships. Without a departure UTC a row can be neither sorted nor
+    # windowed, so that half of the guard is unchanged.
+    if (not dest_iata and not dest_name) or dep_utc is None:
         return None
 
     dep_local, dep_utc_raw = _times(departure, "scheduledTime")
@@ -668,8 +689,10 @@ def _build_route_row(item):
     return {
         "flight_number": re.sub(r"\s+", "", str(it.get("number") or "")).upper(),
         "airline": (it.get("airline") or {}).get("name"),
+        # None when the provider named the airport without coding it. The KEY
+        # is always present, so the payload keeps its shape.
         "destination_iata": dest_iata,
-        "destination_airport": dest_airport.get("name"),
+        "destination_airport": dest_name,
         "departure_scheduled": format_time(dep_local, dep_tz),
         "departure_scheduled_iso": _to_wire_iso(dep_local, dep_utc_raw),
         "departure_timezone": dep_tz,
@@ -805,10 +828,12 @@ def _fetch_board(code: str, day: str | None = None):
 
 
 def _route_result(origin, destination, hours, flights=None, total_found=0,
-                  data_age_seconds=None, error=None, date=None) -> dict:
+                  data_age_seconds=None, error=None, date=None,
+                  unresolved=None) -> dict:
     """Every response carries the same keys, so a caller never branches on
     key presence — only on whether "error" is None."""
     flights = flights or []
+    unresolved = unresolved or []
     return {
         "origin": origin,
         "destination": destination,
@@ -821,6 +846,11 @@ def _route_result(origin, destination, hours, flights=None, total_found=0,
         "truncated": total_found > len(flights),
         "data_age_seconds": data_age_seconds,
         "flights": flights,
+        # Board rows carrying a destination NAME and no code. Candidates only:
+        # they are deliberately absent from count, total_found and truncated,
+        # which go on describing "flights" exactly as they always have. A client
+        # that does not know this key behaves precisely as it does today.
+        "unresolved": unresolved,
         "error": error,
     }
 
@@ -912,10 +942,19 @@ def fetch_route(origin, destination, hours=12, date=None) -> dict:
     )
     kept = matched[:ROUTE_MAX_RESULTS]
 
+    # Cannot be matched here. The request arrives AS a code and this process has
+    # no name-to-code map — the airport data lives on the device — so these
+    # travel and the client decides which of them are for this destination.
+    unresolved = sorted(
+        (r for r in rows if r["destination_iata"] is None and in_window(r)),
+        key=lambda r: r["_dep_utc"],
+    )[:ROUTE_MAX_UNRESOLVED]
+
     return _route_result(
         o, d, window,
         # Fresh dicts. A caller must never hold a reference into the cache.
         flights=[{k: v for k, v in r.items() if k != "_dep_utc"} for r in kept],
+        unresolved=[{k: v for k, v in r.items() if k != "_dep_utc"} for r in unresolved],
         total_found=len(matched),
         data_age_seconds=age_seconds,
         date=day,

@@ -199,6 +199,44 @@ function parseRouteQuery(q: string): RouteParse {
   return null;
 }
 
+// Decoration the provider puts on board names that the airport dataset does
+// not carry: "Bengaluru Intl Airport", "Dubai Intl (Terminal 3)", "Khorog
+// Airport,Tajikistan". Each was found on a real board, not imagined.
+const ROUTE_NAME_NOISE =
+  /\b(intl|int'l|international|airport|arpt|apt|airfield|aerodrome|domestic|terminal)\b/gi;
+
+function routeTidyName(raw: string | null | undefined): string {
+  return String(raw ?? '')
+    .replace(/,.*$/, '')          // "Khorog Airport,Tajikistan"
+    .replace(/\(.*?\)/g, ' ')     // "Dubai Intl (Terminal 3)"
+    .replace(ROUTE_NAME_NOISE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// The airport a board name refers to, or null.
+//
+// The whole tidied name first, then progressively shorter LEADING phrases. The
+// provider usually leads with the city and follows it with the airport's own
+// name — "Delhi Indira Gandhi", "Mumbai Chhatrapati Shivaji" — and the dataset
+// indexes those two separately, never that concatenation. Narrowing to "Delhi"
+// is what resolves them; without it the whole string simply misses.
+//
+// Only ever used to ask "is this row for the destination that was searched
+// for", and a wrong answer means the row is left out rather than shown wrongly.
+function routeResolveDestination(raw: string | null | undefined): Airport | null {
+  const tidy = routeTidyName(raw);
+  if (tidy.length < 3) return null;
+  const words = tidy.split(' ');
+  for (let n = words.length; n >= 1; n--) {
+    const candidate = words.slice(0, n).join(' ');
+    if (candidate.length < 3) continue;
+    const hit = resolveAirportName(candidate);
+    if (hit !== null) return hit.airport;
+  }
+  return null;
+}
+
 // These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
 const AUTO_REFRESH_MAX_FLIGHTS = 2;
@@ -374,7 +412,14 @@ type FlightData = {
 // reliable identifier. Omitting it here makes rendering it a type error.
 type RouteFlight = {
   flight_number: string;
-  destination_iata: string;
+  // Null when the provider named the destination without coding it. Rows that
+  // reach the rendered list always have one: routeRecovered fills it in from
+  // destination_airport, and a row whose name resolves to nothing never gets
+  // there. The type stays honest about the wire.
+  destination_iata: string | null;
+  // The provider's own name for the destination. Present on every row; the only
+  // identifier the null-code ones carry.
+  destination_airport?: string | null;
   departure_scheduled: string;
   departure_scheduled_iso: string | null;
   // Null when the board carried no arrival time for this row at all. The
@@ -395,6 +440,11 @@ type RouteResult = {
   total_found: number;
   truncated: boolean;
   flights: RouteFlight[];
+  // Rows the backend could not match, because the board named the destination
+  // without coding it. Candidates, not results: they are not in count,
+  // total_found or truncated. Optional so a response from an older backend
+  // still parses.
+  unresolved?: RouteFlight[];
 };
 
 function getStatusColor(status: string) {
@@ -2061,9 +2111,39 @@ export default function Index() {
     return m ? m[1] : r.flight_number;
   };
 
+  // Rows the backend named but could not code, resolved here — where the
+  // airport dataset lives — and kept only when the name resolves to the
+  // destination that was actually searched for. The code is filled in from the
+  // resolution, so from this point on a recovered row is indistinguishable from
+  // a matched one and every consumer below needs no special case.
+  //
+  // A name that resolves to nothing, or to somewhere else, is dropped: there
+  // would be no honest way to show it in a list of flights to one destination.
+  const routeRecovered: RouteFlight[] = routeResult === null
+    ? []
+    : (routeResult.unresolved ?? []).flatMap(r => {
+      const hit = routeResolveDestination(r.destination_airport);
+      return hit !== null && hit.iata === routeResult.destination
+        ? [{ ...r, destination_iata: hit.iata }]
+        : [];
+    });
+
+  // THE row set. Everything below counts, filters, sorts and groups this, so a
+  // recovered row is counted exactly once, in exactly one group, like any other.
+  const routeRows: RouteFlight[] = routeResult === null
+    ? []
+    : [...routeResult.flights, ...routeRecovered];
+
+  // What the envelope's own totals become once recoveries are included. The
+  // backend's count and total_found describe `flights` alone, by design.
+  const routeShown = routeRows.length;
+  const routeFound = routeResult === null
+    ? 0
+    : routeResult.total_found + routeRecovered.length;
+
   // Only carriers actually present in this result set.
   const routeAirlineOptions = routeResult
-    ? Array.from(new Set(routeResult.flights.map(routeAirlineKey))).sort()
+    ? Array.from(new Set(routeRows.map(routeAirlineKey))).sort()
     : [];
 
   const routeRowKey = (r: RouteFlight) => `${r.flight_number}-${r.departure_scheduled_iso ?? ''}`;
@@ -2096,7 +2176,7 @@ export default function Index() {
   };
 
   const routeVisible = routeResult
-    ? routeResult.flights.filter(r => routePasses(r, null))
+    ? routeRows.filter(r => routePasses(r, null))
     : [];
 
   // Counted with the OTHER filters applied but not this one, so the number says
@@ -2104,7 +2184,7 @@ export default function Index() {
   // moment you switch the option off.
   const routeCountBy = (skip: 'dep' | 'arr' | 'air', keyOf: (r: RouteFlight) => string | null) => {
     const out: Record<string, number> = {};
-    for (const r of routeResult?.flights ?? []) {
+    for (const r of routeRows) {
       if (!routePasses(r, skip)) continue;
       const k = keyOf(r);
       if (k !== null) out[k] = (out[k] ?? 0) + 1;
@@ -2116,7 +2196,7 @@ export default function Index() {
   const routeAirCounts = routeCountBy('air', routeAirlineKey);
 
   const routeSorted = [...routeVisible].sort((a, b) => routeSortKey(a) - routeSortKey(b));
-  const routeHiddenCount = (routeResult?.flights.length ?? 0) - routeVisible.length;
+  const routeHiddenCount = routeRows.length - routeVisible.length;
 
   // Computed over the FILTERED set, so the marker always describes what is
   // currently on screen. Null when fewer than two rows are timed — one row has
@@ -2279,7 +2359,10 @@ export default function Index() {
             <Text style={s.routeFlatCode} numberOfLines={1}>{origin}</Text>
             <View style={s.routeConnSpacer} />
             <Text style={[s.routeFlatCode, s.routeFlatCodeEnd]} numberOfLines={1}>
-              {r.destination_iata}
+              {/* Never null in practice — a recovered row carries the code its
+                  name resolved to — but the wire type allows it, and the answer
+                  is knowable anyway: every row here is for this destination. */}
+              {r.destination_iata ?? routeResult?.destination ?? ''}
             </Text>
           </View>
         </View>
@@ -2405,7 +2488,7 @@ export default function Index() {
   // over "arrival". At 320pt a third is nine characters, so these three land on
   // their shorter forms; from about 400pt the longer ones start to fit.
   const routeRowOne = routeFitRow(
-    routeResult !== null && routeResult.count > 0
+    routeResult !== null && routeShown > 0
       ? [
         routeDate === null ? ['Today'] : [routeDateLabel(routeDate), routeShortDate(routeDate)],
         routeActiveFilters.length === 0
@@ -3331,7 +3414,7 @@ export default function Index() {
                     {/* An empty board has nothing to sort or filter, but the date
                         still means something: it is the only control here that
                         changes what comes back. */}
-                    {routeResult.count > 0 && (
+                    {routeShown > 0 && (
                       <>
                         {/* Not a routeDropdown: it opens the row below rather
                             than an anchored panel, so it wears the same pill by
@@ -3354,7 +3437,7 @@ export default function Index() {
                     )}
                   </View>
 
-                  {routeResult.count > 0 && routeFiltersOpen && (
+                  {routeShown > 0 && routeFiltersOpen && (
                     <View style={s.routePillRow}>
                       {routeDropdown('air', routeAirPill)}
                       {routeDropdown('dep', routeDepPill)}
@@ -3374,7 +3457,7 @@ export default function Index() {
                   )}
                 </View>
 
-                {routeResult.count === 0 ? (
+                {routeShown === 0 ? (
                   /* NOTHING CAME BACK. One line and no explanation. The two
                      cases are different questions and must not share a
                      sentence: an undated search saw a rolling window, a dated
@@ -3398,8 +3481,8 @@ export default function Index() {
                          it: there are flights, they are just not shown. */
                       <View style={s.routeEmptyWrap}>
                         <Text style={s.routeEmptyHead}>
-                          {`All ${routeResult.count} `
-                            + `${routeResult.count === 1 ? 'flight is' : 'flights are'} hidden`}
+                          {`All ${routeShown} `
+                            + `${routeShown === 1 ? 'flight is' : 'flights are'} hidden`}
                         </Text>
                         <Text style={s.routeEmptyBody}>
                           {`by the ${routeActiveFilters.join(' and ')} `
@@ -3441,7 +3524,7 @@ export default function Index() {
                         )}
                         {routeResult.truncated && (
                           <Text style={s.routeCap}>
-                            {`Showing ${routeResult.count} of ${routeResult.total_found} found`}
+                            {`Showing ${routeShown} of ${routeFound} found`}
                           </Text>
                         )}
                       </>
