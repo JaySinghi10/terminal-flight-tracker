@@ -202,8 +202,14 @@ function parseRouteQuery(q: string): RouteParse {
 // Decoration the provider puts on board names that the airport dataset does
 // not carry: "Bengaluru Intl Airport", "Dubai Intl (Terminal 3)", "Khorog
 // Airport,Tajikistan". Each was found on a real board, not imagined.
+//
+// "aeroport" is here because the DATED board does not speak the same language
+// as the rolling one. The airport a rolling board calls "Ayodhya" a dated board
+// calls "Aeroport Ayodkhya", and Delhi and Kolkata come back as "Deli" and
+// "Kalkutta". The spellings themselves are aliases in the dataset; only the
+// word "aeroport" belongs here, because it is decoration rather than a name.
 const ROUTE_NAME_NOISE =
-  /\b(intl|int'l|international|airport|arpt|apt|airfield|aerodrome|domestic|terminal)\b/gi;
+  /\b(intl|int'l|international|aeroport|airport|arpt|apt|airfield|aerodrome|domestic|terminal)\b/gi;
 
 function routeTidyName(raw: string | null | undefined): string {
   return String(raw ?? '')
@@ -227,7 +233,11 @@ function routeTidyName(raw: string | null | undefined): string {
 function routeResolveDestination(raw: string | null | undefined): Airport | null {
   const tidy = routeTidyName(raw);
   if (tidy.length < 3) return null;
-  const words = tidy.split(' ');
+  // Split on hyphens too, not only spaces. normalizeTerm already turns a hyphen
+  // into a space when it builds the dataset's own haystack, so leaving them
+  // joined here made the two disagree: "Denpasar-Bali Island" narrowed to
+  // "Denpasar-Bali" and never to "Denpasar", which is what actually resolves.
+  const words = tidy.split(/[\s-]+/).filter(w => w.length > 0);
   for (let n = words.length; n >= 1; n--) {
     const candidate = words.slice(0, n).join(' ');
     if (candidate.length < 3) continue;
