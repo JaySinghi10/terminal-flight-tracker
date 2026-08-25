@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -44,8 +44,30 @@ export type SavedFlight = {
   schemaVersion: number;
 };
 
-export function makeFlightId(flightNumber: string) {
-  return (flightNumber || '').toUpperCase();
+// A calendar day, exactly. Exported because index.tsx needs the same test and
+// the two must never disagree about what counts as a date.
+export const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// The day part of an ISO value, or null. The *_iso fields carry the airport's
+// LOCAL wall clock, so their first ten characters are the local calendar date —
+// which is the same day the backend keys a dated board on.
+function dayFromIso(iso: string | null | undefined): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(iso ?? ''));
+  return m ? m[1] : null;
+}
+
+// FLIGHT NUMBER AND DATE. AI2758 on the 29th and AI2758 on the 31st are two
+// different flights and now hold two different records; keyed on the number
+// alone, the second silently overwrote the first and a route row showed as
+// saved on every date.
+//
+// A record with no date usable as a key is filed under "unknown" rather than
+// given a guessed one. It stays openable and unsavable, and the first refresh
+// that returns a real date re-keys it — see touchSavedFlight's targetId.
+export function makeFlightId(flightNumber: string, flightDate: string | null | undefined) {
+  const number = (flightNumber || '').toUpperCase();
+  const day = ISO_DAY_RE.test(String(flightDate ?? '')) ? String(flightDate) : 'unknown';
+  return `${number}|${day}`;
 }
 
 function endpointFromApi(raw: any): SavedFlightEndpoint {
@@ -79,7 +101,7 @@ export function savedFlightFromApi(data: any): SavedFlight {
   const flightDate = data?.flight_date ?? 'unknown';
   const status = (data?.status ?? 'unknown').toLowerCase();
   return {
-    id: makeFlightId(flightNumber),
+    id: makeFlightId(flightNumber, flightDate),
     flightNumber,
     airline: data?.airline ?? '',
     flightDate,
@@ -111,33 +133,11 @@ function isValid(f: any): f is SavedFlight {
   );
 }
 
-// Local calendar day as a zero-padded "YYYY-MM-DD" string (lexicographically
-// comparable). Uses getFullYear/getMonth/getDate — NOT toISOString (UTC).
-function localDay(ts: number): string {
-  const d = new Date(ts);
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
-// Expired only once a landed flight's landing day is strictly in the past.
-function isExpired(flight: SavedFlight, now: number): boolean {
-  if (flight.status !== 'landed') return false;
-  if (flight.landedAt == null) return false;
-  return localDay(flight.landedAt) < localDay(now);
-}
-
 // Upgrades a record to the current schema in place, reporting whether anything
 // changed.
 // record is null (dropped) when the flight number is empty after normalization.
 function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; changed: boolean } {
   let changed = false;
-
-  const newId = makeFlightId(flight.flightNumber);
-  if (flight.id !== newId) {
-    flight.id = newId;
-    changed = true;
-  }
 
   const version = typeof flight.schemaVersion === 'number' ? flight.schemaVersion : 0;
 
@@ -195,8 +195,38 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     }
   }
 
-  if (version !== 6) {
-    flight.schemaVersion = 6;
+  // v6 -> v7: the id gains the flight's date. Records saved under the old key
+  // MUST survive, so the date is recovered rather than required:
+  //
+  //   flightDate is already a date   -> use it, no work to do
+  //   flightDate is 'unknown'        -> read the day out of scheduledIso, which
+  //                                     is the airport's own local date
+  //   neither exists                 -> file it under 'unknown'
+  //
+  // No date is ever invented. A record that reaches the third case is one saved
+  // before v3, when no ISO was stored at all; it keeps everything it has and
+  // gains a real key the first time that flight is refreshed.
+  //
+  // Assigned in every branch, not only where a date is recovered: a record old
+  // enough to predate the field carries flightDate undefined, which the type
+  // says is a string and which the card would render as the word "undefined".
+  if (version < 7 && !ISO_DAY_RE.test(String(flight.flightDate ?? ''))) {
+    flight.flightDate =
+      dayFromIso(flight.from?.scheduledIso ?? flight.to?.scheduledIso) ?? 'unknown';
+    changed = true;
+  }
+
+  // AFTER the version blocks, not before them: v7 may have just supplied the
+  // date the id is built from, and the id has to be derived from the record as
+  // it now stands rather than as it arrived.
+  const newId = makeFlightId(flight.flightNumber, flight.flightDate);
+  if (flight.id !== newId) {
+    flight.id = newId;
+    changed = true;
+  }
+
+  if (version !== 7) {
+    flight.schemaVersion = 7;
     changed = true;
   }
 
@@ -232,15 +262,15 @@ async function readKey(key: string): Promise<SavedFlight[]> {
     const merged = mergeById(normalized, []);
     if (merged.length !== normalized.length) changed = true; // duplicate collapsed
 
-    const now = Date.now();
-    const kept = merged.filter(f => !isExpired(f, now));
-    if (kept.length !== merged.length) changed = true; // expired pruned
-
+    // NOTHING IS PRUNED. A landed flight used to be deleted the day after it
+    // landed; it is now archived instead — derived from its arrival time, in
+    // app/index.tsx — and kept indefinitely. Deleting a record the user chose
+    // to save, on a timer they never saw, was the wrong default.
     if (changed) {
       if (hadV1) await backupOnce(key, raw); // only back up buckets that were genuinely v1
-      await writeKey(key, kept); // awaited so a later saveFlight write can't race and be overwritten
+      await writeKey(key, merged); // awaited so a later saveFlight write can't race and be overwritten
     }
-    return kept;
+    return merged;
   } catch {
     return [];
   }
@@ -326,7 +356,15 @@ export async function getSavedFlights(email: string | null): Promise<SavedFlight
   return readKey(keyFor(email));
 }
 
-export async function saveFlight(email: string | null, flight: SavedFlight): Promise<SaveResult> {
+// countsToward decides which records the cap sees. It exists because an
+// archived flight is never refreshed, and MAX_SAVED_FLIGHTS is a limit on
+// refresh cost rather than on how much a user may keep. The default counts
+// everything, so a caller that does not care is unaffected.
+export async function saveFlight(
+  email: string | null,
+  flight: SavedFlight,
+  countsToward: (f: SavedFlight) => boolean = () => true,
+): Promise<SaveResult> {
   const flights = await readKey(keyFor(email));
   const existing = flights.findIndex(f => f.id === flight.id);
 
@@ -341,7 +379,7 @@ export async function saveFlight(email: string | null, flight: SavedFlight): Pro
     return { ok: true, flights: next };
   }
 
-  if (flights.length >= MAX_SAVED_FLIGHTS) {
+  if (flights.filter(countsToward).length >= MAX_SAVED_FLIGHTS) {
     return { ok: false, reason: 'limit', flights };
   }
 
@@ -358,9 +396,21 @@ export async function unsaveFlight(email: string | null, id: string): Promise<Sa
 }
 
 // Updates a stored record after a fresh lookup. No-op if not saved.
-export async function touchSavedFlight(email: string | null, flight: SavedFlight): Promise<SavedFlight[] | null> {
+//
+// targetId names the record to update, and defaults to the fresh record's own
+// id. It differs in exactly one case: a record filed under "unknown" whose
+// refresh came back with a real date. Passing the old id updates that record
+// and lets it take the new id, which is how a dateless record recovers its
+// date. If the new id collides with a record that already exists, the next
+// read's mergeById collapses the two — correctly, since they are the same
+// flight on the same day.
+export async function touchSavedFlight(
+  email: string | null,
+  flight: SavedFlight,
+  targetId: string = flight.id,
+): Promise<SavedFlight[] | null> {
   const flights = await readKey(keyFor(email));
-  const idx = flights.findIndex(f => f.id === flight.id);
+  const idx = flights.findIndex(f => f.id === targetId);
   if (idx < 0) return null;
   const next = [...flights];
   const prev = flights[idx];

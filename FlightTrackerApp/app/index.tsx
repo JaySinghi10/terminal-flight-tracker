@@ -33,6 +33,7 @@ import {
   touchSavedFlight,
   savedFlightFromApi,
   makeFlightId,
+  ISO_DAY_RE,
   migrateLegacyIfNeeded,
   mergeGuestInto,
 } from '../lib/storage';
@@ -256,6 +257,12 @@ const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to sh
 // The provider's BASIC plan caps requests at one per second and rejects the rest
 // with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
 const REFRESH_SPACING_MS = 1300;
+// The same grey the bookmark outline uses on the flight card.
+const ARCHIVE_ICON = 'rgba(226,226,226,0.5)';
+// The backend accepts one day back (ROUTE_MAX_PAST_DAYS). A record older than
+// that can only ever be refused, so it is never asked for. Kept slightly under
+// two days so a local date one side of the server's UTC date still qualifies.
+const REFRESH_MAX_PAST_MS = 36 * 60 * 60 * 1000;
 // The backend fetches a 12-hour board whichever value it is sent, then filters
 // down to this. At 6 half of what was already paid for was discarded, so 12 is
 // strictly more for the same 2 units.
@@ -989,6 +996,38 @@ const SAVED_RANK: Record<string, number> = { active: 0, scheduled: 1, delayed: 1
 const RANK_LAST = 2;
 const NO_TIME = Number.MAX_SAFE_INTEGER;
 
+// WHEN A FLIGHT LEAVES THE LIST.
+//
+// Arrival, not departure: a long-haul that left eleven hours ago may still be
+// in the air, and a list that drops it mid-flight is worse than useless.
+//
+// Six hours after it lands. The card is still worth having for a while after
+// touchdown — the belt, the terminal, the actual arrival time — and a red-eye
+// that lands at 06:00 should still be there over breakfast. Short enough that
+// this morning's flight is gone before tomorrow's crowd the list.
+const ARCHIVE_AFTER_ARRIVAL_MS = 6 * 60 * 60 * 1000;
+
+// The instant a flight arrived, or is expected to. Actual first, then the
+// estimate, then the schedule — the same precedence the status line uses.
+function arrivalTs(f: SavedFlight): number | null {
+  return zonedIsoToTs(f.to.actualIso ?? f.to.estimatedIso ?? f.to.scheduledIso, f.to.timezone);
+}
+
+// DERIVED, never stored, so there is no schema change and no migration.
+//
+// A stored flag would have to be recomputed on every read anyway — a flight
+// crosses this line while the app is open, not while it is writing — so the
+// flag would be a second answer to a question the arrival time already answers
+// exactly, and the two could disagree.
+//
+// A record with no arrival ISO at all is NEVER archived. Those are pre-v3
+// records; guessing that they are old enough to file away would hide a flight
+// the user saved on purpose.
+function isArchived(f: SavedFlight, now: number): boolean {
+  const ts = arrivalTs(f);
+  return ts !== null && now - ts > ARCHIVE_AFTER_ARRIVAL_MS;
+}
+
 function savedSortKey(f: SavedFlight): { rank: number; when: number } {
   const s = f.status.toLowerCase();
   const rank = SAVED_RANK[s] ?? RANK_LAST;
@@ -1021,7 +1060,28 @@ function SavedFlightRow({
     <TouchableOpacity style={sf.row} onPress={onPress} activeOpacity={0.7}>
       <View style={sf.line1}>
         <Text style={sf.number}>{flight.flightNumber}</Text>
-        <Text style={sf.route} numberOfLines={1}>{`${flight.from.iata} → ${flight.to.iata}`}</Text>
+        {/* Cities, not codes. "Bangalore → Delhi" says where the flight goes to
+            someone who does not read IATA, which is most people. city arrived in
+            schema v5, so a record older than that carries null and falls back to
+            the code it has always shown.
+
+            At 320pt the row leaves 149.6pt here — nineteen characters of 13pt
+            JetBrains Mono — which covers most pairs. A longer one ellipsizes in
+            the MIDDLE rather than at the end, because losing the destination
+            entirely is worse than losing the middle of both names. numberOfLines
+            holds it to one line, so the row's height is unchanged either way. */}
+        <Text style={sf.route} numberOfLines={1} ellipsizeMode="middle">
+          {`${flight.from.city || flight.from.iata} → ${flight.to.city || flight.to.iata}`}
+        </Text>
+        {/* Two instances of one number are otherwise identical rows telling
+            apart only by a countdown. The route text flexes, so this sits hard
+            against the × on the right — a column of dates down the list rather
+            than a value that drifts with the length of the route beside it.
+            Hidden entirely when the date is not one: a pre-v3 record filed
+            under "unknown" has nothing truthful to show here. */}
+        {ISO_DAY_RE.test(flight.flightDate) && (
+          <Text style={sf.date} numberOfLines={1}>{routeShortDate(flight.flightDate)}</Text>
+        )}
         <TouchableOpacity
           onPress={onUnsave}
           activeOpacity={0.7}
@@ -1046,10 +1106,28 @@ const sf = StyleSheet.create({
   // Deliberately outside the type scale: this is a hit target, not text.
   chevron: { fontFamily: MONO, fontSize: 24, color: 'rgba(226,226,226,0.75)' },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  // detailsTitle carries marginBottom: 10, so the chevron beside it needs the
+  // same or the two sit on different baselines.
+  headingTap: { flexDirection: 'row', alignItems: 'center' },
+  chevronLeft: {
+    fontFamily: MONO, fontSize: 24, color: 'rgba(226,226,226,0.75)',
+    marginRight: 8, marginBottom: 10,
+  },
+  archiveBtn: { marginBottom: 10 },
+  noneActive: {
+    fontSize: 11, color: 'rgba(226,226,226,0.4)', fontFamily: SANS,
+    paddingVertical: 10,
+  },
   collapsedLine: { paddingVertical: 10 },
   collapsedNumber: { fontFamily: MONO, fontSize: 11, color: '#ffffff' },
   collapsedDim: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)' },
   route: { fontSize: 13, color: 'rgba(226,226,226,0.6)', fontFamily: MONO, flex: 1, marginLeft: 12 },
+  // Supporting detail, so a step down in size and two steps down the grey ramp
+  // from the route beside it. Same 11pt mono the codes line under the route
+  // heading uses.
+  // MONO_BOLD and a step up the ramp: with two instances of one number in the
+  // list this is what tells them apart, so it had to stop whispering.
+  date: { fontSize: 11, color: 'rgba(226,226,226,0.6)', fontFamily: MONO_BOLD, marginLeft: 8 },
   updated: { color: 'rgba(226,226,226,0.3)' },
   remove: {
     fontSize: 20,
@@ -1550,6 +1628,9 @@ export default function Index() {
   // none of it can move the layout underneath.
   const routePanelAnim = useRef(new Animated.Value(0)).current;
   const routeScrimAnim = useRef(new Animated.Value(0)).current;
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const archiveAnim = useRef(new Animated.Value(0)).current;
+  const archiveScrimAnim = useRef(new Animated.Value(0)).current;
   const routeCalAnim = useRef(new Animated.Value(0)).current;
   const routeCalScrimAnim = useRef(new Animated.Value(0)).current;
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1650,6 +1731,24 @@ export default function Index() {
       easing: EASE_OUT, useNativeDriver: true,
     }).start();
   }, [routeOpenDrop, routePanelMeasured]);
+
+  // Same two-layer rise the calendar sheet uses, on the same curves and
+  // durations. One approach for every sheet in the file.
+  useEffect(() => {
+    if (!archiveOpen) return;
+    archiveAnim.setValue(0);
+    archiveScrimAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(archiveScrimAnim, {
+        toValue: 1, duration: SCRIM_IN_MS,
+        easing: EASE_OUT, useNativeDriver: true,
+      }),
+      Animated.timing(archiveAnim, {
+        toValue: 1, duration: CAL_IN_MS,
+        easing: EASE_OUT, useNativeDriver: true,
+      }),
+    ]).start();
+  }, [archiveOpen]);
 
   useEffect(() => {
     if (!routeCalOpen) return;
@@ -1896,7 +1995,7 @@ export default function Index() {
         return;
       }
 
-      const result = await saveFlight(email, savedFlightFromApi(data));
+      const result = await saveFlight(email, savedFlightFromApi(data), f => !isArchived(f, Date.now()));
       setSavedFlights(result.flights);
       if (!result.ok) {
         setError('saved flight limit reached \u2014 unsave one first');
@@ -1999,23 +2098,47 @@ export default function Index() {
   // Shared fetch-and-store loop. Sequential; per-flight try/catch; touchSavedFlight on
   // success; captures the open card's fresh data. Returns counts only — no UI side effects.
   const refreshFlights = async (list: SavedFlight[], maxAttempts: number): Promise<{ failures: number; openCardFresh: any }> => {
-    const openCardNumber = flightRecord?.flightNumber ?? null;
+    // The open card's ID, not its number: two instances of one number can be
+    // saved, and only the one actually on screen should be refreshed into it.
+    const openCardId = flightRecord?.id ?? null;
     let openCardFresh: any = null;
     let failures = 0;
     let attempts = 0;
 
+    // One day back is all the backend accepts, so anything older is refused
+    // before it reaches the provider. Computed once, outside the loop.
+    const oldest = localIsoDate(new Date(Date.now() - REFRESH_MAX_PAST_MS));
+
     for (const f of list) {                                   // sequential — never parallel
       if (attempts >= maxAttempts) break;
+      const day = ISO_DAY_RE.test(f.flightDate) ? f.flightDate : null;
+      // SKIPPED, NOT ATTEMPTED, and therefore not a failure. A past date is
+      // rejected by the backend every single time, so these records failed on
+      // every pull and "could not be updated" became permanent furniture rather
+      // than news. Before attempts++ as well as before the fetch: a skip must
+      // not consume one of the attempts a live flight could have used.
+      if (day !== null && day < oldest) continue;
       // Between attempts only — never before the first, never after the last, so
       // a single saved flight waits no longer than it does today.
       if (attempts > 0) await new Promise(resolve => setTimeout(resolve, REFRESH_SPACING_MS));
       attempts++;
       try {
-        const response = await fetch(`${API_BASE}/flight/${f.flightNumber}`);
+        // ON ITS OWN DATE. Undated, this asked for whichever instance is nearest
+        // now and wrote that over the record — so a flight saved for the 31st
+        // was quietly replaced by today's. That is the same fault the flight
+        // card had before it learned to pass a date, and widening the key
+        // without fixing it would be worse than the old single overwrite: two
+        // records would exist and both would refresh into the same instance.
+        const response = await fetch(
+          `${API_BASE}/flight/${f.flightNumber}${day === null ? '' : `?date=${day}`}`,
+        );
         const data = await response.json();
         if (data.error || !response.ok) { failures++; continue; }
-        await touchSavedFlight(email, savedFlightFromApi(data));
-        if (openCardNumber && f.flightNumber === openCardNumber) openCardFresh = data;
+        // f.id, not the fresh record's: a record filed under "unknown" has no
+        // date for its id to have been built from, and this is what lets the
+        // response supply one.
+        await touchSavedFlight(email, savedFlightFromApi(data), f.id);
+        if (openCardId && f.id === openCardId) openCardFresh = data;
       } catch {
         failures++;                                           // one failure must not abort the loop
       }
@@ -2047,7 +2170,7 @@ export default function Index() {
     setRefreshing(true);
     setRefreshMsg("");
     try {
-      if (savedFlights.length === 0) return;                  // spinner alone acknowledges; message can't render here
+      if (activeSaved.length === 0) return;                   // spinner alone acknowledges; message can't render here
 
       if (Date.now() - lastRefreshRef.current < PULL_COOLDOWN_MS) {
         setRefreshMsg('> already up to date');
@@ -2057,15 +2180,23 @@ export default function Index() {
       }
       lastRefreshRef.current = Date.now();
 
-      const { failures, openCardFresh } = await refreshFlights(savedFlights, 5);
+      // Active only. An archived flight is not refreshed, which is the whole
+      // reason it does not count against MAX_SAVED_FLIGHTS.
+      const { failures, openCardFresh } = await refreshFlights(activeSaved, 5);
 
       const list = await getSavedFlights(email);              // read once, set state once
       setSavedFlights(list);
 
       if (openCardFresh) {
-        const openCardNumber = flightRecord?.flightNumber ?? null;
         setFlight(flightDataFromApi(openCardFresh));
-        const stored = list.find(f => f.flightNumber === openCardNumber);
+        // By id, not by number: with two instances saved, matching on the number
+        // alone could put the OTHER date's record behind the open card. The id
+        // can also change across a refresh — a record filed under "unknown"
+        // takes a real date the first time one comes back — so the fresh data's
+        // id is tried first and the one the card was opened with second.
+        const freshId = savedFlightFromApi(openCardFresh).id;
+        const stored = list.find(f => f.id === freshId)
+          ?? list.find(f => f.id === (flightRecord?.id ?? ''));
         if (stored) setFlightRecord(stored);                  // from disk, so savedAt stays in sync
         setLastUpdated(Date.now());
       }
@@ -2085,7 +2216,17 @@ export default function Index() {
   const effectiveName = displayName ?? username;
 
   // Derived per render from a copy; savedFlights itself is never reordered.
-  const sortedSaved = sortSavedByRelevance(savedFlights);
+  // Split once, here, so nothing below has to remember which list it wants.
+  // `now` ticks, so a flight crosses into the archive on screen without a
+  // reload.
+  const activeSaved = savedFlights.filter(f => !isArchived(f, now));
+  // Most recent first: the flight that landed an hour ago before the one from
+  // last March.
+  const archivedSaved = savedFlights
+    .filter(f => isArchived(f, now))
+    .sort((a, b) => (arrivalTs(b) ?? 0) - (arrivalTs(a) ?? 0));
+
+  const sortedSaved = sortSavedByRelevance(activeSaved);
 
   // Resolved from the bundled dataset. This used to read the saved flights on
   // the device, which meant a fresh install never saw an airport name at all —
@@ -2328,6 +2469,18 @@ export default function Index() {
     ? routeListed.filter(r => routeDepBand(r) === null)
     : [];
 
+  // The local calendar date a board row DEPARTS on, read from its own ISO.
+  //
+  // Not the board's date. An undated board is a rolling twelve hours from now,
+  // so its late rows belong to tomorrow — and a record saved from one of those
+  // is keyed on the date the backend reports, which is the row's own. Matching
+  // the indicator on the board's date instead would leave those rows showing
+  // unsaved forever.
+  const routeRowDay = (r: RouteFlight): string | null => {
+    const d = (r.departure_scheduled_iso ?? '').slice(0, 10);
+    return ISO_DAY_RE.test(d) ? d : null;
+  };
+
   // Flat rows, not cards. Line one carries everything variable-width; line two
   // carries the two times and the connector between them, and nothing else may
   // join it. The times are sized to their own content and pinned to opposite
@@ -2344,7 +2497,9 @@ export default function Index() {
     // screen is not from. Null for an undated board, which is today.
     const rowDate = routeResult?.date ?? null;
     const airline = airlineFromFlightNumber(r.flight_number);
-    const saved = savedFlights.some(f => f.id === makeFlightId(r.flight_number));
+    // Number AND date, so a row shows saved only when THAT instance is saved.
+    const rowDay = routeRowDay(r);
+    const saved = savedFlights.some(f => f.id === makeFlightId(r.flight_number, rowDay));
     const pending = routeSavingKey === r.flight_number;
     const busy = routeSavingKey !== null;
     const showStatus = r.status !== ROUTE_STATUS_ROUTINE;
@@ -2433,7 +2588,7 @@ export default function Index() {
           activeOpacity={0.7}
           disabled={saved || busy}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          onPress={() => saveFromRoute(r.flight_number, rowDate)}
+          onPress={() => saveFromRoute(r.flight_number, rowDay ?? rowDate)}
         >
           <View style={s.routeFlatMarkBox}>
             {pending ? (
@@ -2634,6 +2789,20 @@ export default function Index() {
       const d = new Date(prev.y, prev.m + delta, 1);
       return { y: d.getFullYear(), m: d.getMonth() };
     });
+  };
+
+  // Unmounts only once both layers have left, exactly as closeRouteCal does.
+  const closeArchive = () => {
+    Animated.parallel([
+      Animated.timing(archiveAnim, {
+        toValue: 0, duration: CAL_OUT_MS,
+        easing: EASE_IN, useNativeDriver: true,
+      }),
+      Animated.timing(archiveScrimAnim, {
+        toValue: 0, duration: SCRIM_OUT_MS,
+        easing: EASE_IN, useNativeDriver: true,
+      }),
+    ]).start(() => setArchiveOpen(false));
   };
 
   const openRouteCal = () => {
@@ -2937,7 +3106,7 @@ export default function Index() {
       showToast('unsaved');
       return;
     }
-    const result = await saveFlight(email, flightRecord);
+    const result = await saveFlight(email, flightRecord, f => !isArchived(f, Date.now()));
     setSavedFlights(result.flights);
     if (!result.ok) {
       setSaveError('saved flight limit reached — unsave one first');
@@ -3089,6 +3258,50 @@ export default function Index() {
       </Modal>
 
       {/* ── DATE CALENDAR ── */}
+      <Modal visible={archiveOpen} transparent animationType="none" onRequestClose={closeArchive}>
+        <Pressable style={s.routeCalScrim} onPress={closeArchive}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: archiveScrimAnim }]}
+          />
+          <Animated.View
+            style={[
+              s.routeCalSheet,
+              s.archiveSheet,
+              {
+                opacity: archiveAnim,
+                transform: [
+                  { translateY: archiveAnim.interpolate({ inputRange: [0, 1], outputRange: [CAL_RISE, 0] }) },
+                  { scale: archiveAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                ],
+              },
+            ]}
+          >
+            {/* Swallows the tap so the scrim's dismiss does not fire through. */}
+            <Pressable>
+              <Text style={s.archiveTitle}>{'Archives'}</Text>
+              {archivedSaved.length === 0 ? (
+                <Text style={s.archiveEmpty}>
+                  {'Nothing here yet. A flight moves in a few hours after it lands.'}
+                </Text>
+              ) : (
+                <ScrollView style={s.archiveList} showsVerticalScrollIndicator={false}>
+                  {archivedSaved.map(f => (
+                    <SavedFlightRow
+                      key={f.id}
+                      flight={f}
+                      now={now}
+                      onPress={() => { closeArchive(); renderSavedFlight(f); }}
+                      onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
       <Modal visible={routeCalOpen} transparent animationType="none" onRequestClose={closeRouteCal}>
         <Pressable style={s.routeCalScrim} onPress={closeRouteCal}>
           {/* The dim is its own layer so it can fade on its own curve. Folding it
@@ -3345,7 +3558,11 @@ export default function Index() {
                   }}>{refreshMsg}</Text>
                 </Animated.View>
               )}
-              {savedCollapsed ? (
+              {/* sortedSaved, not savedCollapsed alone: every flight can be
+                  archived while records still exist, and the collapsed line
+                  reads sortedSaved[0]. Falling through to the expanded branch
+                  keeps the heading — and the way into the archive — reachable. */}
+              {savedCollapsed && sortedSaved.length > 0 ? (
                 <TouchableOpacity
                   style={sf.collapsedLine}
                   activeOpacity={0.7}
@@ -3356,23 +3573,49 @@ export default function Index() {
                     <Text style={sf.collapsedNumber}>{sortedSaved[0].flightNumber}</Text>
                     <Text style={sf.collapsedDim}>{' '}</Text>
                     <StatusLine f={sortedSaved[0]} now={now} hideStatus />
-                    {savedFlights.length > 1 && (
-                      <Text style={sf.collapsedDim}>{` · +${savedFlights.length - 1} more`}</Text>
+                    {activeSaved.length > 1 && (
+                      <Text style={sf.collapsedDim}>{` · +${activeSaved.length - 1} more`}</Text>
                     )}
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <>
-                  <TouchableOpacity
-                    style={sf.headingRow}
-                    activeOpacity={0.7}
-                    onPress={() => persistCollapsed(true)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    <Text style={s.detailsTitle}>{'saved flights'}</Text>
-                    <Text style={sf.chevron}>{'\u25BE'}</Text>
-                  </TouchableOpacity>
-                  {sortedSaved.map(f => (
+                  <View style={sf.headingRow}>
+                    {/* The chevron leads the heading now, on the left, where it
+                        reads as the control for the thing it is next to rather
+                        than as a stray glyph at the far edge. The tap target is
+                        the pair, not the row, so the archive icon opposite gets
+                        its own. */}
+                    <TouchableOpacity
+                      style={sf.headingTap}
+                      activeOpacity={0.7}
+                      onPress={() => persistCollapsed(true)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                      <Text style={sf.chevronLeft}>{'\u25BE'}</Text>
+                      <Text style={s.detailsTitle}>{'saved flights'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => setArchiveOpen(true)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={sf.archiveBtn}
+                    >
+                      {/* An archive box: lid, body, and the pull on its front.
+                          Same 18x18 / 24-viewBox / 1.75-stroke treatment as the
+                          bookmark on the flight card. */}
+                      <Svg width={18} height={18} viewBox="0 0 24 24">
+                        <Path d="M3 5h18v4H3z" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
+                        <Path d="M5 9v10h14V9" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
+                        <Path d="M10 13h4" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
+                      </Svg>
+                    </TouchableOpacity>
+                  </View>
+                  {sortedSaved.length === 0 ? (
+                    <Text style={sf.noneActive}>
+                      {'Nothing upcoming. Past flights are in the archive.'}
+                    </Text>
+                  ) : sortedSaved.map(f => (
                     <SavedFlightRow
                       key={f.id}
                       flight={f}
@@ -4030,6 +4273,18 @@ const s = StyleSheet.create({
     justifyContent: "center", paddingHorizontal: 16,
   },
   routeCalDim: { backgroundColor: "rgba(0,0,0,0.72)" },
+  // Borrows routeCalSheet wholesale and only bounds its height: the list is
+  // unbounded and the sheet must not grow past the screen.
+  archiveSheet: { maxHeight: "78%" },
+  archiveTitle: {
+    fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD,
+    textAlign: "center", marginBottom: 14,
+  },
+  archiveEmpty: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS,
+    textAlign: "center", lineHeight: 18, paddingVertical: 12,
+  },
+  archiveList: { marginHorizontal: -16, paddingHorizontal: 16 },
   routeCalSheet: {
     backgroundColor: "#050505",
     borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
