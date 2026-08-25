@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import Svg, { Path, Rect, G } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
@@ -259,6 +260,146 @@ const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to sh
 const REFRESH_SPACING_MS = 1300;
 // The same grey the bookmark outline uses on the flight card.
 const ARCHIVE_ICON = 'rgba(226,226,226,0.5)';
+
+// THE BLUR, inside the sheet and clipped to it.
+//
+// It covered the whole screen before, which softened the page everywhere and
+// left nothing for the sheet to be a window ONTO. Behind the panel the page is
+// blurred; a millimetre outside it, the page is sharp and merely dimmed. That
+// edge is the whole effect.
+//
+// THE TINT is systemChromeMaterialDark, and that is the whole of this change.
+//
+// "dark" was not a neutral darkening. expo-blur's own table gives it as
+// rgb(25,25,25) at 0.69 x intensity — at 55 that is a 38%-opaque light-grey
+// wash, and over a page this dark it does not darken at all, it LIFTS. Measured
+// from those numbers: the ground under the panel is rgb(2.25); "dark" takes it
+// to rgb(10.88). The scrim and the fill both subtract; the tint was the only
+// thing adding, and it was adding more than they were taking away.
+//
+// systemChromeMaterialDark is the one dark material in the set whose colour is
+// rgb(0,0,0) rather than rgb(25) or rgb(37) — pure black at 0.75 x intensity.
+// It blurs exactly as hard and adds no light at all, which is what lets the
+// panel sit on the page colour instead of above it.
+//
+// The intensity is untouched. It could not have fixed this: the tint's alpha
+// scales WITH intensity, so turning the blur down turns the grey down and the
+// blur with it. The colour was the problem, not the amount.
+
+// 32 of 100.
+//
+// 32, down from 55, and this one number is doing two jobs at once.
+//
+// A blur preserves the AVERAGE brightness under its kernel; what it changes is
+// how far that average is spread. On Android the radius is intensity / 4, so 55
+// was a radius of 13.75 against a saved row's pitch of roughly 41pt. The kernel
+// was wide enough to reach from one row of text to the next, which means every
+// dark gap got averaged together with the white text on either side of it and
+// the whole panel settled at the page's mean brightness. That is what a uniform
+// grey fog IS: a blur wide enough that nothing local survives it.
+//
+// At 32 the radius is 8. Still comfortably past readable — the probe at 8 gave
+// a radius of 2 and the page was plainly legible, and 13pt text loses its words
+// once the radius passes its x-height of about 6.5 — but only a fifth of the
+// row pitch, so the gaps between rows stay as dark as they started and the text
+// stays a localised blob rather than a screen-wide wash. Black where the page
+// is black, soft shape where the page has something on it.
+const SHEET_BLUR = 32;
+
+// THE SHEET SURFACE, and there is only one layer of it now.
+//
+// FILL is translucent black over the blur, and NOTHING else. The vertical
+// gradient that used to sit on top of it has gone: white over black makes grey,
+// and a grey panel on a black page reads as a card laid on the screen rather
+// than as a window through it.
+//
+// 0.22, down from 0.34. More of the blurred page comes through and nothing
+// else about the panel moves.
+//
+// The whole stack, from the page outward. The scrim figure below was stale —
+// it still read 0.55 after routeCalDim went to 0.40 last round — and is
+// corrected here:
+//
+//   page                        rgb(5.00)
+//   through the scrim 0.40      rgb(3.00)   <- and this is also what is seen
+//                                              OUTSIDE the panel
+//   through the tint (black)    rgb(2.28)
+//   through the fill 0.22       rgb(1.78)   <- the panel's own ground
+//
+// Transmission goes from 30.1% to 35.6%: (1 - 0.40)(1 - 0.24)(1 - 0.22).
+//
+// It cannot turn grey by going down, which is worth being explicit about since
+// grey is the failure mode everything here is guarding against. The fill is
+// BLACK; less of it means more of the page, and the page is rgb(5). The ground
+// rises from rgb(1.51) to rgb(1.78) and stays a level and a quarter BELOW the
+// rgb(3.00) around it. The panel is still the darkest thing on the screen.
+const SHEET_FILL = 'rgba(0,0,0,0.22)';
+
+// THERE IS NO OUTLINE. The stroked SVG rounded rectangle that used to sit here,
+// and the per-side border before it, are both gone.
+//
+// What replaces them is nothing, and that is the point: the panel's boundary is
+// the place where the page stops being blurred. Outside the radius the page is
+// sharp and merely dimmed; a pixel inside it, the same content is soft. Over
+// anything with content behind it that transition is unmistakable, and it costs
+// no ink at all — it is the edge FELT rather than an edge drawn.
+//
+// Where there is genuinely nothing behind the panel the boundary does vanish,
+// and no fill can rescue it: the surroundings are already rgb(2.25), so even a
+// fully opaque black panel would differ by two levels. There is not enough
+// light out there to take any more of away. The alternative was a stroke, and a
+// stroke is the thing being removed.
+//
+// SHEET_RADIUS survives because sheetShell still rounds and still clips — the
+// clip is what confines the blur, which is now the only thing marking the edge.
+const SHEET_RADIUS = 16;
+// The rule under the heading is NOT an edge treatment. It separates two pieces
+// of content and keeps its own weight accordingly.
+const SHEET_RULE = 'rgba(255,255,255,0.07)';
+
+// A HAIRLINE, and the fifth attempt at this edge is the first that is not a
+// gradient. Four soft falloffs — top stroke, top wash, bottom wash — all read
+// as grey rather than as light, and they read that way because that is what a
+// low-alpha white ramp over black IS. Spread any small amount of white over
+// 20pt and the eye integrates it into a haze; put the same white in one row of
+// pixels and it is a line with a lit edge.
+//
+// So: one pixel, one opacity, all four sides the same. Nothing to integrate.
+//
+// 0.08 white, down from the 0.12 this was first written for. Against the page
+// outside at rgb(3.0) that renders at rgb(23) rather than rgb(33) — still a
+// definite line, but a quiet one, and confined to a single pixel so it cannot
+// wash anything whatever its opacity.
+//
+// That puts it within a hair of SHEET_RULE's 0.07 above. At 0.12 the panel's
+// outline was plainly the heavier of the two; at 0.08 the edge of the sheet and
+// the rule under its heading carry about the same weight, which is a choice
+// rather than an oversight — nothing here is meant to outrank the content.
+//
+// A hairline is also the one treatment where lowering the opacity costs no
+// crispness: there is no falloff to go hazy, so it stays a line all the way
+// down. rgb(23) is roughly the floor at which it still reads on a dark panel.
+//
+// Uniform on every side ON PURPOSE, and this is the one thing that must not
+// change. React Native draws a border from the layer's own corner radius as a
+// single unbroken rounded rectangle only while all four sides share a colour;
+// give one side its own and RN switches to drawing four separate edges and
+// splits every corner arc between two of them. That is what broke the corners
+// two rounds ago. A lit-from-above asymmetry is not available here at any
+// price, and trying to fake it with a gradient is what this replaces.
+//
+// It is a sibling rather than a border on sheetShell so that adding it costs no
+// layout: a border there would inset the content box by 1pt on every side.
+const SHEET_EDGE = 'rgba(255,255,255,0.08)';
+// Rows fade up as the sheet arrives, each a little after the one above it.
+// Expressed as FRACTIONS of the sheet's own 0->1 travel rather than as
+// milliseconds, so the cascade is driven by the existing archiveAnim and cannot
+// drift from it. Past ARCHIVE_ROW_MAX every row shares the last slot: a long
+// list should not still be arriving after the sheet has settled.
+const ARCHIVE_ROW_STAGGER = 0.07;
+const ARCHIVE_ROW_FADE = 0.45;
+const ARCHIVE_ROW_MAX = 6;
+const ARCHIVE_ROW_RISE = 6;
 // The backend accepts one day back (ROUTE_MAX_PAST_DAYS). A record older than
 // that can only ever be refused, so it is never asked for. Kept slightly under
 // two days so a local date one side of the server's UTC date still qualifies.
@@ -1055,9 +1196,20 @@ function SavedFlightRow({
   onPress,
   onUnsave,
   now,
-}: { flight: SavedFlight; onPress: () => void; onUnsave: () => void; now: number }) {
+  roomy,
+}: {
+  flight: SavedFlight;
+  onPress: () => void;
+  onUnsave: () => void;
+  now: number;
+  // Set only inside a sheet. The main list is a dense column against the page
+  // and reads correctly at 13; the same density inside a panel with 20 of
+  // padding on every side looks cramped against its own container. One row
+  // component, two rhythms, chosen by the caller that knows which it is in.
+  roomy?: boolean;
+}) {
   return (
-    <TouchableOpacity style={sf.row} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={[sf.row, roomy && sf.rowRoomy]} onPress={onPress} activeOpacity={0.7}>
       <View style={sf.line1}>
         <Text style={sf.number}>{flight.flightNumber}</Text>
         {/* Cities, not codes. "Bangalore → Delhi" says where the flight goes to
@@ -1101,6 +1253,8 @@ const sf = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },
+  // Applied after sf.row, so it is this paddingVertical that survives.
+  rowRoomy: { paddingVertical: 18 },
   line1: { flexDirection: 'row', alignItems: 'center' },
   number: { fontSize: 13, color: '#ffffff', fontFamily: MONO_BOLD },
   // Deliberately outside the type scale: this is a hit target, not text.
@@ -1113,12 +1267,16 @@ const sf = StyleSheet.create({
     fontFamily: MONO, fontSize: 24, color: 'rgba(226,226,226,0.75)',
     marginRight: 8, marginBottom: 10,
   },
+  // marginBottom matches detailsTitle's, so the icon shares the heading's
+  // baseline. The collapsed line has no such offset, hence the second style.
   archiveBtn: { marginBottom: 10 },
+  archiveBtnCollapsed: { paddingLeft: 12 },
   noneActive: {
     fontSize: 11, color: 'rgba(226,226,226,0.4)', fontFamily: SANS,
     paddingVertical: 10,
   },
-  collapsedLine: { paddingVertical: 10 },
+  collapsedRow: { flexDirection: 'row', alignItems: 'center' },
+  collapsedLine: { paddingVertical: 10, flex: 1 },
   collapsedNumber: { fontFamily: MONO, fontSize: 11, color: '#ffffff' },
   collapsedDim: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)' },
   route: { fontSize: 13, color: 'rgba(226,226,226,0.6)', fontFamily: MONO, flex: 1, marginLeft: 12 },
@@ -2489,6 +2647,28 @@ export default function Index() {
   // `pinned` only suppresses the in-row "fastest" tag, because the heading
   // directly above the pinned row already says the word. Same component, same
   // layout, one boolean — there is no second row renderer.
+  // ONE definition, rendered in both the collapsed and the expanded state.
+  // The archive is not part of the saved list — it holds the flights that are
+  // no longer in it — so collapsing the list must not take it away too. It keeps
+  // the same place either way: the right-hand end of the section's top line.
+  const archiveButton = (style: any) => (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => setArchiveOpen(true)}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      style={style}
+    >
+      {/* An archive box: lid, body, and the pull on its front. Same 18x18 /
+          24-viewBox / 1.75-stroke treatment as the bookmark on the flight
+          card. */}
+      <Svg width={18} height={18} viewBox="0 0 24 24">
+        <Path d="M3 5h18v4H3z" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
+        <Path d="M5 9v10h14V9" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
+        <Path d="M10 13h4" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
+      </Svg>
+    </TouchableOpacity>
+  );
+
   const routeRow = (r: RouteFlight, pinned = false) => {
     const ms = routeDurationMs(r);
     const origin = routeResult?.origin ?? '';
@@ -2789,6 +2969,26 @@ export default function Index() {
       const d = new Date(prev.y, prev.m + delta, 1);
       return { y: d.getFullYear(), m: d.getMonth() };
     });
+  };
+
+  // The stagger, read off the sheet's own value. Clamped at both ends so a row
+  // is fully hidden before its slot and fully settled after it, and so the
+  // input range is always strictly increasing: the last slot ends at 0.87.
+  const archiveRowStyle = (i: number) => {
+    const start = Math.min(i, ARCHIVE_ROW_MAX) * ARCHIVE_ROW_STAGGER;
+    const end = start + ARCHIVE_ROW_FADE;
+    return {
+      opacity: archiveAnim.interpolate({
+        inputRange: [start, end], outputRange: [0, 1], extrapolate: 'clamp' as const,
+      }),
+      transform: [{
+        translateY: archiveAnim.interpolate({
+          inputRange: [start, end],
+          outputRange: [ARCHIVE_ROW_RISE, 0],
+          extrapolate: 'clamp' as const,
+        }),
+      }],
+    };
   };
 
   // Unmounts only once both layers have left, exactly as closeRouteCal does.
@@ -3260,13 +3460,16 @@ export default function Index() {
       {/* ── DATE CALENDAR ── */}
       <Modal visible={archiveOpen} transparent animationType="none" onRequestClose={closeArchive}>
         <Pressable style={s.routeCalScrim} onPress={closeArchive}>
+          {/* The dim alone, full screen and unblurred. The blur lives inside the
+              sheet now, so outside it the page stays sharp. */}
           <Animated.View
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: archiveScrimAnim }]}
           />
+          {/* Unchanged: the same rise, scale and fade the calendar sheet uses. */}
           <Animated.View
             style={[
-              s.routeCalSheet,
+              s.sheetShell,
               s.archiveSheet,
               {
                 opacity: archiveAnim,
@@ -3277,23 +3480,78 @@ export default function Index() {
               },
             ]}
           >
+            {/* THE GLASS. Three layers, in this order and no other: the blur
+                samples what is behind the sheet, the tint darkens the result,
+                and the hairline draws the edge. The first two are clipped by
+                the shell's overflow to the 16pt radius, so the blur stops
+                exactly where the panel does; the third carries its own matching
+                radius and lands on that same edge.
+
+                dimezisBlurView is not optional on Android. expo-blur's own
+                default is 'none', which paints a flat colour and no blur at
+                all — verified in the installed package, not assumed. */}
+            <BlurView
+              intensity={SHEET_BLUR}
+              tint="systemChromeMaterialDark"
+              experimentalBlurMethod="dimezisBlurView"
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <View style={[StyleSheet.absoluteFill, s.sheetTint]} pointerEvents="none" />
+            <View style={s.sheetEdge} pointerEvents="none" />
             {/* Swallows the tap so the scrim's dismiss does not fire through. */}
-            <Pressable>
-              <Text style={s.archiveTitle}>{'Archives'}</Text>
+            <Pressable style={[s.sheetBody, s.sheetBodyFill]}>
+              <View style={s.sheetHead}>
+                {/* Exactly the close button's width, so the title centres on the
+                    sheet rather than on whatever space is left beside it. */}
+                <View style={s.sheetHeadSpacer} />
+                <Text style={s.sheetTitle}>{'Archives'}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={closeArchive}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={s.sheetClose}
+                >
+                  {/* The app's own close X, character for character: the same
+                      20pt box, the same 5..19 span, the same weight, cap and
+                      red the calendar sheet and the flight card already use.
+                      The ring it used to sit in is gone — nothing else in the
+                      file outlines an icon, and it was the outline rather than
+                      the glyph that made this control look borrowed. */}
+                  <Svg width={20} height={20} viewBox="0 0 24 24">
+                    <Path
+                      d="M19 5 5 19"
+                      fill="none"
+                      stroke="rgba(248,113,113,0.55)"
+                      strokeWidth={1.75}
+                      strokeLinecap="round"
+                    />
+                    <Path
+                      d="M5 5l14 14"
+                      fill="none"
+                      stroke="rgba(248,113,113,0.55)"
+                      strokeWidth={1.75}
+                      strokeLinecap="round"
+                    />
+                  </Svg>
+                </TouchableOpacity>
+              </View>
               {archivedSaved.length === 0 ? (
                 <Text style={s.archiveEmpty}>
                   {'Nothing here yet. A flight moves in a few hours after it lands.'}
                 </Text>
               ) : (
                 <ScrollView style={s.archiveList} showsVerticalScrollIndicator={false}>
-                  {archivedSaved.map(f => (
-                    <SavedFlightRow
-                      key={f.id}
-                      flight={f}
-                      now={now}
-                      onPress={() => { closeArchive(); renderSavedFlight(f); }}
-                      onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
-                    />
+                  {archivedSaved.map((f, i) => (
+                    <Animated.View key={f.id} style={archiveRowStyle(i)}>
+                      <SavedFlightRow
+                        flight={f}
+                        now={now}
+                        roomy
+                        onPress={() => { closeArchive(); renderSavedFlight(f); }}
+                        onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                      />
+                    </Animated.View>
                   ))}
                 </ScrollView>
               )}
@@ -3306,14 +3564,17 @@ export default function Index() {
         <Pressable style={s.routeCalScrim} onPress={closeRouteCal}>
           {/* The dim is its own layer so it can fade on its own curve. Folding it
               into the sheet's value would drag the whole backdrop through the
-              sheet's travel and scale. */}
+              sheet's travel and scale.
+
+              Full screen, unblurred, and identical to the archive sheet's: the
+              blur belongs to the panel, not to the backdrop. */}
           <Animated.View
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: routeCalScrimAnim }]}
           />
           <Animated.View
             style={[
-              s.routeCalSheet,
+              s.sheetShell,
               {
                 opacity: routeCalAnim,
                 transform: [
@@ -3323,7 +3584,18 @@ export default function Index() {
               },
             ]}
           >
-            <Pressable>
+            {/* The same three layers, in the same order, as the archive sheet.
+                Two centred sheets, one treatment. */}
+            <BlurView
+              intensity={SHEET_BLUR}
+              tint="systemChromeMaterialDark"
+              experimentalBlurMethod="dimezisBlurView"
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <View style={[StyleSheet.absoluteFill, s.sheetTint]} pointerEvents="none" />
+            <View style={s.sheetEdge} pointerEvents="none" />
+            <Pressable style={s.sheetBody}>
               <View style={s.routeCalNav}>
                 {/* Month stepping is one group, so the close control can hold the
                     right edge on its own. */}
@@ -3563,6 +3835,7 @@ export default function Index() {
                   reads sortedSaved[0]. Falling through to the expanded branch
                   keeps the heading — and the way into the archive — reachable. */}
               {savedCollapsed && sortedSaved.length > 0 ? (
+                <View style={sf.collapsedRow}>
                 <TouchableOpacity
                   style={sf.collapsedLine}
                   activeOpacity={0.7}
@@ -3578,6 +3851,8 @@ export default function Index() {
                     )}
                   </Text>
                 </TouchableOpacity>
+                {archiveButton(sf.archiveBtnCollapsed)}
+                </View>
               ) : (
                 <>
                   <View style={sf.headingRow}>
@@ -3595,21 +3870,7 @@ export default function Index() {
                       <Text style={sf.chevronLeft}>{'\u25BE'}</Text>
                       <Text style={s.detailsTitle}>{'saved flights'}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => setArchiveOpen(true)}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      style={sf.archiveBtn}
-                    >
-                      {/* An archive box: lid, body, and the pull on its front.
-                          Same 18x18 / 24-viewBox / 1.75-stroke treatment as the
-                          bookmark on the flight card. */}
-                      <Svg width={18} height={18} viewBox="0 0 24 24">
-                        <Path d="M3 5h18v4H3z" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
-                        <Path d="M5 9v10h14V9" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
-                        <Path d="M10 13h4" fill="none" stroke={ARCHIVE_ICON} strokeWidth={1.75} />
-                      </Svg>
-                    </TouchableOpacity>
+                    {archiveButton(sf.archiveBtn)}
                   </View>
                   {sortedSaved.length === 0 ? (
                     <Text style={sf.noneActive}>
@@ -4272,24 +4533,114 @@ const s = StyleSheet.create({
     flex: 1,
     justifyContent: "center", paddingHorizontal: 16,
   },
-  routeCalDim: { backgroundColor: "rgba(0,0,0,0.72)" },
-  // Borrows routeCalSheet wholesale and only bounds its height: the list is
-  // unbounded and the sheet must not grow past the screen.
-  archiveSheet: { maxHeight: "78%" },
-  archiveTitle: {
-    fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD,
-    textAlign: "center", marginBottom: 14,
+  // 0.55. It went to 0.88 to do a job that was not its own: with nothing
+  // blurring the page, only brute darkness could stop the text behind competing
+  // with the text in front, and the result was a black rectangle on a black
+  // screen. The blur does that job properly now, so the scrim can go back to
+  // what a scrim is for — pushing one plane behind another — and the page is
+  // allowed to be visible again.
+  //
+  // 0.40, down from 0.55, and it is the panel this is for rather than the page.
+  //
+  // A subtractive panel can only be as dark as the light behind it lets it be.
+  // At 0.55 the page outside sat at rgb(2.25) and the panel at rgb(1.13): the
+  // panel was removing 50% of nothing, so there was nothing to see. Turning the
+  // scrim DOWN puts light back outside for the panel to take away.
+  //
+  // Where the page is empty this is bounded and stays small — even at no scrim
+  // at all the gap tops out at 2.5 levels, because the page itself is only
+  // rgb(5). Where the page has content it is the whole effect: a line of white
+  // text outside goes from rgb(102) to rgb(138) while the same line inside,
+  // blurred and taken through the tint and the fill, stays near rgb(23).
+  //
+  // An earlier note here claimed 0.45 would "start competing with the sheet".
+  // That was asserted, not worked out. At 0.40 the page's text renders at
+  // rgb(138) against the sheet's own rgb(255) — 25% of its relative luminance,
+  // which recedes clearly. 0.30 would be rgb(161) and 35%, which would not.
+  //
+  // It is also NOT deleted in favour of the blur's own tint. This layer is the
+  // one whose value is known exactly on every platform; if a device renders no
+  // blur at all, this is what still separates the sheet from the page.
+  //
+  // Shared with the calendar sheet, deliberately: both are centred sheets that
+  // take over the screen, and a scrim that means one thing on one and another
+  // on the other would be a bug in waiting. The dropdown panels keep their own
+  // routePanelDim at 0.35, which is light on purpose.
+  routeCalDim: { backgroundColor: "rgba(0,0,0,0.40)" },
+  // THE SHELL. Deliberately generic: the dropdown panels take this same
+  // treatment by swapping routePanel's background, border and radius for these
+  // and putting the same BlurView and sheetTint in behind their content.
+  // Nothing here knows anything about archives.
+  sheetShell: {
+    borderRadius: SHEET_RADIUS,
+    // Clips the blur — and the rows — to the radius. This is now doing real
+    // work: it is what confines the blur to the panel's own rounded rectangle
+    // instead of the whole screen.
+    overflow: "hidden",
+    // NO backgroundColor. The blur samples what is drawn behind it, and an
+    // ancestor's background counts as behind it — a fill here would be blurred
+    // into the result and flatten it. The fill is a sibling drawn AFTER the
+    // blur instead: see sheetTint.
+    //
+    // NO border and no stroke. The overflow above is the whole edge treatment:
+    // it is what stops the blur at the radius, and that stop is what the eye
+    // reads as the boundary. See SHEET_RADIUS.
   },
+  // Over the blur, under the content. Order in the tree is what makes this a
+  // tint on the blur rather than something the blur eats.
+  sheetTint: { backgroundColor: SHEET_FILL },
+  // Fills the shell exactly and carries the border, so the shell's own layout
+  // is untouched. Its radius MATCHES the shell's, which is what puts the line on
+  // the shell's edge rather than floating inside it, and what makes the corners
+  // curve instead of meeting.
+  sheetEdge: {
+    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 1, borderColor: SHEET_EDGE, borderRadius: SHEET_RADIUS,
+  },
+  // Padding only.
+  sheetBody: { padding: 20 },
+  // FILL, because there is now a height to fill. The shell has a definite
+  // minimum, so the body takes all of it and the list takes what is left after
+  // the header — which is what bounds the list, and an unbounded ScrollView
+  // does not scroll. Only a sheet with a fixed height may use this: flex: 1 in
+  // an auto-height parent collapses to nothing.
+  sheetBodyFill: { flex: 1 },
+  // More above than below. sheetBody's 20 put the title the same distance from
+  // the top edge as the rule was from the title, so the header read as pinned
+  // to the ceiling rather than seated under it. 8 more above makes it 28 and 18.
+  sheetHead: {
+    flexDirection: "row", alignItems: "center",
+    marginTop: 8,
+    paddingBottom: 14, marginBottom: 4,
+    borderBottomWidth: 1, borderBottomColor: SHEET_RULE,
+  },
+  // The close button's LAYOUT width: 20pt glyph + 4pt padding each side, less
+  // the 4pt it outdents. Matching it exactly is what centres the title on the
+  // sheet rather than on the space left beside the button.
+  sheetHeadSpacer: { width: 24 },
+  sheetTitle: {
+    flex: 1, fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD,
+    textAlign: "center",
+  },
+  // Identical to routeCalClose. The padding is the touch target the ring used
+  // to imply, and the negative margin lets the glyph sit level with the edge of
+  // the content rather than one padding-width inside it.
+  sheetClose: { paddingVertical: 4, paddingHorizontal: 4, marginRight: -4 },
+  // A FLOOR AND A CEILING. More than half the screen whatever is in it, and
+  // never so tall that the scrim disappears at both ends.
+  archiveSheet: { minHeight: "62%", maxHeight: "82%" },
   archiveEmpty: {
     fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS,
     textAlign: "center", lineHeight: 18, paddingVertical: 12,
   },
-  archiveList: { marginHorizontal: -16, paddingHorizontal: 16 },
-  routeCalSheet: {
-    backgroundColor: "#050505",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 4, padding: 16,
-  },
+  // Negative margin then equal padding, so a row's hairline runs the full width
+  // of the sheet while its text still lines up with the heading above it.
+  //
+  // flex: 1 completes the chain from sheetBodyFill. It is what gives the list a
+  // definite height — everything below the header — and a ScrollView only
+  // scrolls once it has one. Without it the list would run past the bottom of
+  // the sheet at the ceiling and simply be clipped.
+  archiveList: { marginHorizontal: -20, paddingHorizontal: 20, flex: 1 },
   routeCalNav: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginBottom: 14,
