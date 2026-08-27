@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Stack } from "expo-router";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -25,7 +26,14 @@ export default function Layout() {
 
   if (!fontsLoaded && !fontError) return null;
 
+  // REQUIRED for any gesture to fire, and it was not here before because
+  // nothing used one. react-native-gesture-handler needs this at the root of
+  // the tree; expo-router does not mount it for you. Without it the swipe
+  // actions on the saved rows fail silently on Android rather than erroring,
+  // which is the worst way for this to be wrong.
   return (
-    <Stack screenOptions={{ headerShown: false }} />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </GestureHandlerRootView>
   );
 }

@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -41,6 +41,20 @@ export type SavedFlight = {
   savedAt: number;
   updatedAt: number;
   landedAt: number | null;
+  // WHEN THE USER ARCHIVED IT BY HAND, or null if they never did.
+  //
+  // The archive is otherwise derived: index.tsx calls a flight archived once its
+  // arrival time is six hours past, which needs nothing stored because the
+  // arrival time and the clock are both already here. That covers every flight
+  // that actually flew, and none that has not — so archiving something early,
+  // which is a decision rather than a fact, is the one thing the derivation
+  // cannot express. Hence a field, and hence a migration.
+  //
+  // A TIMESTAMP rather than a boolean, for no cost: it answers "is it archived"
+  // exactly as well, and it is the only record of when the decision was made.
+  // Restoring clears it back to null, which returns the flight to the
+  // derivation's judgement rather than to the opposite decision.
+  archivedAt: number | null;
   schemaVersion: number;
 };
 
@@ -113,6 +127,9 @@ export function savedFlightFromApi(data: any): SavedFlight {
     savedAt: now,
     updatedAt: now,
     landedAt: status === 'landed' ? now : null,
+    // A fresh lookup is never manually archived. touchSavedFlight carries the
+    // stored value forward, so a refresh cannot silently un-archive anything.
+    archivedAt: null,
     schemaVersion: SCHEMA_VERSION,
   };
 }
@@ -216,6 +233,13 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
+  // Absent on every record written before v8. null is the correct value for all
+  // of them: nothing was ever archived by hand, because there was no way to.
+  if (version < 8 && flight.archivedAt === undefined) {
+    flight.archivedAt = null;
+    changed = true;
+  }
+
   // AFTER the version blocks, not before them: v7 may have just supplied the
   // date the id is built from, and the id has to be derived from the record as
   // it now stands rather than as it arrived.
@@ -225,8 +249,8 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
-  if (version !== 7) {
-    flight.schemaVersion = 7;
+  if (version !== 8) {
+    flight.schemaVersion = 8;
     changed = true;
   }
 
@@ -395,6 +419,26 @@ export async function unsaveFlight(email: string | null, id: string): Promise<Sa
   return next;
 }
 
+// Archives a flight by hand, or restores it. No-op if not saved.
+//
+// null restores, and restoring is not the opposite of archiving: it hands the
+// flight back to the arrival-time rule rather than forcing it to stay out of
+// the archive. A flight that genuinely flew goes straight back in, which is
+// correct — the user can only overrule the rule early, not repeal it.
+export async function setFlightArchived(
+  email: string | null,
+  id: string,
+  archivedAt: number | null,
+): Promise<SavedFlight[]> {
+  const flights = await readKey(keyFor(email));
+  const idx = flights.findIndex(f => f.id === id);
+  if (idx < 0) return flights;
+  const next = [...flights];
+  next[idx] = { ...flights[idx], archivedAt };
+  await writeKey(keyFor(email), next);
+  return next;
+}
+
 // Updates a stored record after a fresh lookup. No-op if not saved.
 //
 // targetId names the record to update, and defaults to the fresh record's own
@@ -417,7 +461,10 @@ export async function touchSavedFlight(
   const landedAt = flight.status === 'landed'
     ? (prev.landedAt ?? flight.landedAt ?? Date.now())
     : null;
-  next[idx] = { ...flight, savedAt: prev.savedAt, landedAt };
+  // archivedAt joins savedAt and landedAt as a field the DEVICE owns and the
+  // provider knows nothing about. A refresh replaces the flight's data, never
+  // the user's decision about it.
+  next[idx] = { ...flight, savedAt: prev.savedAt, landedAt, archivedAt: prev.archivedAt ?? null };
   await writeKey(keyFor(email), next);
   return next;
 }

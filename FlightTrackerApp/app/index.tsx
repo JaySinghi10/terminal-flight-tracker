@@ -1,6 +1,20 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import Svg, { Path, Rect, G } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+// The Reanimated one, deliberately. The root export's Swipeable is marked
+// "@deprecated use Reanimated version of Swipeable instead" in the installed
+// package's own types; this is the current API in 2.28.
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+// Aliased, because this file's Animated is React Native's and both are in use:
+// every existing animation here drives RN's own Animated, and only the swipe
+// actions read a Reanimated shared value. react-native-reanimated is already a
+// dependency — gesture-handler's Swipeable is built on it.
+import Reanimated, {
+  useAnimatedStyle, useAnimatedReaction, useDerivedValue, useSharedValue,
+  interpolate, runOnJS, Extrapolation, type SharedValue,
+  withTiming, withSequence, withDelay, Easing as REasing,
+} from 'react-native-reanimated';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
@@ -32,6 +46,7 @@ import {
   saveFlight,
   unsaveFlight,
   touchSavedFlight,
+  setFlightArchived,
   savedFlightFromApi,
   makeFlightId,
   ISO_DAY_RE,
@@ -988,6 +1003,31 @@ function clock24(iso: string | null, fallback: string): string {
 // renders this dash elsewhere in the file at MONO_BOLD.
 const ROUTE_NO_TIME = '\u2014';
 
+// HOW MANY MISSING ARRIVALS ARE WORTH BUYING, per search. Each one is a
+// flight-number lookup at 2 units, so this caps a search's extra spend at 6.
+//
+// Counted from the boards already on disk rather than guessed: whole-airport
+// departure boards carry no arrival time on 1.6% to 6.3% of rows (6/384, 6/375,
+// 18/394, 10/159). A route search filters that to at most 25 rows for one
+// destination, and of eighteen cached result envelopes seventeen had none at
+// all and one had a single row. So the ordinary answer is zero, sometimes one.
+//
+// 3 covers every case observed across about 1,300 rows with room to spare. Past
+// that the board is not merely unlucky, it is anomalous — feed missing on the
+// provider's side, most likely — and that is precisely when quietly spending 20
+// units chasing it is the wrong thing to do. The extra rows keep their dash.
+const ROUTE_FILL_MAX = 3;
+
+// The local calendar date a row DEPARTS on, read from its own ISO rather than
+// from the board's date: an undated board is a rolling twelve hours, so its late
+// rows belong to tomorrow. Module scope because the fill effect needs it before
+// the component's own copy is in scope, and both must agree — the date decides
+// WHICH instance of a flight number gets fetched.
+function routeDayOf(r: { departure_scheduled_iso: string | null }): string | null {
+  const d = (r.departure_scheduled_iso ?? '').slice(0, 10);
+  return ISO_DAY_RE.test(d) ? d : null;
+}
+
 function trimAirportName(name: string) {
   if (typeof name !== 'string') return '';
   const i = name.indexOf(' (');
@@ -1059,6 +1099,20 @@ function InfoRow({ label, value, sans }: { label: string; value: string; sans?: 
   );
 }
 
+// DELIBERATELY STILL FLAT, while the saved, archive and route rows became
+// cards.
+//
+// The difference is what a row IS in each place. A saved row or a route row is
+// one flight — a separate object, independently tappable, saveable, swipeable —
+// and cards are how a list says "these are separate things". An InfoRow is one
+// field of ONE flight: Terminal, Gate, Baggage Belt. They are a specification
+// table, and the hairline between them separates data within a single object
+// rather than one object from the next.
+//
+// Carding them would also nest a card in a card, since these already sit inside
+// the flight card, and turn a dense readable table into a dozen floating
+// blocks — twelve gaps of 8pt added to a section that is read by scanning down
+// the labels.
 const ir = StyleSheet.create({
   row: {
     flexDirection: "row",
@@ -1084,17 +1138,51 @@ type LineSeg = { text: string; color: string };
 // The backend's *_iso fields carry a bogus "+00:00"; the value is the airport's
 // LOCAL wall clock. Strip the offset, treat as naive, interpret in the IANA zone.
 // Never use `new Date(iso)` on these directly.
+// ONE FORMATTER PER TIMEZONE, FOREVER.
+//
+// Constructing an Intl.DateTimeFormat builds an ICU formatter, which is among
+// the most expensive routine operations in JavaScript — and zonedIsoToTs built
+// a fresh one on every single call. It is called from arrivalTs, hasFlown,
+// savedSortKey, flightLineSegments and delaySegment, which between them run
+// once per saved flight in each of two filters, twice per comparison in each of
+// two sorts, and up to three times per rendered row. Twenty saved flights come
+// to something on the order of two to four hundred constructions PER RENDER of
+// the screen — tens of milliseconds — and every one of them was for one of a
+// handful of distinct timezone strings.
+//
+// A Map keyed on the timezone reduces that to one construction per distinct
+// zone for the life of the process, and a hash lookup thereafter.
+//
+// Failures are cached too, as null. An invalid timezone throws at construction;
+// without storing the miss, a record carrying a bad zone would pay the throw on
+// every call forever, which is the expensive case made permanent.
+const TZ_FORMATTERS = new Map<string, Intl.DateTimeFormat | null>();
+
+function tzFormatter(timeZone: string): Intl.DateTimeFormat | null {
+  if (TZ_FORMATTERS.has(timeZone)) return TZ_FORMATTERS.get(timeZone) ?? null;
+  let made: Intl.DateTimeFormat | null = null;
+  try {
+    made = new Intl.DateTimeFormat('en-US', {
+      timeZone, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  } catch {
+    made = null;
+  }
+  TZ_FORMATTERS.set(timeZone, made);
+  return made;
+}
+
 function zonedIsoToTs(iso: string | null, timeZone: string | null): number | null {
   if (!iso || !timeZone) return null;
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return null;
   const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
+  const fmt = tzFormatter(timeZone);
+  if (fmt === null) return null;
   try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone, hour12: false,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    }).formatToParts(new Date(guess));
+    const parts = fmt.formatToParts(new Date(guess));
     const p: Record<string, string> = {};
     for (const part of parts) p[part.type] = part.value;
     const asZoned = Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, +p.second);
@@ -1227,10 +1315,447 @@ function arrivalTs(f: SavedFlight): number | null {
 // A record with no arrival ISO at all is NEVER archived. Those are pre-v3
 // records; guessing that they are old enough to file away would hide a flight
 // the user saved on purpose.
+// HAS IT ACTUALLY FLOWN, which is a different question from whether it is in
+// the archive: the archive waits six hours after arrival, this is true the
+// moment the arrival time passes.
+//
+// Read from the CLOCK, never from f.status. A saved record's status only ever
+// changes when a refresh returns a new one, and refreshes stop at 36 hours
+// past — before that, the backend has no record of a flight that has landed and
+// been cleared. So an archived flight's stored status is frozen at whatever it
+// was the last time anyone asked, which for anything saved in advance is
+// "scheduled" forever. The arrival time is the only thing here that is still
+// true a week later.
+function hasFlown(f: SavedFlight, now: number): boolean {
+  const ts = arrivalTs(f);
+  return ts !== null && ts <= now;
+}
+
 function isArchived(f: SavedFlight, now: number): boolean {
+  // The hand overrules the clock, and only in one direction: archivedAt can put
+  // a flight in the archive early, and clearing it hands the flight back to the
+  // rule rather than pinning it out. See setFlightArchived.
+  if (f.archivedAt !== null) return true;
   const ts = arrivalTs(f);
   return ts !== null && now - ts > ARCHIVE_AFTER_ARRIVAL_MS;
 }
+
+// ── SWIPE ACTIONS ────────────────────────────────────────────────────────────
+//
+// A FIXED 52 x 52 SQUARE, and the fix for buttons that looked squashed and
+// misshapen at rest.
+//
+// The cause was that the button had no height of its own. swipeGroup carried
+// alignItems: 'stretch', so every button took the height of the panel it sat
+// in, and the panel is absoluteFillObject over the Swipeable's container. Three
+// consequences, all of them visible:
+//
+//   1. The height came from the ROW, and rows are content-driven. A saved row
+//      is about 62pt and an archive row about 72, so the same button rendered
+//      roughly 58pt tall in one list and 68 in the other — against a fixed 66pt
+//      width, which flips it from wider-than-tall to taller-than-wide between
+//      two lists showing the same actions.
+//   2. RADIUS 18 then reads differently on each. On a 58pt button it is a soft
+//      rectangle; on a 40pt one — a row with a short second line — it is nearly
+//      a capsule. The radius never changed; the shape under it did.
+//   3. The container includes sf.row's marginBottom of 8, since the card gap is
+//      inside the row's own box. So the panel was 8pt taller than the card and
+//      the button was centred over card-plus-gap, sitting 4pt BELOW the card's
+//      centre on every row.
+//
+// So: a fixed square, centred, and the group inset by the card's gap so that
+// "centred" means centred on the CARD. The shape is now a decision rather than
+// a by-product of whatever the row happens to contain.
+//
+// 52 because the glyph is 20 and 16pt of clearance on each side is what makes a
+// tap target rather than an icon with a box drawn round it. It also clears the
+// 44pt minimum comfortably. With the label gone there is nothing else to fit.
+//
+// The slot returns to 64: 52 of button and 6 of margin either side, which is a
+// 12pt gutter between neighbours and a 6pt gap to the card. The panel is 128pt
+// again, so the drag costs 147pt of finger to open and 221pt to arm the
+// expansion, where the 72pt slots cost 166 and 202. Nineteen points more to
+// arm, because a narrower panel leaves more of the distance to the overshoot's
+// firmer friction; overshootFriction is the knob if that reads as too far.
+// ── CARDS ────────────────────────────────────────────────────────────────────
+//
+// A row was a band of text with a hairline under it. It is now a shape.
+//
+// FILL rgba(255,255,255,0.03), which is already in the file as the pill
+// triggers' background and composites over the page to about rgb(12). Seven
+// levels above the page: enough to read as a raised surface, far too little to
+// compete with anything written on it. The hairline goes with it — a card that
+// is a distinct shape does not also need a line telling you where it ends.
+//
+// RADIUS 12, and the three radii in the app now read as a nesting order. The
+// sheets are 16 because they are the largest shapes and hold everything else. A
+// card is 12: smaller than its container, which is what stops a card inside a
+// sheet looking like a sheet. The swipe buttons are 18, larger than either
+// despite being the smallest things on screen, because they are CONTROLS rather
+// than containers and roundness is how a control says so.
+//
+// GAP 8 between cards, which replaces the separator rather than adding to it.
+//
+// HEIGHT is unchanged, and slightly less. Every paddingVertical is exactly what
+// it was — 13 on a saved row, 18 on an archive row and a route row — and the
+// 1pt border has gone, so a row is 1pt SHORTER than before. The list is taller,
+// but by the gaps between rows rather than by anything inside them.
+//
+// PADDING 14 horizontally, which the rows did not have at all: content used to
+// run to the page's own margin. This is the one number that needed checking
+// against the route rows, whose whole layout depends on the departure times
+// starting at one x and the arrival times ending at another. It survives
+// because every row takes the SAME padding, including the pinned "fastest" row
+// above the list — the column moves inward by 14 as a block and stays a column.
+// What does change is that the times no longer align with the group headings
+// above them, which sit at the page margin. That is correct: the heading labels
+// the cards, it is not one of them.
+const CARD_FILL = 'rgba(255,255,255,0.03)';
+const CARD_RADIUS = 12;
+const CARD_GAP = 8;
+const CARD_PAD = 14;
+
+const SWIPE_SIZE = 52;
+const SWIPE_MARGIN = 6;
+const SWIPE_W = SWIPE_SIZE + SWIPE_MARGIN * 2;
+// 18 on a 52pt square, which is now a fixed relationship rather than one that
+// depended on the row. Short of 26, which would be a circle: a circle reads as
+// a floating badge, and these are buttons in a row.
+const SWIPE_RADIUS = 18;
+
+// One button: a filled rounded rectangle with a glyph on it, and nothing else.
+//
+// THE LABEL IS GONE. It was 11pt of SANS under the icon, and it was doing two
+// things badly: forcing the button wide enough to fit the longest word in the
+// set, and putting a second element in a shape too small to hold two things
+// comfortably. The icons are the same five the rest of the app already uses for
+// these actions, and the gesture that reveals them is itself the explanation.
+//
+// `label` survives as the accessibility name, which is where the word was
+// always doing its real work — a screen reader has no icon to look at.
+//
+// `colour` has gone with the text. The glyph strokes take their colour from
+// ICON_* at module scope, which is where the fill and its ink are paired.
+//
+// `grow` is set only by ExpandAction, and switches the button from its fixed
+// square to filling whatever width the expanding box has reached.
+//
+// `progress` is the library's own shared value for this panel: 0 closed, 1 open,
+// and it is driven by the finger during the drag and by the release spring
+// after it. Reading it here is what makes the contents arrive WITH the panel
+// rather than sitting fully formed inside a widening window.
+//
+// Opacity leads the scale, on a bent curve: nothing for the first fifth of the
+// travel, then up to full by the time the panel is open. A button that fades in
+// from the very first pixel reads as a smear at the edge of the row; one that
+// waits until the panel is unmistakably being opened reads as a reveal.
+//
+// The scale was removed for one round as a probe. The theory was that animating
+// a transform over react-native-svg forces a per-frame re-composite and was
+// what made the drag feel rough. Taking it out changed nothing, so the theory
+// was wrong and the scale is back exactly as it was. Recorded here so nobody
+// removes it again for the same reason.
+function SwipeAction({
+  label, fill, progress, grow: growSide, onPress, children,
+}: {
+  label: string; fill: string; progress: SharedValue<number>;
+  grow?: 'left' | 'right';
+  onPress: () => void; children: React.ReactNode;
+}) {
+  const grow = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.2, 1], [0, 0, 1], Extrapolation.CLAMP),
+    transform: [
+      { scale: interpolate(progress.value, [0, 1], [0.72, 1], Extrapolation.CLAMP) },
+    ],
+  }));
+  return (
+    <TouchableOpacity
+      style={[
+        sf.swipeBtn,
+        { backgroundColor: fill },
+        growSide === undefined
+          ? sf.swipeBtnFixed
+          : growSide === 'right' ? sf.swipeBtnGrowRight : sf.swipeBtnGrowLeft,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Reanimated.View style={[sf.swipeInner, grow]}>
+        <Svg width={20} height={20} viewBox="0 0 24 24">{children}</Svg>
+      </Reanimated.View>
+    </TouchableOpacity>
+  );
+}
+
+// A SETTLE RATHER THAN A SNAP, replacing the library's release spring.
+//
+// Its default is mass 2, damping 1000, stiffness 700 — a damping ratio of about
+// 13, which is so far overdamped that the row does not spring at all, it
+// decelerates. This is mass 0.8, damping 26, stiffness 240, a ratio of 0.94:
+// just inside critical, so it arrives quickly, slows into position and stops
+// without ever crossing it. overshootClamping stays on as the guarantee.
+// FULL-SWIPE EXPANSION, and none of it comes from the library.
+//
+// ReanimatedSwipeable has no expansion of any kind. Its leftThreshold and
+// rightThreshold sound like this and are not: they only decide whether letting
+// go OPENS the panel or lets it shut, and default to half the panel's width.
+// What it does give is everything needed to build it — renderRightActions is
+// handed (progress, translation, swipeableMethods), where translation is the
+// row's live offset in points, and onSwipeableWillOpen fires on release.
+//
+// So: watch translation, expand past a threshold, and intercept the release.
+//
+// 0.5 OF THE ROW WIDTH. Proportional rather than absolute so it holds on any
+// screen, and a half because that is where the gesture stops being ambiguous:
+// the panel itself is 128pt of a 320pt row, so the threshold sits a clear 32pt
+// beyond a fully open panel — far enough that nobody reaches it while merely
+// opening the actions, close enough to reach without a second stroke.
+const EXPAND_AT = 0.5;
+
+
+// THE TAP AT THE THRESHOLD, in both directions.
+//
+// Medium, and the same in both. It is one boundary, so arming and disarming
+// should feel identical — a different weight on the way back would read as two
+// different events rather than one line being crossed twice. Light is the
+// obvious alternative and is the right choice on iOS, but it is close to
+// imperceptible on a good deal of Android hardware, and a threshold you cannot
+// feel is a threshold that is not there.
+//
+// Fired and forgotten: impactAsync returns a promise nobody waits on, and a
+// device without a taptic engine simply does nothing. The catch is there
+// because an unhandled rejection would be a crash over a vibration.
+const EXPAND_HAPTIC = () => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+};
+
+// The outermost action, and the only one that can expand.
+//
+// It is always the outermost by construction rather than by choice: expansion
+// belongs to whatever sits against the screen edge, and in both panels that is
+// the real action, never a placeholder. Right panel: delete. Left panel:
+// archive on the saved list, restore in the archive.
+//
+// `side` says which edge to stay pinned to as the box grows, so the glyph
+// travels with the row's leading edge instead of drifting to the middle of an
+// expanding rectangle.
+//
+// `others` is the total width of the buttons BESIDE this one in the same panel:
+// 64 where a placeholder shares the panel, 0 where this is the only action. It
+// is what stops the expansion starting before the panel is even open — see the
+// width calculation below.
+function ExpandAction({
+  side, translation, rowW, others, onCross, children,
+}: {
+  side: 'left' | 'right';
+  translation: SharedValue<number>;
+  rowW: SharedValue<number>;
+  others: number;
+  onCross: (on: boolean) => void;
+  children: React.ReactNode;
+}) {
+  // 1 past the threshold, 0 short of it. A derived value rather than state, so
+  // the whole comparison stays on the UI thread with the gesture.
+  const armed = useDerivedValue(() => {
+    const travelled = side === 'right' ? -translation.value : translation.value;
+    return rowW.value > 0 && travelled >= rowW.value * EXPAND_AT ? 1 : 0;
+  });
+
+  // THE BOX TRACKS WHAT IS REVEALED, and this is the fix for the expanded
+  // button running flush against the card.
+  //
+  // It used to animate to rowW — the whole row's width — the moment the
+  // threshold was crossed. But the row has only translated as far as the finger
+  // took it, so a box that wide ran on underneath the card: the button's inner
+  // edge, its margin and its two right-hand corners were all hidden behind the
+  // row, and what was left looked like a rectangle butted against it.
+  //
+  // The width is now exactly the strip the row has uncovered, less whatever the
+  // other buttons in the panel occupy. So the box always ends where the card
+  // begins, the button's own 6pt margin holds the gap open, and all four
+  // corners stay on screen at every point in the drag. It is a symmetrical
+  // rounded rectangle that grows, rather than a shape that is progressively
+  // eaten by the row.
+  //
+  // No withTiming: the width follows the finger directly. There is nothing to
+  // ease, because the thing it tracks is already exactly where the finger is,
+  // and on release the row's own spring carries the width home with it.
+  //
+  // The consequence worth naming: the button no longer JUMPS to full width when
+  // the threshold is crossed, it simply keeps growing. Nothing visual marks the
+  // crossing any more — the haptic does, and it is the same boundary it always
+  // was. Keeping the jump would mean filling the row, and filling the row is
+  // what leaves no gap.
+  const box = useAnimatedStyle(() => {
+    const travelled = side === 'right' ? -translation.value : translation.value;
+    return { width: Math.max(SWIPE_W, travelled - others) };
+  });
+  // The only crossing to the JS thread in the whole gesture, and it fires twice
+  // per swipe at most: once on arming, once on disarming.
+  useAnimatedReaction(
+    () => armed.value,
+    (curr, prev) => {
+      if (prev !== null && curr !== prev) runOnJS(onCross)(curr === 1);
+    },
+  );
+
+  return (
+    <Reanimated.View
+      style={[sf.swipeExpand, side === 'right' ? sf.swipeExpandRight : sf.swipeExpandLeft, box]}
+    >
+      {/* No separate tint layer any more. The button inside is itself a filled
+          shape, so growing this box grows the fill — there is nothing left to
+          fade in behind it. */}
+      {children}
+    </Reanimated.View>
+  );
+}
+
+// THE COMMIT: past the threshold the row carries on and leaves.
+//
+// 240ms and a full screen width, unchanged. The EASING is what changed, and it
+// was the whole of why this felt laggy.
+//
+// It was EASE_IN — bezier(0.4, 0, 1, 1) — on the reasoning that the row is
+// already moving and should not appear to stop first. The reasoning was right
+// and the curve was the exact opposite of it, because the exit does not act
+// alone: the library's own spring is simultaneously pulling the row BACK from
+// wherever the finger left it to the panel's 128pt, and that spring is fastest
+// at the start. Released at about 200pt, that is 72pt of retreat, and against an
+// ease-in the first frames are a stalemate:
+//
+//   t=33ms   spring back 8.3pt   exit forward 10.7pt   NET  2.4pt
+//   t=50ms   spring back 15.9    exit forward 22.8     NET  6.9
+//   t=83ms   spring back 31.4    exit forward 55.7     NET 24.3
+//
+// Two and a half points in the first two frames is not slow, it is stationary.
+// The row appears to hang at the release point and then leave, which is exactly
+// what "laggy" describes — and no amount of moving the animation between
+// threads would have touched it, because nothing was late. It was cancelled.
+//
+// out-cubic instead, which is fastest where the spring is:
+//
+//   t=33ms   spring back 8.3pt   exit forward 114.7pt  NET 106.4pt
+//
+// The row is a third of the way off the screen before the spring has taken back
+// nine points. It leaves the instant it is let go.
+const EXIT_MS = 240;
+// Reanimated's Easing, not React Native's. The two are not interchangeable: a
+// withTiming curve is evaluated on the UI thread and has to be a worklet, and
+// the file's EASE_IN and EASE_OUT are ordinary JS functions belonging to the
+// other animation system.
+const EXIT_TIMING = { duration: EXIT_MS, easing: REasing.out(REasing.cubic) } as const;
+const EXIT_BACK_TIMING = { duration: EXIT_MS, easing: REasing.out(REasing.cubic) } as const;
+
+// THE CONFIRMATION, and it REPLACES the toast rather than joining it.
+//
+// There was already one: an Animated.Text inside the flight card's header,
+// 11pt SANS, opacity only, saying "saved" or "unsaved". Its problem was where
+// it lived — inside the card block, which is not on screen when the saved list
+// is, and not on screen at all behind the archive sheet. A swipe on a row could
+// never have shown it. So the same showToast, the same call sites, the same one
+// mechanism, moved to the root and given a surface.
+//
+// 220 in, 1700 held, 260 out: about 2.2 seconds end to end, which is long
+// enough to read a flight number and a verb without becoming something waited
+// on. The old one held 900 and had four characters to carry.
+// The three steps run as ONE Reanimated sequence rather than an
+// Animated.sequence, and that is the fix rather than the driver.
+//
+// Both steps of the old one were useNativeDriver: true, so each ran on the UI
+// thread — but AnimatedImplementation's sequenceImpl chains them in JavaScript:
+// its onComplete is a JS callback that calls start() on the next step. So the
+// end of the fade-in and the end of the 1700ms hold were both JS-thread events,
+// and they arrive at the worst possible moment: right after a committed swipe,
+// when the JS thread is running a storage write and re-rendering the list. The
+// hold ran long and the fade-out began late, which is the lag.
+//
+// withSequence has no such boundary. The whole in-hold-out is described once
+// and evaluated on the UI thread from beginning to end, so a busy JS thread can
+// delay when it STARTS but can no longer stretch it in the middle.
+const TOAST_IN_MS = 220;
+const TOAST_HOLD_MS = 1700;
+const TOAST_OUT_MS = 260;
+// It arrives from above and leaves the same way, 12pt of travel. Small on
+// purpose: it is a notice, not an entrance.
+const TOAST_RISE = 12;
+
+const SWIPE_SPRING = {
+  mass: 0.8,
+  damping: 26,
+  stiffness: 240,
+  overshootClamping: true,
+} as const;
+
+// FILLS, and the ink that sits on them. Every value is an opacity of a ramp
+// already in the file.
+//
+// The red at 0.7 rather than the 0.55 the strokes used. Over the page it
+// composites to rgb(175,81,81), which is solid enough to read as a
+// painted button while staying inside this app's muted register — a fully
+// opaque 248,113,113 would be the brightest thing on any screen it appears on.
+//
+// CONTRAST, since the ink now sits on a fill rather than on black. White on
+// that red is 5.1:1, which carries an 11pt label comfortably. Going the
+// other way is worth knowing: raising the red towards opaque makes it LIGHTER
+// over a black page and the white on it worse — 0.9 would drop to 3.3:1.
+//
+// The grey at 0.12 composites to rgb(32), twenty-seven levels above the
+// page, which is enough to read as a shape without competing with the row. The
+// ink on it is #e2e2e2, the file's existing near-white, at 12.6:1.
+const SWIPE_FILL_RED = 'rgba(248,113,113,0.7)';
+const SWIPE_FILL_DIM = 'rgba(226,226,226,0.12)';
+const SWIPE_INK_RED = '#ffffff';
+const SWIPE_INK_DIM = '#e2e2e2';
+
+// THE GLYPHS, as module constants rather than JSX rebuilt inside the row.
+//
+// Twelve Path elements across the four buttons, every one of them static, and
+// every one of them was allocated afresh on each render of each row. Built once
+// here they are the same objects for the life of the process, which also lets
+// React bail out of reconciling them.
+const ICON_NOTIFY = (
+  <>
+    <Path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 3h16z" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinejoin="round" />
+    <Path d="M10 19a2 2 0 0 0 4 0" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
+  </>
+);
+const ICON_DELETE = (
+  <>
+    <Path d="M19 5 5 19" fill="none" stroke={SWIPE_INK_RED} strokeWidth={1.75} strokeLinecap="round" />
+    <Path d="M5 5 19 19" fill="none" stroke={SWIPE_INK_RED} strokeWidth={1.75} strokeLinecap="round" />
+  </>
+);
+const ICON_RESTORE = (
+  <>
+    <Path d="M12 19V7" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
+    <Path d="M6 13l6-6 6 6" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+  </>
+);
+const ICON_ARCHIVE = (
+  <>
+    <Path d="M3 5h18v4H3z" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} />
+    <Path d="M5 9v10h14V9" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} />
+    <Path d="M10 13h4" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
+  </>
+);
+const ICON_REMIND = (
+  <>
+    <Path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} />
+    <Path d="M12 7v5l3 2" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+  </>
+);
+
+// PLACEHOLDERS. They render, they are tappable, and they deliberately do
+// nothing: there is no notification scheduling in this app yet and no reminder
+// store. They are here so the gesture's shape is settled before the features
+// land. Do not wire either to a toast or an alert to make them feel finished —
+// silence is the honest response until they do something.
+//
+// At module scope so it is one function rather than one per row per render.
+const notImplemented = () => {};
 
 function savedSortKey(f: SavedFlight): { rank: number; when: number } {
   const s = f.status.toLowerCase();
@@ -1254,25 +1779,339 @@ function sortSavedByRelevance(list: SavedFlight[]): SavedFlight[] {
   });
 }
 
-function SavedFlightRow({
-  flight,
-  onPress,
-  onUnsave,
-  now,
-  roomy,
-}: {
+// Lifted out of the parameter list so the memo comparison below can name it,
+// and so the two cannot describe different shapes.
+type SavedFlightRowProps = {
   flight: SavedFlight;
   onPress: () => void;
-  onUnsave: () => void;
+  onUnsave: () => void | Promise<void>;
   now: number;
   // Set only inside a sheet. The main list is a dense column against the page
   // and reads correctly at 13; the same density inside a panel with 20 of
   // padding on every side looks cramped against its own container. One row
   // component, two rhythms, chosen by the caller that knows which it is in.
   roomy?: boolean;
-}) {
+  // Drops this row's separator. Every row draws a hairline UNDER itself, which
+  // is right for all of them but the last: there it rules off against nothing,
+  // and inside the archive sheet it floats in the 20pt of padding below the
+  // list looking like a row that failed to render.
+  //
+  // The caller decides, because only the caller knows what the list is. Both
+  // lists that use this row are a plain map over a sorted array, so both can
+  // answer it with the index they already have.
+  last?: boolean;
+  // Rendered inside the archive sheet. Changes what the second line says and
+  // nothing else: the number, the cities and the date are the same row.
+  //
+  // The archive's second line is the single word "landed" and no more. The
+  // countdown and the "updated N ago" that StatusLine renders are both live
+  // readings, and neither means anything for a flight that is finished — a
+  // countdown to a departure that happened last March, and an update age that
+  // only ever grows because nothing will ever update it again.
+  archived?: boolean;
+  // Sets or clears archivedAt. Both lists pass it; what the row does with it
+  // differs, which is decided below rather than by the caller.
+  //
+  // Both of these return void or a promise: the call sites are async arrows, and
+  // the commit awaits whatever comes back so that a storage failure can put the
+  // row back rather than leaving it flown off screen and still in the list.
+  onArchive: (archived: boolean) => void | Promise<void>;
+  // Raised after a committed swipe, once the action has actually succeeded.
+  onDone: (message: string) => void;
+};
+
+// WHAT COUNTS AS THE SAME ROW: the five data props, by identity, and the
+// callbacks deliberately NOT.
+//
+// Every call site builds its handlers as inline arrows inside a .map, so they
+// are new functions on every parent render; comparing them would defeat the
+// memo entirely. Excluding them is safe in the one way that matters — anything
+// they read that could actually change, the email or the stored list, also
+// replaces the flight objects, and the flight IS compared.
+//
+// WHAT THIS DOES NOT FIX, and it is worth being exact because it was the
+// original suspicion: it does NOT stop the 60-second tick re-rendering every
+// row. `now` genuinely changes on every tick and the countdowns genuinely
+// depend on it, so the row must re-render. What makes the tick affordable is
+// the formatter cache above, not this. What this stops is the other forty-six
+// pieces of state in the screen — a route search, a toast, a dropdown opening —
+// dragging every saved row through a render that would change nothing.
+function sameRow(a: SavedFlightRowProps, b: SavedFlightRowProps): boolean {
+  return a.flight === b.flight
+    && a.now === b.now
+    && a.roomy === b.roomy
+    && a.last === b.last
+    && a.archived === b.archived;
+}
+
+const SavedFlightRow = memo(function SavedFlightRow({
+  flight,
+  onPress,
+  onUnsave,
+  now,
+  roomy,
+  last,
+  archived,
+  onArchive,
+  onDone,
+}: SavedFlightRowProps) {
+  const swipe = useRef<SwipeableMethods>(null);
+  // Every action closes the row first. Leaving it open behind a modal or a
+  // vanished row is the standard way this control goes wrong.
+  //
+  // Stable: it captures nothing but the ref, whose identity never changes.
+  const act = useCallback((fn: () => void) => () => { swipe.current?.close(); fn(); }, []);
+
+  // The row's own width, measured once by onLayout and read on the UI thread.
+  // The threshold is a fraction of it, so it cannot be a constant.
+  const rowW = useSharedValue(0);
+
+  // WHICH SIDE IS ARMED, in JS, because the release handler is a JS callback.
+  //
+  // A ref rather than state on purpose: arming must not re-render the row
+  // mid-drag, and nothing on screen reads this — the expansion itself is driven
+  // entirely by the shared value inside ExpandAction.
+  const armedSide = useRef<'left' | 'right' | null>(null);
+  const onCrossRight = useCallback((on: boolean) => {
+    armedSide.current = on ? 'right' : null;
+    EXPAND_HAPTIC();
+  }, []);
+  const onCrossLeft = useCallback((on: boolean) => {
+    armedSide.current = on ? 'left' : null;
+    EXPAND_HAPTIC();
+  }, []);
+
+  // The row's own exit, on top of whatever the Swipeable is doing underneath.
+  //
+  // A separate wrapper rather than the library's translation, because the
+  // library owns that value and clamps it to the panel: there is no way to ask
+  // it to keep going. This transform composes with it — the Swipeable is still
+  // settling its 128pt while the wrapper is carrying the whole thing off.
+  //
+  // A REANIMATED shared value now rather than an Animated.Value. The previous
+  // one was already useNativeDriver: true, so the animation itself was on the
+  // UI thread either way; what this removes is the system boundary. The drag,
+  // the expansion and now the exit are all shared values evaluated in the same
+  // place, so there is one animation model in this component rather than two
+  // meeting at the moment of release.
+  const exitX = useSharedValue(0);
+  const exitStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: exitX.value }],
+  }));
+
+  // The JS half of the commit: the storage write, the message, and the retreat
+  // if it fails. Split out because a worklet cannot await, and declared BEFORE
+  // onWillOpen because that hook names it in its dependency list, which is
+  // evaluated the moment the line is reached rather than when the row is swiped.
+  //
+  // ON COMPLETION, not at the start. Firing at the start races the state update
+  // against the animation: the row is removed from the list, this component
+  // unmounts, and the exit is cut off part-way at whatever moment the storage
+  // write happens to land. Waiting makes the sequence the same every time — the
+  // row goes, then the list closes up behind it.
+  const commit = useCallback(async (side: 'left' | 'right') => {
+    try {
+      if (side === 'right') {
+        await onUnsave();
+        onDone(`${flight.flightNumber} deleted`);
+      } else if (archived) {
+        await onArchive(false);
+        onDone(`${flight.flightNumber} restored`);
+      } else {
+        await onArchive(true);
+        onDone(`${flight.flightNumber} moved to archive`);
+      }
+    } catch {
+      // IF THE ACTION FAILS the row comes back, because it is still in the list
+      // and an invisible row that is still there is the worse outcome by some
+      // distance. Writing a shared value from JS is allowed and the animation
+      // runs on the UI thread from there; nothing about the failure path
+      // depended on being inside the old callback. No message is raised —
+      // nothing happened, so nothing is claimed.
+      exitX.value = withTiming(0, EXIT_BACK_TIMING);
+      swipe.current?.close();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [archived, onUnsave, onArchive, onDone, flight.flightNumber]);
+
+  // THE RELEASE. onSwipeableWillOpen fires the moment the row is let go and
+  // starts animating open, which is the last point at which the panel can be
+  // told not to.
+  //
+  // Armed means the finger went past the threshold and did not come back, so
+  // the row COMMITS. Not armed — including the case where the user crossed the
+  // threshold and dragged back before letting go, which disarms on the way past
+  // — means this does nothing at all and the panel settles open exactly as it
+  // did before.
+  const onWillOpen = useCallback(() => {
+    const side = armedSide.current;
+    if (side === null) return;
+    armedSide.current = null;
+
+    // The row LEAVES rather than snapping back. It used to close() first and
+    // fire the action after, which played the gesture in reverse before
+    // anything happened — the reading was "that was undone", not "that was
+    // done". It now continues the way it was thrown.
+    const dir = side === 'right' ? -1 : 1;
+    exitX.value = withTiming(
+      dir * Dimensions.get('window').width,
+      EXIT_TIMING,
+      // HOW COMPLETION FIRES, now that the animation lives on the UI thread: the
+      // callback is a worklet, invoked there, and runOnJS is what carries the
+      // decision back to JavaScript to do the async work. It is one hop, at the
+      // end, when nothing is animating — as against the old Animated.timing
+      // callback, which was a JS function the native driver had to call back
+      // into for the same purpose.
+      (finished) => {
+        'worklet';
+        if (finished) runOnJS(commit)(side);
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commit]);
+
+  // SWIPING LEFT drags the row leftward and uncovers the panel on its right,
+  // which is what renderRightActions names. Delete sits outermost, at the
+  // screen edge, where iOS Mail puts it.
+  //
+  // MEMOISED, because the library wraps its own leftElement/rightElement in a
+  // useCallback keyed on these two props. An inline arrow is a new function on
+  // every render, which busts that cache and remounts BOTH action panels —
+  // every Svg in them — whenever the row renders for any reason at all.
+  //
+  // The dependencies mirror sameRow rather than listing the callbacks, and for
+  // the same reason it excludes them: they are rebuilt on every parent render,
+  // so depending on them would make this a no-op.
+  const renderRight = useCallback((progress: SharedValue<number>, translation: SharedValue<number>) => (
+    <View style={sf.swipeGroup}>
+      {/* Nothing to notify about once a flight has landed, so the archive
+          keeps only the destructive half of this panel. */}
+      {!archived && (
+        <SwipeAction label="notify" fill={SWIPE_FILL_DIM} progress={progress} onPress={act(notImplemented)}>
+          {ICON_NOTIFY}
+        </SwipeAction>
+      )}
+      {/* notify shares this panel unless the row is archived, in which case
+          delete is alone in it. */}
+      <ExpandAction side="right" translation={translation} rowW={rowW} others={archived ? 0 : SWIPE_W} onCross={onCrossRight}>
+        <SwipeAction label="delete" fill={SWIPE_FILL_RED} progress={progress} grow="right" onPress={act(onUnsave)}>
+          {ICON_DELETE}
+        </SwipeAction>
+      </ExpandAction>
+    </View>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [archived, act, onCrossRight]);
+
+  // SWIPING RIGHT uncovers the panel on the left.
+  //
+  // In the archive this is restore, and it appears only for a flight that was
+  // archived by hand AND has not flown. Offering it on a flight that genuinely
+  // landed would be a button that does nothing visible: clearing archivedAt
+  // hands the row back to the arrival-time rule, which puts it straight back.
+  const canRestore = archived && flight.archivedAt !== null && !hasFlown(flight, now);
+  // useMemo rather than useCallback: on an archive row with nothing to restore
+  // this is deliberately undefined, and useCallback's signature takes only a
+  // Function. The value being memoised happens to be a function; that is not
+  // the same thing.
+  const renderLeft = useMemo(
+    () => archived
+      ? (canRestore
+          ? (progress: SharedValue<number>, translation: SharedValue<number>) => (
+              <View style={sf.swipeGroup}>
+                {/* restore is the only action in the archive's left panel. */}
+                <ExpandAction side="left" translation={translation} rowW={rowW} others={0} onCross={onCrossLeft}>
+                  <SwipeAction label="restore" fill={SWIPE_FILL_DIM} progress={progress} grow="left" onPress={act(() => onArchive(false))}>
+                    {ICON_RESTORE}
+                  </SwipeAction>
+                </ExpandAction>
+              </View>
+            )
+          : undefined)
+      : (progress: SharedValue<number>, translation: SharedValue<number>) => (
+          <View style={sf.swipeGroup}>
+            {/* remind shares this panel. */}
+            <ExpandAction side="left" translation={translation} rowW={rowW} others={SWIPE_W} onCross={onCrossLeft}>
+              <SwipeAction label="archive" fill={SWIPE_FILL_DIM} progress={progress} grow="left" onPress={act(() => onArchive(true))}>
+                {ICON_ARCHIVE}
+              </SwipeAction>
+            </ExpandAction>
+            {/* PLACEHOLDER, as above. It is second, so it can never be the one
+                that expands. */}
+            <SwipeAction label="remind" fill={SWIPE_FILL_DIM} progress={progress} onPress={act(notImplemented)}>
+              {ICON_REMIND}
+            </SwipeAction>
+          </View>
+        ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [archived, canRestore, act, onCrossLeft],
+  );
+
   return (
-    <TouchableOpacity style={[sf.row, roomy && sf.rowRoomy]} onPress={onPress} activeOpacity={0.7}>
+    // The x stays. This is an addition, so the one control that is visible
+    // without knowing the gesture exists is the one that must not move.
+    //
+    // RESISTANCE, in two grades, because the drag has two regions.
+    //
+    // friction 1.15 across the whole drag. The row is applied as
+    // `userDrag / friction`, so it travels at 87% of the finger: enough lag to
+    // feel like something is being pulled, not enough to feel weighed down. The
+    // 128pt panel now costs 147pt of finger instead of 128.
+    //
+    // overshootFriction 2 past the open panel, where the row moves at half the
+    // finger. This is the firmer grade, and it is what makes the panel's own
+    // width feel like a detent rather than a place the row happens to be
+    // passing. The docs suggest 8 or above "for a native feel", which is right
+    // when the space past the panel is dead; here it holds the expansion
+    // threshold, so 8 would put that threshold 256pt of finger further out and
+    // make the gesture a two-stroke affair. At 2 the threshold sits at 221pt of
+    // travel on a 320pt row — one comfortable stroke, and 61pt more than the
+    // 160 it cost when the row was free.
+    //
+    // 1 was the previous value for both, which is the library's default and
+    // means no resistance anywhere: the row was simply under the finger, and
+    // past the panel it kept going as if nothing were attached to it.
+    //
+    // OVERSHOOT IS BACK ON, which is the library's own default and which it
+    // expresses by omission: overshootLeft ?? leftWidth > 0.
+    //
+    // It was off on the reasoning that letting the row be pulled past the panel
+    // promises a full swipe that does not exist. It exists now, so the reasoning
+    // inverts: the travel past the panel is where the expansion threshold lives,
+    // and without overshoot the row hits a wall at 128pt and the threshold at
+    // half the row width is unreachable. The rubber band is not decoration here,
+    // it is the only way to get to the gesture.
+    //
+    // overshootFriction is left at its default of 1, which is no friction at
+    // all. The docs suggest 8 or above "for a native feel", and that is right
+    // when the region past the panel is dead space to be resisted. Here it is
+    // functional, so resisting it would be resisting the gesture: at 8, reaching
+    // a threshold 32pt beyond the panel would cost 256pt of extra finger.
+    //
+    // childrenContainerStyle carries the background: it is the layer the library
+    // translates, so the fill travels with the row and occludes the panel it is
+    // sliding over. See rowSurface.
+    // The wrapper the commit animates, outside the Swipeable because the
+    // library owns the translation inside it. No style of its own beyond the
+    // transform, so it costs nothing until a row is actually thrown.
+    <Reanimated.View style={exitStyle}>
+    <ReanimatedSwipeable
+      ref={swipe}
+      friction={1.15}
+      overshootFriction={2}
+      animationOptions={SWIPE_SPRING}
+      onSwipeableWillOpen={onWillOpen}
+      childrenContainerStyle={sf.rowSurface}
+      renderLeftActions={renderLeft}
+      renderRightActions={renderRight}
+    >
+    <TouchableOpacity
+      style={[sf.row, roomy && sf.rowRoomy, last && sf.rowLast]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      // The children container is exactly the row's width, so this is the
+      // width the expansion fills and the width the threshold is a fraction of.
+      onLayout={e => { rowW.value = e.nativeEvent.layout.width; }}
+    >
       <View style={sf.line1}>
         <Text style={sf.number}>{flight.flightNumber}</Text>
         {/* Cities, not codes. "Bangalore → Delhi" says where the flight goes to
@@ -1294,30 +2133,61 @@ function SavedFlightRow({
             than a value that drifts with the length of the route beside it.
             Hidden entirely when the date is not one: a pre-v3 record filed
             under "unknown" has nothing truthful to show here. */}
+        {/* routeDateLabel, not routeShortDate: "Sat 29 Aug" rather than "29 Aug".
+            It already exists for the applied-date line above the route list, so
+            the weekday is spelled the same way in both places by construction.
+
+            WIDTH, at 320pt. JetBrains Mono advances 0.6em, so 11pt is 6.6pt a
+            character and this date is 10 of them, 66pt. The other cells on the
+            line are the number and an 8pt gap, both fixed, so everything else
+            is the route text.
+
+            The × used to sit here too and took 24pt with it — a 20pt glyph is
+            12pt of advance, plus 12pt of padding — all of which has gone back
+            to the route.
+
+            THE ROW DOES NOT GET TALLER, and cannot. The route already carries
+            numberOfLines={1} with ellipsizeMode="middle", so it absorbs the
+            loss by ellipsizing further into the middle of the pair rather than
+            by wrapping — "Bangalore → Delhi" still fits, "Thiruvananthapuram →
+            Chandigarh" loses more of its middle than it did. The date itself is
+            numberOfLines={1} and unflexed, so it keeps its intrinsic width and
+            never wraps either. Losing the middle of a route the heading does
+            not repeat is the cost; telling two instances of one flight number
+            apart by more than a bare number is what it buys. */}
         {ISO_DAY_RE.test(flight.flightDate) && (
-          <Text style={sf.date} numberOfLines={1}>{routeShortDate(flight.flightDate)}</Text>
+          <Text style={sf.date} numberOfLines={1}>{routeDateLabel(flight.flightDate)}</Text>
         )}
-        <TouchableOpacity
-          onPress={onUnsave}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={sf.remove}>{'×'}</Text>
-        </TouchableOpacity>
       </View>
-      <StatusLine f={flight} now={now} numberOfLines={1} style={{ marginTop: 4 }} />
+      {/* Two second lines, and which one shows is decided by the clock rather
+          than by the record. A row in the archive whose arrival has passed is
+          finished, so it says so and stops there; anything else keeps the live
+          line, which is what a manually archived future flight still needs. */}
+      {archived && hasFlown(flight, now) ? (
+        <Text style={sf.landed}>{'landed'}</Text>
+      ) : (
+        <StatusLine f={flight} now={now} numberOfLines={1} style={{ marginTop: 4 }} />
+      )}
     </TouchableOpacity>
+    </ReanimatedSwipeable>
+    </Reanimated.View>
   );
-}
+}, sameRow);
 
 const sf = StyleSheet.create({
   row: {
     paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: CARD_PAD,
+    backgroundColor: CARD_FILL,
+    borderRadius: CARD_RADIUS,
+    marginBottom: CARD_GAP,
   },
   // Applied after sf.row, so it is this paddingVertical that survives.
   rowRoomy: { paddingVertical: 18 },
+  // Last in its list. It used to drop the hairline; now it drops the gap, which
+  // is the same job — the list ends where its last card ends rather than eight
+  // points of nothing later.
+  rowLast: { marginBottom: 0 },
   line1: { flexDirection: 'row', alignItems: 'center' },
   number: { fontSize: 13, color: '#ffffff', fontFamily: MONO_BOLD },
   // Deliberately outside the type scale: this is a hit target, not text.
@@ -1350,6 +2220,84 @@ const sf = StyleSheet.create({
   // list this is what tells them apart, so it had to stop whispering.
   date: { fontSize: 11, color: 'rgba(226,226,226,0.6)', fontFamily: MONO_BOLD, marginLeft: 8 },
   updated: { color: 'rgba(226,226,226,0.3)' },
+  // getStatusColor('landed') exactly, and the same 11pt mono StatusLine renders
+  // at, so the archive's line sits where the saved list's line sits and in the
+  // colour that word already has everywhere else in the app.
+  landed: { fontFamily: MONO, fontSize: 11, color: '#8e8e93', marginTop: 4 },
+  // Stretches to the row's height however tall the row is, so a roomy archive
+  // row and a dense saved row both get a full-height target.
+  // THE ROW'S OWN FILL, and the fix for actions showing through their row.
+  //
+  // ReanimatedSwipeable renders both action panels as absoluteFill siblings
+  // UNDER the children — correct z-order, but a transparent row occludes
+  // nothing, so the panel behind was legible straight through the flight number
+  // and the date. The library's own guard is opacity: progress === 0 ? 0 : 1,
+  // which hides a panel only while it is exactly shut; the moment a drag starts,
+  // or after one is interrupted, it is visible through the row.
+  //
+  // #050505 is the page's own colour, so on the saved list this is invisible:
+  // the row is filled with exactly what was behind it.
+  //
+  // ON THE ARCHIVE SHEET IT IS A COMPROMISE, and worth stating rather than
+  // hiding. That sheet is glass; its composited ground is about rgb(1.8), so an
+  // opaque rgb(5) row sits some three levels above it and the blurred page no
+  // longer shows through where a row is — only through the sheet's padding and
+  // between rows. There is no way to have both: a row that lets the page
+  // through lets the action panel through with it. Occluding the actions is the
+  // requirement, so the glass gives way, and it gives way to the one colour
+  // already in the file rather than to a new near-black.
+  rowSurface: { backgroundColor: '#050505' },
+  // CENTRE, not stretch — the buttons have their own height now.
+  //
+  // marginBottom is what makes "centred" mean centred on the CARD: the panel
+  // this group fills spans the row's whole box, and the row's box includes the
+  // card gap below it. Without this the buttons sit half a gap low.
+  swipeGroup: { flexDirection: 'row', alignItems: 'center', marginBottom: CARD_GAP },
+  // The growing box. alignItems centre for the same reason swipeGroup uses it:
+  // the button has a height and should keep it. justifyContent holds the button
+  // against the edge the row is being dragged away from.
+  swipeExpand: { flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
+  swipeExpandRight: { justifyContent: 'flex-end' },
+  swipeExpandLeft: { justifyContent: 'flex-start' },
+
+  // THE BUTTON, and its height is its own rather than the row's. See SWIPE_SIZE.
+  swipeBtn: {
+    height: SWIPE_SIZE,
+    marginHorizontal: SWIPE_MARGIN,
+    borderRadius: SWIPE_RADIUS,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeBtnFixed: { width: SWIPE_SIZE },
+  // Expanding. flex rather than a width, so the fill follows the animated box
+  // around it.
+  //
+  // AND NOTHING ELSE. These used to carry alignItems: 'flex-end' with a padding
+  // that held the glyph against the outer edge however wide the button became.
+  // Dropping both leaves swipeBtn's own alignItems: 'center' in force, which is
+  // the whole of this change: a centred glyph in a box that is widening IS a
+  // glyph travelling to the centre.
+  //
+  // Nothing new is animated to do it. The only animated value in this component
+  // is the box's width in ExpandAction's useAnimatedStyle, which Reanimated
+  // evaluates on the UI thread; the glyph's position is Yoga laying that width
+  // out in the same pass, on the same thread, in the same frame. There is no
+  // second animation to fall behind the first, and no runOnJS anywhere in the
+  // path — the only JS crossing in the gesture remains the threshold's onCross.
+  //
+  // At rest the two agree exactly: the button is a 52pt square and the glyph is
+  // 20pt, so centred and edge-pinned are the same 16pt of clearance. The travel
+  // starts from zero rather than from a jump.
+  //
+  // The right and left variants are now identical and kept apart anyway, since
+  // ExpandAction still chooses between them by side and a future difference
+  // belongs here rather than in a new pair.
+  swipeBtnGrowRight: { flex: 1 },
+  swipeBtnGrowLeft: { flex: 1 },
+  // The scaling half of the button. Kept separate from swipeBtn so the touch
+  // target stays a fixed 64pt however small the contents are drawn.
+  swipeInner: { alignItems: 'center', justifyContent: 'center' },
+
   remove: {
     fontSize: 20,
     color: 'rgba(248,113,113,0.55)',
@@ -1628,6 +2576,14 @@ export default function Index() {
   const [errorCounter, setErrorCounter] = useState(0);
   const [chatResponse, setChatResponse] = useState<string | null>(null);
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
+  // Arrival times bought one at a time for rows the board sent without one.
+  // Keyed by makeFlightId, so it survives a new search: the same flight on the
+  // same day is the same answer. See routeRows, which merges these in.
+  const [routeFills, setRouteFills] = useState<Record<string, { text: string | null; iso: string | null }>>({});
+  // Every key ever ATTEMPTED, successful or not. A ref rather than state
+  // because writing it must not re-render, and because it has to outlive the
+  // result it was populated from.
+  const routeFillTried = useRef<Set<string>>(new Set());
   // null means Today, which sends no date parameter at all and so preserves the
   // existing relative-form search exactly.
   const [routeDate, setRouteDate] = useState<string | null>(null);
@@ -1845,7 +2801,13 @@ export default function Index() {
   const dayRef = useRef(localDayKey(Date.now()));
   const refreshMsgOpacity = useRef(new Animated.Value(0)).current;
   const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
+  // One value for both opacity and travel, so they cannot drift apart, and a
+  // Reanimated shared value so the whole sequence stays on the UI thread.
+  const toastAnim = useSharedValue(0);
+  const toastStyle = useAnimatedStyle(() => ({
+    opacity: toastAnim.value,
+    transform: [{ translateY: (toastAnim.value - 1) * TOAST_RISE }],
+  }));
   // Four values, not two: each overlay drives its content and its scrim
   // separately, so the backdrop can run its own timing. Every property either
   // value touches is opacity or transform, so all of it is native-driven and
@@ -1923,13 +2885,29 @@ export default function Index() {
     return () => { if (refreshMsgTimerRef.current) clearTimeout(refreshMsgTimerRef.current); };
   }, [refreshMsg, refreshMsgCounter]);
 
+  // In, hold, out — as one sequence rather than a delayed fade, so a second
+  // message arriving mid-flight restarts cleanly instead of inheriting whatever
+  // the first one had got to. toastCounter is what makes an identical message
+  // twice in a row re-run this.
   useEffect(() => {
     if (toastMsg === '') return;
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastOpacity.stopAnimation();
-    toastOpacity.setValue(1);
-    Animated.timing(toastOpacity, { toValue: 0, duration: 300, delay: 900, useNativeDriver: false }).start();
-    toastTimerRef.current = setTimeout(() => setToastMsg(''), 1200);
+    // Assigning over a running animation cancels it, so a second message
+    // restarts from 0 without needing a stopAnimation call first.
+    toastAnim.value = 0;
+    toastAnim.value = withSequence(
+      withTiming(1, { duration: TOAST_IN_MS, easing: REasing.out(REasing.cubic) }),
+      withDelay(
+        TOAST_HOLD_MS,
+        withTiming(0, { duration: TOAST_OUT_MS, easing: REasing.in(REasing.cubic) }),
+      ),
+    );
+    // Cleared a beat after the fade finishes, so the text is never blanked out
+    // from under a banner that is still on screen.
+    toastTimerRef.current = setTimeout(
+      () => setToastMsg(''),
+      TOAST_IN_MS + TOAST_HOLD_MS + TOAST_OUT_MS + 40,
+    );
     return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
   }, [toastMsg, toastCounter]);
 
@@ -2554,9 +3532,83 @@ export default function Index() {
 
   // THE row set. Everything below counts, filters, sorts and groups this, so a
   // recovered row is counted exactly once, in exactly one group, like any other.
+  //
+  // The fills are merged HERE and nowhere else, which is the whole reason this
+  // is one line rather than a patch at the render site. An arrival time is not
+  // only something the row prints: routeDurationMs reads it, so it decides the
+  // duration sort, the arrival sort and which row wears the fastest marker.
+  // Filling it in at the Text would leave a row showing a time while every
+  // derivation above still treated it as having none — a row sorted last for
+  // want of a value it is visibly displaying. Merging at the source means the
+  // standing checks hold against exactly what is on screen.
+  //
+  // The visible consequence, and it is intended: a row that gains a time can
+  // move, and can take the fastest marker, a moment after the list first
+  // appears. That is the list becoming correct, not the list twitching.
   const routeRows: RouteFlight[] = routeResult === null
     ? []
-    : [...routeResult.flights, ...routeRecovered];
+    : [...routeResult.flights, ...routeRecovered].map(r => {
+        if (r.arrival_scheduled_iso !== null || r.arrival_scheduled !== null) return r;
+        const fill = routeFills[makeFlightId(r.flight_number, routeDayOf(r))];
+        return fill === undefined
+          ? r
+          : { ...r, arrival_scheduled: fill.text, arrival_scheduled_iso: fill.iso };
+      });
+
+  // AFTER the list is on screen, never before it.
+  //
+  // The effect runs on commit, so the rows are already rendered with their
+  // dashes and nothing is held up waiting for a network call. Each answer
+  // arrives as its own setState and swaps one row's dash for a time in place.
+  //
+  // Keyed on number AND date, so a dated search fills the instance it is
+  // actually showing, and a flight looked up once is never looked up again this
+  // session — routeFillTried is a ref, so it outlives every re-render and every
+  // new search. The key goes in BEFORE the request rather than after it, which
+  // is what makes a failure final: a row whose fetch fails keeps its dash, and
+  // nothing retries it. No error is surfaced either. The list was already
+  // telling the truth; this only ever improves on it.
+  useEffect(() => {
+    if (routeResult === null) return;
+    const targets: RouteFlight[] = [];
+    for (const r of [...routeResult.flights, ...routeRecovered]) {
+      // Already has one. Nothing to buy.
+      if (r.arrival_scheduled_iso !== null || r.arrival_scheduled !== null) continue;
+      if (routeFillTried.current.has(makeFlightId(r.flight_number, routeDayOf(r)))) continue;
+      targets.push(r);
+      if (targets.length === ROUTE_FILL_MAX) break;
+    }
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      // One at a time. Three parallel requests would arrive as three renders in
+      // the same frame anyway, and serialising keeps the burst off the backend.
+      for (const r of targets) {
+        if (cancelled) return;
+        const day = routeDayOf(r);
+        const key = makeFlightId(r.flight_number, day);
+        routeFillTried.current.add(key);
+        try {
+          const res = await fetch(
+            `${API_BASE}/flight/${r.flight_number}${day === null ? '' : `?date=${day}`}`,
+          );
+          const data = await res.json();
+          if (!res.ok || data.error) continue;
+          const text = data.arrival_scheduled ?? null;
+          const iso = data.arrival_scheduled_iso ?? null;
+          // The endpoint answered but has no arrival either. Nothing to write,
+          // and the key is already spent, so this settles the row for good.
+          if (text === null && iso === null) continue;
+          if (cancelled) return;
+          setRouteFills(prev => ({ ...prev, [key]: { text, iso } }));
+        } catch {
+          // Quiet on purpose. The row keeps its dash.
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [routeResult]);
 
   // What the envelope's own totals become once recoveries are included. The
   // backend's count and total_found describe `flights` alone, by design.
@@ -2693,6 +3745,33 @@ export default function Index() {
     ? routeListed.filter(r => routeDepBand(r) === null)
     : [];
 
+  // WHICH ROW IS ACTUALLY LAST, as a key rather than an index.
+  //
+  // The other two lists are one map over one array and can answer this with an
+  // index. This one is up to four arrays — a pinned row, then either the groups
+  // and the ungrouped remainder, or the flat list — so the last row rendered is
+  // not the last element of anything in particular. It is read back to front:
+  // the ungrouped tail if there is one, else the last group that has any rows,
+  // else the flat list, else the pinned row if it is the only thing on screen.
+  //
+  // routeRowKey rather than object identity, because the row objects are rebuilt
+  // by every derivation above and identity does not survive that.
+  const routeLastKey = (() => {
+    if (routeSort === 'departure') {
+      if (routeUngrouped.length > 0) {
+        return routeRowKey(routeUngrouped[routeUngrouped.length - 1]);
+      }
+      for (let i = routeGroups.length - 1; i >= 0; i--) {
+        const g = routeGroups[i];
+        if (g.rows.length > 0) return routeRowKey(g.rows[g.rows.length - 1]);
+      }
+    } else if (routeListed.length > 0) {
+      return routeRowKey(routeListed[routeListed.length - 1]);
+    }
+    // Nothing below it: the pinned row is the whole list.
+    return routePinned === null ? null : routeRowKey(routePinned);
+  })();
+
   // The local calendar date a board row DEPARTS on, read from its own ISO.
   //
   // Not the board's date. An undated board is a rolling twelve hours from now,
@@ -2700,10 +3779,7 @@ export default function Index() {
   // is keyed on the date the backend reports, which is the row's own. Matching
   // the indicator on the board's date instead would leave those rows showing
   // unsaved forever.
-  const routeRowDay = (r: RouteFlight): string | null => {
-    const d = (r.departure_scheduled_iso ?? '').slice(0, 10);
-    return ISO_DAY_RE.test(d) ? d : null;
-  };
+  const routeRowDay = routeDayOf;
 
   // Flat rows, not cards. Line one carries everything variable-width; line two
   // carries the two times and the connector between them, and nothing else may
@@ -2752,7 +3828,7 @@ export default function Index() {
     return (
       <TouchableOpacity
         key={routeRowKey(r)}
-        style={s.routeFlatRow}
+        style={[s.routeFlatRow, routeRowKey(r) === routeLastKey && s.routeFlatRowLast]}
         activeOpacity={0.7}
         onPress={() => runFlightLookup(r.flight_number, false, rowDate)}
       >
@@ -3613,8 +4689,12 @@ export default function Index() {
                         flight={f}
                         now={now}
                         roomy
+                        archived
+                        last={i === archivedSaved.length - 1}
+                        onDone={showToast}
                         onPress={() => { closeArchive(); renderSavedFlight(f); }}
                         onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                        onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
                       />
                     </Animated.View>
                   ))}
@@ -3747,6 +4827,33 @@ export default function Index() {
           </Animated.View>
         </Pressable>
       </Modal>
+      {/* THE BANNER. Absolutely positioned against the root, which is the whole
+          of why it cannot shift anything: it is out of flow, so nothing above or
+          below it moves when it arrives or leaves, and the list underneath does
+          not reflow by a pixel. pointerEvents none so it never intercepts a tap
+          meant for what it is covering.
+
+          Rendered after the modals and before the page so it paints above the
+          page; the modals are their own host views and sit above it, which is
+          correct — a sheet is a thing you are in, and this is a note about
+          something you just did to the page behind it.
+
+          The surface is the app's glass, from the same constants and the same
+          GlassLayers every sheet and panel uses, so it cannot drift from them:
+          sheetShell for the radius and the clip, GlassLayers for the blur and
+          the tint, sheetEdge for the hairline. */}
+      {toastMsg !== '' && (
+        <Reanimated.View
+          pointerEvents="none"
+          style={[s.toastWrap, { top: insets.top + 12 }, toastStyle]}
+        >
+          <View style={[s.sheetShell, s.toastCard]}>
+            <GlassLayers />
+            <View style={s.sheetEdge} pointerEvents="none" />
+            <Text style={s.toastText} numberOfLines={1}>{toastMsg}</Text>
+          </View>
+        </Reanimated.View>
+      )}
       <StatusBar barStyle="light-content" backgroundColor="#000" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, paddingTop: insets.top + 12 }}>
         <ScrollView
@@ -3934,13 +5041,16 @@ export default function Index() {
                     <Text style={sf.noneActive}>
                       {'Nothing upcoming. Past flights are in the archive.'}
                     </Text>
-                  ) : sortedSaved.map(f => (
+                  ) : sortedSaved.map((f, i) => (
                     <SavedFlightRow
                       key={f.id}
                       flight={f}
                       now={now}
+                      last={i === sortedSaved.length - 1}
+                      onDone={showToast}
                       onPress={() => renderSavedFlight(f)}
                       onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                      onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
                     />
                   ))}
                 </>
@@ -4277,17 +5387,6 @@ export default function Index() {
                   )}
                 </View>
 
-                {/* Fixed height reserves the line so the block never reflows. */}
-                <View style={{ minHeight: 16, alignItems: 'flex-start' }}>
-                  {saveError === '' && toastMsg !== '' && (
-                    <Animated.Text style={{
-                      opacity: toastOpacity,
-                      fontFamily: SANS,
-                      fontSize: 11,
-                      color: 'rgba(226,226,226,0.5)',
-                    }}>{toastMsg}</Animated.Text>
-                  )}
-                </View>
               </View>
 
               {/* Route card — fixed overflow */}
@@ -4466,13 +5565,20 @@ const s = StyleSheet.create({
   },
   // Flat rows. Separation is the file's existing hairline, the same one sf.row
   // and ir.row use; the breathing room comes from paddingVertical, not a box.
+  // The same card as a saved row, and the same padding, which is what keeps the
+  // times in their columns. See CARD_PAD.
   routeFlatRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: CARD_PAD,
+    backgroundColor: CARD_FILL,
+    borderRadius: CARD_RADIUS,
+    marginBottom: CARD_GAP,
   },
+  // See routeLastKey. The hidden-count and truncation notes below the list keep
+  // their own spacing, so dropping the gap leaves nothing touching.
+  routeFlatRowLast: { marginBottom: 0 },
   routeFlatBody: { flex: 1 },
   routeFlatHead: { flexDirection: "row", alignItems: "center" },
   routeFlatIdent: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
@@ -4657,6 +5763,15 @@ const s = StyleSheet.create({
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
     borderWidth: 1, borderColor: SHEET_EDGE, borderRadius: SHEET_RADIUS,
   },
+  // OUT OF FLOW, which is the layout guarantee. `top` is set at the call site
+  // from the safe-area inset. alignItems centre so the card is only as wide as
+  // its message rather than a full-width bar.
+  toastWrap: { position: 'absolute', left: 20, right: 20, alignItems: 'center' },
+  toastCard: { paddingVertical: 10, paddingHorizontal: 16 },
+  // MONO because the thing being confirmed is usually a flight number, and
+  // every flight number in this app is mono. 13 rather than the old 11: this is
+  // now the only report of what happened, not a footnote under a card.
+  toastText: { fontFamily: MONO, fontSize: 13, color: '#e2e2e2' },
   // Padding only.
   sheetBody: { padding: 20 },
   // FILL, because there is now a height to fill. The shell has a definite
