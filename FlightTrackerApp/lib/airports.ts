@@ -23,6 +23,38 @@
 // here that no longer flies is worse than one that is absent, because it can
 // be matched.
 //
+// THIRTEEN INDIAN ROWS are corrected by hand on top of that, in two ways that
+// are worth telling apart.
+//
+// EIGHT had their `city` changed, because OurAirports files an airport under
+// the municipality that administers the land rather than the place the airport
+// is named for and ticketed as. Kakadi is where Shirdi's airport sits; nobody
+// flies to Kakadi. In every one of the eight the old municipality is kept in
+// the row's `search`, so the change is to what is DISPLAYED and never to what
+// can be found:
+//
+//     AYJ Faizabad -> Ayodhya          KJB Orvakal      -> Kurnool
+//     DXN Gautam Buddha Nagar -> Noida KUU Bhuntar      -> Kullu
+//     SAG Kakadi   -> Shirdi           SDW Chipi        -> Sindhudurg
+//     DHM Kangra   -> Dharamshala      RJA Madhurapudi  -> Rajahmundry
+//
+// SEVEN gained an alias for a name the row could not be found by. Two of them
+// are the same problem pointing opposite ways: the source has Hubballi's
+// current name and not its old one, and Mysore's old name and not its current
+// one, so "Hubli" and "Mysuru" both missed. The rest are the colloquial name
+// ("Trichy"), a renamed city ("Gulbarga"), or the village the airport stands in
+// where the airport is named for the city ("Hirasar", "Jewar", "Dharamshala").
+//
+// Where a row gained its FIRST `search`, every base term is restated in it.
+// That field REPLACES the derived "name city" haystack rather than extending
+// it, so a row that adds one and forgets its own name stops being findable by
+// it. See the note on Row below.
+//
+// Three Indian airports people do search for are absent and stay absent: RRK
+// Rourkela, KBK Kushinagar and SSE Solapur. Adding them means reopening the
+// trim rule at the top of this file, which is a decision about the dataset
+// rather than a correction to it.
+//
 // Data only: no imports, no state, no network. Nothing here is sourced from the
 // flight data provider, and nothing here is fetched at runtime.
 export type Airport = {
@@ -117,7 +149,7 @@ const AIRPORT_ROWS: Row[] = [
   ["AVV", "Melbourne Avalon International Airport", "Geelong", "Australia", "Australia/Melbourne"],
   ["AWA", "Hawassa International Airport", "Hawassa", "Ethiopia", "Africa/Addis_Ababa"],
   ["AWZ", "Qasem Soleimani International Airport", "Ahvaz", "Iran", "Asia/Tehran"],
-  ["AYJ", "Maharshi Valmiki International Airport", "Faizabad", "India", "Asia/Kolkata", "maharshi valmiki international airport faizabad ayodhya ayodkhya"],
+  ["AYJ", "Maharshi Valmiki International Airport", "Ayodhya", "India", "Asia/Kolkata", "maharshi valmiki international airport faizabad ayodhya ayodkhya"],
   ["AYT", "Antalya International Airport", "Antalya", "Turkey", "Europe/Istanbul"],
   ["BAH", "Bahrain International Airport", "Manama", "Bahrain", "Asia/Bahrain"],
   ["BAQ", "Ernesto Cortissoz International Airport", "Barranquilla", "Colombia", "America/Bogota"],
@@ -318,7 +350,7 @@ const AIRPORT_ROWS: Row[] = [
   ["DEN", "Denver International Airport", "Denver", "United States", "America/Denver"],
   ["DFW", "Dallas Fort Worth International Airport", "Dallas-Fort Worth", "United States", "America/Chicago"],
   ["DGH", "Deoghar Airport", "Deoghar", "India", "Asia/Kolkata"],
-  ["DHM", "Kangra Airport", "Kangra", "India", "Asia/Kolkata", "kangra airport kangra dharamsala daramsala"],
+  ["DHM", "Kangra Airport", "Dharamshala", "India", "Asia/Kolkata", "kangra airport kangra dharamshala dharamsala daramsala"],
   ["DIA", "Doha International Airport", "Doha", "Qatar", "Asia/Qatar"],
   ["DIB", "Dibrugarh Airport", "Dibrugarh", "India", "Asia/Kolkata"],
   ["DIL", "Presidente Nicolau Lobato International Airport", "Dili", "Timor-Leste", "Asia/Dili"],
@@ -355,7 +387,7 @@ const AIRPORT_ROWS: Row[] = [
   ["DVO", "Francisco Bangoy International Airport", "Davao", "Philippines", "Asia/Manila"],
   ["DWC", "Al Maktoum International Airport", "Dubai", "United Arab Emirates", "Asia/Dubai", "al maktoum international airport dubai jebel ali"],
   ["DXB", "Dubai International Airport", "Dubai", "United Arab Emirates", "Asia/Dubai"],
-  ["DXN", "Noida International Airport", "Gautam Buddha Nagar", "India", "Asia/Kolkata"],
+  ["DXN", "Noida International Airport", "Noida", "India", "Asia/Kolkata", "noida international airport noida gautam buddha nagar jewar"],
   ["DYG", "Zhangjiajie Hehua International Airport", "Zhangjiajie", "China", "Asia/Shanghai", "zhangjiajie hehua international airport zhangjiajie yongding"],
   ["DYU", "Dushanbe International Airport", "Dushanbe", "Tajikistan", "Asia/Dushanbe"],
   ["DZA", "Dzaoudzi Pamandzi International Airport", "Dzaoudzi", "Mayotte", "Indian/Mayotte"],
@@ -417,7 +449,7 @@ const AIRPORT_ROWS: Row[] = [
   ["GAU", "Lokpriya Gopinath Bordoloi International Airport", "Guwahati", "India", "Asia/Kolkata"],
   ["GAY", "Gaya Airport", "Gaya", "India", "Asia/Kolkata", "gaya airport gaya gayya"],
   ["GBE", "Sir Seretse Khama International Airport", "Gaborone", "Botswana", "Africa/Gaborone"],
-  ["GBI", "Kalaburagi Airport", "Kalaburagi", "India", "Asia/Kolkata"],
+  ["GBI", "Kalaburagi Airport", "Kalaburagi", "India", "Asia/Kolkata", "kalaburagi airport kalaburagi gulbarga"],
   ["GCM", "Owen Roberts International Airport", "George Town", "Cayman Islands", "America/Cayman"],
   ["GDB", "Gondia Airport", "Gondia", "India", "Asia/Kolkata"],
   ["GDL", "Guadalajara International Airport", "Guadalajara", "Mexico", "America/Mexico_City"],
@@ -474,7 +506,7 @@ const AIRPORT_ROWS: Row[] = [
   ["HAV", "José Martí International Airport", "Havana", "Cuba", "America/Havana", "josé martí international airport havana jose marti international airport havana"],
   ["HBA", "Hobart International Airport", "Hobart", "Australia", "Australia/Hobart", "hobart international airport hobart cambridge"],
   ["HBE", "Alexandria International Airport", "Alexandria", "Egypt", "Africa/Cairo"],
-  ["HBX", "Hubballi Airport", "Hubballi", "India", "Asia/Kolkata"],
+  ["HBX", "Hubballi Airport", "Hubballi", "India", "Asia/Kolkata", "hubballi airport hubballi hubli"],
   ["HDO", "Hindon Airport", "Ghaziabad", "India", "Asia/Kolkata", "hindon airport ghaziabad hindon air force station"],
   ["HDY", "Hat Yai International Airport", "Hat Yai", "Thailand", "Asia/Bangkok"],
   ["HEA", "Herat - Khwaja Abdullah Ansari International Airport", "Guzara", "Afghanistan", "Asia/Kabul"],
@@ -510,7 +542,7 @@ const AIRPORT_ROWS: Row[] = [
   ["HSA", "Hazrat Sultan International Airport", "Turkıstan", "Kazakhstan", "Asia/Almaty"],
   ["HSG", "Kyushu Saga International Airport", "Saga", "Japan", "Asia/Tokyo"],
   ["HSN", "Zhoushan Putuoshan International Airport", "Zhoushan", "China", "Asia/Shanghai"],
-  ["HSR", "Rajkot International Airport", "Rajkot", "India", "Asia/Kolkata"],
+  ["HSR", "Rajkot International Airport", "Rajkot", "India", "Asia/Kolkata", "rajkot international airport rajkot hirasar"],
   ["HSS", "Maharaja Agrasen International Airport", "Hisar", "India", "Asia/Kolkata"],
   ["HTA", "Chita-Kadala International Airport", "Chita", "Russia", "Asia/Chita"],
   ["HUN", "Hualien Chiashan Airport", "Hualien City", "Taiwan", "Asia/Taipei"],
@@ -618,7 +650,7 @@ const AIRPORT_ROWS: Row[] = [
   ["KIS", "Kisumu International Airport", "Kisumu", "Kenya", "Africa/Nairobi"],
   ["KIX", "Kansai International Airport", "Osaka", "Japan", "Asia/Tokyo"],
   ["KJA", "Krasnoyarsk International Airport", "Krasnoyarsk", "Russia", "Asia/Krasnoyarsk"],
-  ["KJB", "Kurnool Airport", "Orvakal", "India", "Asia/Kolkata"],
+  ["KJB", "Kurnool Airport", "Kurnool", "India", "Asia/Kolkata", "kurnool airport kurnool orvakal"],
   ["KKJ", "Kitakyushu Airport", "Kitakyushu", "Japan", "Asia/Tokyo"],
   ["KLH", "Kolhapur Airport", "Kolhapur", "India", "Asia/Kolkata"],
   ["KLO", "Kalibo International Airport", "Kalibo", "Philippines", "Asia/Manila"],
@@ -654,7 +686,7 @@ const AIRPORT_ROWS: Row[] = [
   ["KUN", "Kaunas International Airport", "Kaunas", "Lithuania", "Europe/Vilnius"],
   ["KUO", "Kuopio Airport", "Kuopio / Siilinjärvi", "Finland", "Europe/Helsinki", "kuopio airport kuopio siilinjärvi kuopio airport kuopio siilinjarvi"],
   ["KUT", "David the Builder Kutaisi International Airport", "Kopitnari", "Georgia", "Asia/Tbilisi"],
-  ["KUU", "Kullu Manali Airport", "Bhuntar", "India", "Asia/Kolkata"],
+  ["KUU", "Kullu Manali Airport", "Kullu", "India", "Asia/Kolkata", "kullu manali airport kullu bhuntar"],
   ["KVA", "Kavala Alexander the Great International Airport", "Kavala", "Greece", "Europe/Athens"],
   ["KWE", "Guiyang Longdongbao International Airport", "Guiyang", "China", "Asia/Shanghai", "guiyang longdongbao international airport guiyang nanming"],
   ["KWI", "Kuwait International Airport", "Kuwait City", "Kuwait", "Asia/Kuwait"],
@@ -784,7 +816,7 @@ const AIRPORT_ROWS: Row[] = [
   ["MWZ", "Mwanza International Airport", "Mwanza", "Tanzania", "Africa/Dar_es_Salaam"],
   ["MXP", "Milan Malpensa International Airport", "Milan", "Italy", "Europe/Rome", "milan malpensa international airport milan va ferno"],
   ["MYJ", "Matsuyama Airport", "Matsuyama", "Japan", "Asia/Tokyo"],
-  ["MYQ", "Mysore Airport", "Mysore", "India", "Asia/Kolkata"],
+  ["MYQ", "Mysore Airport", "Mysore", "India", "Asia/Kolkata", "mysore airport mysore mysuru"],
   ["MYR", "Myrtle Beach International Airport", "Myrtle Beach", "United States", "America/New_York"],
   ["MZG", "Penghu Magong Airport", "Huxi", "Taiwan", "Asia/Taipei"],
   ["MZR", "Mazar-i-Sharif International Airport", "Mazar-i-Sharif", "Afghanistan", "Asia/Kabul"],
@@ -971,7 +1003,7 @@ const AIRPORT_ROWS: Row[] = [
   ["RIC", "Richmond International Airport", "Richmond", "United States", "America/New_York"],
   ["RIX", "Riga International Airport", "Riga", "Latvia", "Europe/Riga"],
   ["RIY", "Riyan International Airport", "Mukalla", "Yemen", "Asia/Aden"],
-  ["RJA", "Rajahmundry Airport", "Madhurapudi", "India", "Asia/Kolkata"],
+  ["RJA", "Rajahmundry Airport", "Rajahmundry", "India", "Asia/Kolkata", "rajahmundry airport rajahmundry madhurapudi"],
   ["RJK", "Rijeka Airport", "Rijeka", "Croatia", "Europe/Zagreb", "rijeka airport rijeka omišalj rijeka airport rijeka omisalj"],
   ["RKT", "Ras Al Khaimah International Airport", "Ras Al Khaimah", "United Arab Emirates", "Asia/Dubai"],
   ["RKZ", "Xigaze Peace Airport / Shigatse Air Base", "Xigazê", "China", "Asia/Shanghai", "xigaze peace airport shigatse air base xigazê samzhubzê xigaze peace airport shigatse air base xigaze samzhubze"],
@@ -997,7 +1029,7 @@ const AIRPORT_ROWS: Row[] = [
   ["RVN", "Rovaniemi Airport", "Rovaniemi", "Finland", "Europe/Helsinki"],
   ["RZE", "Rzeszów-Jasionka Airport", "Jasionka", "Poland", "Europe/Warsaw", "rzeszów jasionka airport jasionka rzeszow jasionka airport jasionka"],
   ["RZV", "Rize–Artvin Airport", "Rize", "Turkey", "Europe/Istanbul"],
-  ["SAG", "Shirdi International Airport", "Kakadi", "India", "Asia/Kolkata"],
+  ["SAG", "Shirdi International Airport", "Shirdi", "India", "Asia/Kolkata", "shirdi international airport shirdi kakadi"],
   ["SAH", "Sanaa International Airport", "Sanaa", "Yemen", "Asia/Aden"],
   ["SAI", "Siem Reap-Angkor International Airport", "Siem Reap", "Cambodia", "Asia/Phnom_Penh"],
   ["SAL", "El Salvador International Airport Saint Óscar Arnulfo Romero y Galdámez", "San Salvador", "El Salvador", "America/El_Salvador", "el salvador international airport saint óscar arnulfo romero y galdámez san salvador luis talpa el salvador international airport saint oscar arnulfo romero y galdamez san salvador luis talpa"],
@@ -1018,7 +1050,7 @@ const AIRPORT_ROWS: Row[] = [
   ["SDJ", "Sendai Airport", "Natori", "Japan", "Asia/Tokyo"],
   ["SDQ", "Las Américas International Airport", "Santo Domingo", "Dominican Republic", "America/Santo_Domingo", "las américas international airport santo domingo las americas international airport santo domingo"],
   ["SDU", "Santos Dumont Airport", "Rio de Janeiro", "Brazil", "America/Sao_Paulo"],
-  ["SDW", "Sindhudurg Airport", "Chipi", "India", "Asia/Kolkata"],
+  ["SDW", "Sindhudurg Airport", "Sindhudurg", "India", "Asia/Kolkata", "sindhudurg airport sindhudurg chipi"],
   ["SEA", "Seattle–Tacoma International Airport", "Seattle", "United States", "America/Los_Angeles"],
   ["SEZ", "Seychelles International Airport", "Victoria", "Seychelles", "Indian/Mahe"],
   ["SFB", "Orlando Sanford International Airport", "Orlando", "United States", "America/New_York"],
@@ -1145,7 +1177,7 @@ const AIRPORT_ROWS: Row[] = [
   ["TRU", "Capitán FAP Carlos Martínez de Pinillos International Airport", "Trujillo", "Peru", "America/Lima", "capitán fap carlos martínez de pinillos international airport trujillo capitan fap carlos martinez de pinillos international airport trujillo"],
   ["TRV", "Thiruvananthapuram International Airport", "Thiruvananthapuram", "India", "Asia/Kolkata", "thiruvananthapuram international airport thiruvananthapuram trivandrum"],
   ["TRW", "Bonriki International Airport", "South Tarawa", "Kiribati", "Pacific/Tarawa"],
-  ["TRZ", "Tiruchirappalli International Airport", "Tiruchirappalli", "India", "Asia/Kolkata", "tiruchirappalli international airport tiruchirappalli tiruchirappally"],
+  ["TRZ", "Tiruchirappalli International Airport", "Tiruchirappalli", "India", "Asia/Kolkata", "tiruchirappalli international airport tiruchirappalli tiruchirappally trichy"],
   ["TSA", "Taipei Songshan International Airport", "Taipei", "Taiwan", "Asia/Taipei"],
   ["TSF", "Treviso Airport", "Treviso", "Italy", "Europe/Rome", "treviso airport treviso tv"],
   ["TSN", "Tianjin Binhai International Airport", "Tianjin", "China", "Asia/Shanghai"],
