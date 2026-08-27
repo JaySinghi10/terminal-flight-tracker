@@ -1378,9 +1378,15 @@ const CITY_AIRPORTS: Record<string, string[]> = {
 let INDEX: Map<string, Airport> | null = null;
 let HAYSTACK: { a: Airport; s: string }[] = [];
 
+// Every exact city name in the dataset, plus every curated alias. Built with
+// the index, because a set of 1,223 strings is the difference between a gate
+// that can answer "is this a place?" and one that has to guess.
+let PLACES: Set<string> | null = null;
+
 function build() {
   if (INDEX !== null) return;
   INDEX = new Map();
+  PLACES = new Set(Object.keys(CITY_AIRPORTS));
   HAYSTACK = AIRPORT_ROWS.map(r => {
     const a: Airport = { iata: r[0], name: r[1], city: r[2], country: r[3], tz: r[4] };
     INDEX!.set(a.iata, a);
@@ -1388,8 +1394,30 @@ function build() {
     // decides a row needs no `search` of its own, so the fallback has to strip it
     // too or "O'Hare" would be one word to the data and two to the device.
     const s = r[5] ?? normalizeTerm(`${a.name} ${a.city}`);
+    PLACES!.add(normalizeTerm(a.city));
     return { a, s };
   });
+}
+
+// IS THIS SPAN A PLACE, exactly?
+//
+// An accessor rather than an export of CITY_AIRPORTS: handing out the map
+// invites callers to reimplement matching against it, and every reimplementation
+// is a way for two answers to the same question to drift apart. This is the only
+// question the caller has.
+//
+// EXACT ONLY — an exact city name, a curated alias, or a real IATA code. It
+// deliberately does NOT go through resolveAirportName, whose lowest tier matches
+// any haystack that merely CONTAINS the term: that tier answers "time" with
+// Nice, "land" with Gothenburg and "sfo" with Sydney, because Kingsford Smith
+// contains those three letters. Useful for ranking a search the user has
+// committed to; useless for deciding whether a sentence is about travel at all.
+export function isKnownPlace(term: string): boolean {
+  build();
+  const q = normalizeTerm(term);
+  if (q.length < MIN_TERM) return false;
+  if (PLACES!.has(q)) return true;
+  return q.length === 3 && INDEX!.has(q.toUpperCase());
 }
 
 // Lowercase, collapse whitespace, drop punctuation. The same normalisation is
@@ -1481,14 +1509,20 @@ export function findAirports(term: string, limit = 8): Airport[] {
 // whether to offer a picker: "Mumbai" returns BOM alone even though Navi Mumbai
 // also matches, because Navi Mumbai is a worse match, not an alternative
 // reading. "London" and "Portland" both return several.
-export function resolveAirportName(term: string): { airport: Airport; options: Airport[] } | null {
+// `rank` is the match quality that scoreAll already computed and used to throw
+// away: 0 the term IS the city, 1 a whole word, up through 5 a bare substring.
+// Returned rather than discarded so a caller can tell a confident hit from a
+// coincidence — which is what decides whether a model's reading is trusted
+// enough to spend units on.
+export function resolveAirportName(term: string): { airport: Airport; options: Airport[]; rank: number } | null {
   const q = normalizeTerm(term);
   if (q.length < MIN_TERM) return null;
   build();
   const curated = CITY_AIRPORTS[q];
   if (curated) {
     const hit = curated.map(c => INDEX!.get(c)).filter((x): x is Airport => !!x);
-    if (hit.length > 0) return { airport: hit[0], options: hit.slice(0, 8) };
+    // A curated entry is the best kind of match there is: someone wrote it down.
+    if (hit.length > 0) return { airport: hit[0], options: hit.slice(0, 8), rank: 0 };
   }
   const scored = scoreAll(q);
   if (scored.length === 0) return null;
@@ -1496,5 +1530,6 @@ export function resolveAirportName(term: string): { airport: Airport; options: A
   return {
     airport: scored[0].a,
     options: scored.filter(v => v.rank === best).slice(0, 8).map(v => v.a),
+    rank: best,
   };
 }

@@ -58,6 +58,8 @@ import {
   Airport,
   airportByCode,
   resolveAirportName,
+  isKnownPlace,
+  normalizeTerm,
 } from '../lib/airports';
 
 const MONO = 'JetBrainsMono_400Regular';
@@ -157,7 +159,7 @@ const NL_NO_MODS: SearchMods = { date: null, band: null, sort: null };
 
 type SearchParse =
   | { kind: 'ok'; from: RouteEnd; to: RouteEnd; mods: SearchMods }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; message: string; soft?: boolean }
   | null;
 
 // A day number with or without its ordinal tail: 3, 3rd, 21st, 22nd.
@@ -393,6 +395,150 @@ function nlBandOnly(b: RouteBand): Record<RouteBand, boolean> {
   return out;
 }
 
+// ── THE MODEL RUNG ───────────────────────────────────────────────────────────
+//
+// Everything above this is free. This is the one rung that costs a model call,
+// and it exists for the sentences the peeler cannot reach: a misspelt place, a
+// numeric date, a range, a time word outside the four bands, an origin the user
+// never named.
+//
+// THE GATE, and it is the whole reason this is affordable.
+//
+// The obvious gate — "the peeler found a modifier but nothing resolved" — was
+// measured and rejected. It fires on "flights tomorrow", "morning flights" and
+// "fastest", none of which name a place, and it MISSES the cases it exists for,
+// because the peeler only recognises vocabulary it already knows: "on 3/10",
+// "this weekend" and "at dawn" peel nothing at all.
+//
+// This gate asks a different question: does the sentence contain a place, EXACTLY
+// spelt? Measured over eleven non-search inputs — "is my flight on time", "what
+// time does my flight land", "how do I get to the airport", "when does my plane
+// land", "what is my gate", "cancel my booking" and the rest — it fired zero
+// times, and it fired on seven of nine intended ones.
+//
+// It has to be an EXACT test. resolveAirportName's lowest tier matches any
+// haystack containing the term, which answers "time" with Nice, "land" with
+// Gothenburg and "sfo" with Sydney. A gate built on it would send every
+// question to the model. isKnownPlace exists for this and nothing else.
+//
+// The two it misses are sentences where EVERY place is misspelt. Nothing free
+// can tell those from noise, and paying a model call to find out is the cost
+// this gate exists to avoid.
+const NL_GATE_MAX_SPAN = 3;
+
+function nlLooksLikeSearch(q: string): boolean {
+  const w = normalizeTerm(q).split(' ').filter(Boolean);
+  // One word is a place name, not a sentence, and the free rungs have already
+  // had it. Two is the shortest thing that can be a search this rung improves.
+  if (w.length < 2) return false;
+  for (let i = 0; i < w.length; i++) {
+    for (let n = NL_GATE_MAX_SPAN; n >= 1; n--) {
+      if (i + n > w.length) continue;
+      if (isKnownPlace(w.slice(i, i + n).join(' '))) return true;
+    }
+  }
+  return false;
+}
+
+// What the endpoint sends back, before the device has looked at any of it.
+type ParseReply = {
+  origin: string | null;
+  destination: string | null;
+  date: string | null;
+  date_kind: 'single' | 'range' | null;
+  band: 'morning' | 'afternoon' | 'evening' | 'overnight' | null;
+  sort: 'fastest' | 'earliest' | null;
+  confidence: number;
+  error: string | null;
+};
+
+// What the device made of it.
+//
+// `armed` is the only field that decides whether the next press spends units.
+// `note` is the line the user reads. A reading can be shown and not armed, which
+// is the point: an extraction the app is unsure of is still worth showing,
+// because the user can see in one glance whether it read them correctly.
+type NlRead = {
+  from: RouteEnd | null;
+  to: RouteEnd | null;
+  fromName: string | null;
+  toName: string | null;
+  mods: SearchMods;
+  armed: boolean;
+  note: string;
+};
+
+// Below this the reading is shown but the next press does not search. 0.7 rather
+// than a half: the cost of being wrong is four units and a board for the wrong
+// day, and the cost of being cautious is one more press.
+const NL_ARM_AT = 0.7;
+// A rank above this came from the substring tier and is a coincidence as often
+// as a match. See resolveAirportName.
+const NL_TRUST_RANK = 2;
+
+const NL_BAND_OF: Record<string, RouteBand> = {
+  morning: '05:00-12:00', afternoon: '12:00-18:00',
+  evening: '18:00-00:00', overnight: '00:00-05:00',
+};
+const NL_SORT_OF: Record<string, RouteSort> = {
+  fastest: 'duration', earliest: 'departure',
+};
+
+// The reply, checked again. The endpoint already validated the date against the
+// same window and the vocabularies against the same enums; this is the second
+// of the two cheap checks, and it is here because a field that reaches the
+// search has to have been agreed by both sides.
+function nlReadReply(r: ParseReply): NlRead {
+  const none: SearchMods = { date: null, band: null, sort: null };
+  const dead = (note: string): NlRead =>
+    ({ from: null, to: null, fromName: r.origin, toName: r.destination, mods: none, armed: false, note });
+
+  if (r.error !== null) return dead(r.error);
+
+  // A RANGE IS REFUSED, never narrowed. "This weekend" is two days and the board
+  // is one; picking Saturday would be a wrong answer that costs four units and
+  // looks right. The endpoint is told never to collapse one, and this is what
+  // happens when it says so.
+  if (r.date_kind === 'range') {
+    return dead('I can only search one day at a time — which date?');
+  }
+  if (r.origin === null || r.destination === null) {
+    const missing = r.origin === null ? 'where you are flying from' : 'where you are flying to';
+    return dead(`I did not catch ${missing}`);
+  }
+
+  // NAMES, resolved HERE. The model never picked an airport; it read two words
+  // out of a sentence. Everything that decides which airport those words mean —
+  // including the refusal of anything not in the dataset — happens on the
+  // device, exactly as it does for a typed route.
+  const from = resolveRouteEnd(r.origin);
+  const to = resolveRouteEnd(r.destination);
+  if (from === null || to === null) {
+    const bad = from === null ? r.origin : r.destination;
+    return dead(`no airport matches "${bad}"`);
+  }
+  if (from.airport.iata === to.airport.iata) {
+    return dead('origin and destination must be different airports');
+  }
+
+  const mods: SearchMods = {
+    date: r.date,
+    band: r.band !== null ? NL_BAND_OF[r.band] ?? null : null,
+    sort: r.sort !== null ? NL_SORT_OF[r.sort] ?? null : null,
+  };
+
+  // Two ways to be unsure, and either is enough to withhold the search: the
+  // model said so, or the names it returned only matched something loosely.
+  const loose = from.rank > NL_TRUST_RANK || to.rank > NL_TRUST_RANK;
+  const armed = r.confidence >= NL_ARM_AT && !loose;
+  return {
+    from, to, fromName: r.origin, toName: r.destination, mods, armed,
+    note: armed
+      ? 'read from your words — press again to search'
+      : 'I am not sure I read that right — check it, then press again',
+  };
+}
+
 // The affordance under the command line and the routing branch in handleSearch
 // must test the IDENTICAL string, or the affordance shows for input the search
 // then rejects. One helper, called from both, so the two cannot drift.
@@ -431,7 +577,7 @@ const NOT_A_PLACE = new Set([
   'today', 'tomorrow', 'tonight', 'next', 'cheap', 'cheapest', 'book',
 ]);
 
-type RouteEnd = { airport: Airport; options: Airport[] };
+type RouteEnd = { airport: Airport; options: Airport[]; rank: number };
 
 // One end of a route.
 //
@@ -443,10 +589,11 @@ function resolveRouteEnd(text: string): RouteEnd | null {
   const t = text.trim();
   if (/^[A-Za-z]{3}$/.test(t)) {
     const a = airportByCode(t);
-    if (a !== null) return { airport: a, options: [a] };
+    // An exact code is the most certain match there is.
+    if (a !== null) return { airport: a, options: [a], rank: 0 };
   }
   const hit = resolveAirportName(t);
-  return hit === null ? null : { airport: hit.airport, options: hit.options };
+  return hit === null ? null : { airport: hit.airport, options: hit.options, rank: hit.rank };
 }
 
 // Every way the command line could be cut into two places, best candidate
@@ -483,7 +630,7 @@ function routeSplits(q: string): [string, string][] {
 //   null   not a route at all, and falls through to /chat exactly as before
 type RouteParse =
   | { kind: 'ok'; from: RouteEnd; to: RouteEnd }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; message: string; soft?: boolean }
   | null;
 
 function parseRouteQuery(q: string): RouteParse {
@@ -506,8 +653,8 @@ function parseRouteQuery(q: string): RouteParse {
     }
     return {
       kind: 'ok',
-      from: { airport: from, options: [from] },
-      to: { airport: to, options: [to] },
+      from: { airport: from, options: [from], rank: 0 },
+      to: { airport: to, options: [to], rank: 0 },
     };
   }
 
@@ -532,7 +679,12 @@ function parseRouteQuery(q: string): RouteParse {
       if (words.length <= 3 && words.every(w => !NOT_A_PLACE.has(w))) orphan = unknown;
     }
   }
-  if (orphan !== null) return { kind: 'error', message: `no airport matches "${orphan}"` };
+  // SOFT. The other two errors in this function are confident — a code that is
+  // not in the dataset is known to be wrong, and an origin equal to its
+  // destination is known to be wrong. This one only means the split did not
+  // resolve, which is exactly the case a model might read better. The flag is
+  // what lets the router offer it upwards instead of stopping on it.
+  if (orphan !== null) return { kind: 'error', message: `no airport matches "${orphan}"`, soft: true };
   return null;
 }
 
@@ -2896,6 +3048,10 @@ export default function Index() {
   const [errorCounter, setErrorCounter] = useState(0);
   const [chatResponse, setChatResponse] = useState<string | null>(null);
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
+  // The model's reading, and the exact query it was read from. Keyed on the
+  // query so an edit invalidates it: a reading of a sentence the user has since
+  // changed must never be what the next press spends units on.
+  const [nlRead, setNlRead] = useState<{ q: string; v: NlRead } | null>(null);
   // Arrival times bought one at a time for rows the board sent without one.
   // Keyed by makeFlightId, so it survives a new search: the same flight on the
   // same day is the same answer. See routeRows, which merges these in.
@@ -3567,14 +3723,19 @@ export default function Index() {
     // routeCandidate, not a fresh parse: the affordance under the command line
     // reads the same value from the same render, so what the user was shown and
     // what Execute does cannot disagree.
-    if (routeCandidate !== null && routeCandidate.kind === 'error') {
+    // A HARD local error stops here, exactly as it always has: a code that is
+    // not in the dataset and an origin equal to its destination are both known
+    // to be wrong, and no model is going to change that. A SOFT one means the
+    // split did not resolve, which is a case the rung below can improve on, so
+    // it falls through instead of stopping.
+    if (routeCandidate !== null && routeCandidate.kind === 'error' && !routeCandidate.soft) {
       // Nothing is spent here — not a board fetch, and not an LLM call.
       setError(routeCandidate.message);
       setErrorCounter(c => c + 1);
       shake();
       return;
     }
-    if (routeCandidate !== null) {
+    if (routeCandidate !== null && routeCandidate.kind === 'ok') {
       // A NEW SEARCH STARTS CLEAN. runRouteLookup cannot do this: its other
       // callers are the date pill and the airport picker, which REFINE the list
       // on screen, and wiping the filters there would undo a choice the user
@@ -3606,6 +3767,61 @@ export default function Index() {
         routeCandidate.from.airport.iata, routeCandidate.to.airport.iata,
         mods.date ?? routeDate);
       return;
+    }
+
+    // ── the model rung ──────────────────────────────────────────────────
+    //
+    // TWO PRESSES, and the split is deliberate. The reading cannot exist before
+    // the first press, because producing it as the user types would be a model
+    // call per keystroke. So the first press buys the READING and the second
+    // spends the UNITS — which is what "see the extraction before Execute
+    // fires" has to mean when the extraction costs something to make.
+    //
+    // A reading already in hand for this exact query is not re-fetched: press
+    // two searches, or, if it was not armed, does nothing further. Editing the
+    // query clears it, so a stale reading can never be the thing that runs.
+    if (nlRead !== null && nlRead.q === query) {
+      const v = nlRead.v;
+      if (!v.armed || v.from === null || v.to === null) return;
+      routeResetControls_forSearch();
+      if (v.mods.band !== null) {
+        setRouteDepBands(nlBandOnly(v.mods.band));
+        setRouteArrBands(ALL_BANDS_ON);
+      }
+      if (v.mods.sort !== null) setRouteSort(v.mods.sort);
+      if (v.mods.date !== null) setRouteDate(v.mods.date);
+      setRoutePick({ from: v.from.options, to: v.to.options });
+      await runRouteLookup(v.from.airport.iata, v.to.airport.iata, v.mods.date ?? routeDate);
+      return;
+    }
+
+    if (nlLooksLikeSearch(query)) {
+      setLoading(true);
+      try {
+        const response = await fetch(`${API_BASE}/parse`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: query }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setError(data.error || "Something went wrong. Please try again.");
+          setErrorCounter(c => c + 1);
+          shake();
+          return;
+        }
+        // Nothing is searched on this press. The reading goes on screen and the
+        // user decides whether it is right.
+        setNlRead({ q: query, v: nlReadReply(data as ParseReply) });
+        return;
+      } catch {
+        setError("Could not reach the server. Please check your connection and try again.");
+        setErrorCounter(c => c + 1);
+        shake();
+        return;
+      } finally {
+        setLoading(false);
+      }
     }
 
     setLoading(true);
@@ -3790,6 +4006,10 @@ export default function Index() {
   //
   // Parsed once per distinct query and cached: the parser scans the dataset,
   // and this runs on every keystroke.
+  // An edit throws the model's reading away. Doing it here rather than in the
+  // TextInput handler means it cannot be forgotten by a second input path.
+  if (nlRead !== null && nlRead.q !== query) setNlRead(null);
+
   const routeParseCache = useRef<{ q: string; v: SearchParse }>({ q: '\u0000', v: null });
   if (routeParseCache.current.q !== query) {
     routeParseCache.current = { q: query, v: parseSearchQuery(query) };
@@ -4416,6 +4636,15 @@ export default function Index() {
   // Tested on routeResult.date, not routeDate: it is the list on screen that
   // decides whether a fetch is owed. Already-today costs nothing, and a search
   // in flight is left alone.
+  // The view-control half of a reset, without the re-fetch. Both search paths
+  // call it so that "a search typed from scratch starts clean" is one rule in
+  // one place rather than two lists that drift.
+  const routeResetControls_forSearch = () => {
+    setRouteDepBands(ALL_BANDS_ON);
+    setRouteArrBands(ALL_BANDS_ON);
+    setRouteSort(ROUTE_SORT_DEFAULT);
+  };
+
   const routeResetControls = () => {
     setRouteDepBands(ALL_BANDS_ON);
     setRouteArrBands(ALL_BANDS_ON);
@@ -5276,7 +5505,30 @@ export default function Index() {
               time to change it. Nothing else belongs under the command line
               while typing — the date control moved up with the other view
               controls above the results. */}
-          {routeAffordance && (
+          {/* THE MODEL'S READING, in the same block and the same styles as the
+              free one. Three lines rather than two: the route, its settings, and
+              a line saying where the reading came from and whether pressing
+              again will spend anything. It replaces the free affordance rather
+              than joining it, because both cannot be true of one query. */}
+          {nlRead !== null && nlRead.q === query && (
+            <View style={{ marginTop: 4, marginBottom: 10, paddingLeft: 18 }}>
+              {nlRead.v.from !== null && nlRead.v.to !== null && (
+                <Text style={s.routeEcho} numberOfLines={2}>
+                  {`${nlRead.v.from.airport.city} (${nlRead.v.from.airport.iata})`}
+                  {' → '}
+                  {`${nlRead.v.to.airport.city} (${nlRead.v.to.airport.iata})`}
+                </Text>
+              )}
+              {nlModsLabel(nlRead.v.mods) !== '' && (
+                <Text style={s.routeEchoMods} numberOfLines={1}>
+                  {nlModsLabel(nlRead.v.mods)}
+                </Text>
+              )}
+              <Text style={s.routeEchoNote} numberOfLines={2}>{nlRead.v.note}</Text>
+            </View>
+          )}
+
+          {routeAffordance && nlRead === null && (
             <View style={{ marginTop: 4, marginBottom: 10, paddingLeft: 18 }}>
               <Text style={s.routeEcho} numberOfLines={2}>
                 {`${routeAffordance.from.airport.city} (${routeAffordance.from.airport.iata})`}
@@ -5905,6 +6157,12 @@ const s = StyleSheet.create({
   // route is what will be searched, these are its settings.
   routeEchoMods: {
     fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS, marginTop: 3,
+  },
+  // Where the reading came from, and whether the next press spends anything.
+  // One step further down the same ramp than the settings above it: this is the
+  // app talking about itself, which is the least important thing in the block.
+  routeEchoNote: {
+    fontSize: 11, color: "rgba(226,226,226,0.3)", fontFamily: SANS, marginTop: 4,
   },
   // The codes under the heading, and the airport picker under those. Both are
   // supporting detail at the smallest size in the scale, separated from the
