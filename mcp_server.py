@@ -598,7 +598,21 @@ ROUTE_EXCLUDED_AIRLINES = ("Private",)
 
 # How many name-only rows travel per response. They are candidates, not matches,
 # and the client discards most of them: ten survived on a 271-row DEL board.
-ROUTE_MAX_UNRESOLVED = 25
+# 25 was sized for a rolling twelve-hour window, where uncoded rows are a
+# handful and 25 covers them several times over. A DATED day is a different
+# shape: SFO on 2026-10-03 came back with every single row uncoded — the
+# provider ships future schedules without destination codes — so the cap became
+# a truncation of the board itself, cutting the day off at 16:40 and hiding
+# every evening long-haul from a client that could have resolved it by name.
+#
+# 250 covers a full day at a large hub. The payload is the cost: an uncoded row
+# is about 300 bytes, so a worst case is roughly 75KB against the 9KB that
+# search returned. That is the right trade for a search that costs four units —
+# a truncated answer is worse than a large one.
+#
+# ROUTE_MAX_RESULTS stays at 25. That caps what the client SHOWS, which is a
+# different question from how many candidates it needs to sift.
+ROUTE_MAX_UNRESOLVED = 250
 
 # A dated board is a published schedule, not a live one: it moves when an airline
 # retimes or swaps equipment, which is days apart, not minutes. Twelve hours

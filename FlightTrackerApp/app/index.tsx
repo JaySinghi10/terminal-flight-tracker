@@ -73,6 +73,326 @@ const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
 // FLIGHT_REGEX, which needs digits, so the two can never both match.
 const ROUTE_REGEX = /^([A-Z]{3})[\s>\-\u2192]?([A-Z]{3})$/;
 
+// ── PLAIN ENGLISH ────────────────────────────────────────────────────────────
+//
+// "Flight from San Francisco to Abu Dhabi on 3 October, morning, fastest" is a
+// route search with three decorations on it. All of this is LOCAL and FREE:
+// nothing here calls a model, and the only thing it can cause to happen is the
+// same board fetch "SFO AUH" already causes.
+//
+// THE SHAPE. One function wrapping the existing parser:
+//
+//   1  parseRouteQuery on the raw string. A hit returns immediately and this
+//      whole file might as well not exist — see parseSearchQuery.
+//   2  peel the modifier phrases off, hand the remainder to the SAME parser.
+//   3  no hit either way: return step 1's answer verbatim, so what falls
+//      through to /chat is exactly what fell through before.
+//
+// THE SAFETY PROPERTY, and everything else rests on it: a peel is only accepted
+// if the REMAINDER STILL RESOLVES TO TWO AIRPORTS. A wrong strip cannot turn a
+// working route into a broken one; it can only fail to help. That is what makes
+// it safe to guess aggressively — an over-reach costs a fallthrough, which is
+// where the input was going anyway.
+
+// Full names only, and deliberately not "mon"/"tue"/"sat". A weekday is the one
+// date form that strips WITHOUT a number beside it, so it is the one form that
+// can eat a place name on its own. "Sat" and "Sun" are far likelier to be part
+// of something else than "Saturday" is.
+const NL_WEEKDAYS: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
+
+// Abbreviations ARE safe here, because a month only counts adjacent to a
+// number. "March" alone stays a town in Cambridgeshire; "3 March" is a date.
+const NL_MONTHS: Record<string, number> = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
+  may: 4, june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7,
+  september: 8, sept: 8, sep: 8, october: 9, oct: 9, november: 10, nov: 10,
+  december: 11, dec: 11,
+};
+
+// The four bands the results screen already filters on, by the words people use
+// for them. "night" and "evening" are the same band; "overnight" is not, which
+// is the distinction the 00:00-05:00 band exists to make.
+const NL_BANDS: Record<string, RouteBand> = {
+  morning: '05:00-12:00',
+  afternoon: '12:00-18:00',
+  evening: '18:00-00:00',
+  night: '18:00-00:00',
+  overnight: '00:00-05:00',
+  redeye: '00:00-05:00',
+};
+const NL_BAND_PAIRS: Record<string, RouteBand> = {
+  'red eye': '00:00-05:00',
+  'early morning': '00:00-05:00',
+  'late night': '00:00-05:00',
+};
+
+// NO "latest" and no "last", though both are asked for. The list sorts one way
+// only, so "latest departure" has no honest mapping — arrival-ascending is a
+// different question wearing the same word. Leaving them out means they stay in
+// the string and the sentence falls through, which is the failure the user can
+// see. See the note on partial understanding at parseSearchQuery.
+const NL_SORTS: Record<string, RouteSort> = {
+  fastest: 'duration', quickest: 'duration', shortest: 'duration',
+  earliest: 'departure', soonest: 'departure',
+};
+
+// Words that are never part of a place name in the dataset and are common in a
+// spoken request. Dropped only in the SECOND candidate, so a place that happens
+// to contain one still has a chance in the first.
+//
+// "to" is not here and must never be: it is the route separator. "from" is,
+// because it only ever introduces the origin.
+const NL_FILLER = new Set([
+  'flight', 'flights', 'fly', 'flying', 'show', 'me', 'find', 'search', 'get',
+  'please', 'a', 'an', 'the', 'for', 'on', 'at', 'in', 'from', 'departing',
+  'leaving', 'going', 'arriving', 'ticket', 'tickets', 'any', 'all', 'is',
+  'are', 'there', 'what', 'whats', 'when', 'plz',
+]);
+
+// What a sentence added on top of the route.
+type SearchMods = { date: string | null; band: RouteBand | null; sort: RouteSort | null };
+const NL_NO_MODS: SearchMods = { date: null, band: null, sort: null };
+
+type SearchParse =
+  | { kind: 'ok'; from: RouteEnd; to: RouteEnd; mods: SearchMods }
+  | { kind: 'error'; message: string }
+  | null;
+
+// A day number with or without its ordinal tail: 3, 3rd, 21st, 22nd.
+const NL_DAY_RE = /^([0-9]{1,2})(st|nd|rd|th)?$/;
+const NL_YEAR_RE = /^(20[0-9]{2})$/;
+
+// Whole days from today, or null when the date is not a real one. Built the same
+// way routeDayOffset builds it, from local midnight, because the window the
+// calendar enforces is a local-calendar window.
+function nlOffset(d: Date): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+// A day-and-month with no year: this year, or next year if that has already
+// gone. "3 January" asked in December means the January five weeks away, not
+// the one eleven months back.
+function nlFromDayMonth(day: number, month: number, year: number | null): Date | null {
+  const now = new Date();
+  const y = year ?? now.getFullYear();
+  const made = new Date(y, month, day);
+  // Rejects 31 February, which rolls over into March rather than failing.
+  if (made.getMonth() !== month || made.getDate() !== day) return null;
+  if (year === null && nlOffset(new Date(y, month, day)) < 0) {
+    const next = new Date(y + 1, month, day);
+    return next.getMonth() === month ? next : null;
+  }
+  return made;
+}
+
+// The next occurrence of a weekday. `skipToday` is the whole difference between
+// "friday" and "next friday": said on a Friday, the first means today and the
+// second means the one after. Both readings of "next friday" exist in English;
+// this is the near one, and the extraction is shown before Execute either way.
+function nlWeekdayDate(target: number, skipToday: boolean): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  let delta = (target - d.getDay() + 7) % 7;
+  if (delta === 0 && skipToday) delta = 7;
+  d.setDate(d.getDate() + delta);
+  return d;
+}
+
+type NlPeel = {
+  candidates: string[];
+  mods: SearchMods;
+  // A date that parsed cleanly and lands outside the window the calendar allows.
+  // Held rather than thrown, because it only becomes an error if the ROUTE
+  // resolves — otherwise the sentence was never a route search at all.
+  dateError: string | null;
+};
+
+// Walk the words once, longest phrase first, and take out what is recognised.
+// Returns null when there is nothing to peel or the sentence contradicts itself.
+function nlPeel(q: string): NlPeel | null {
+  // Commas and semicolons separate a spoken list and are never inside a name
+  // this dataset can match. Other punctuation is left alone.
+  const norm = q.replace(/[,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (norm === '') return null;
+  const words = norm.split(' ');
+  const low = words.map(w => w.toLowerCase());
+
+  const keep: boolean[] = words.map(() => true);
+  let date: Date | null = null;
+  let band: RouteBand | null = null;
+  let sort: RouteSort | null = null;
+  let found = false;
+  // Two dates, or two different bands, means the sentence is not understood.
+  // Guessing which one was meant is exactly the over-reach the discard rule
+  // cannot protect against, because both readings resolve.
+  let clash = false;
+
+  const take = (i: number, n: number) => { for (let k = i; k < i + n; k++) keep[k] = false; found = true; };
+  const setDate = (d: Date | null, i: number, n: number) => {
+    if (d === null) return false;
+    if (date !== null) { clash = true; return false; }
+    date = d; take(i, n); return true;
+  };
+
+  for (let i = 0; i < low.length; i++) {
+    if (!keep[i]) continue;
+    const w = low[i];
+    const w1 = i + 1 < low.length ? low[i + 1] : '';
+    const w2 = i + 2 < low.length ? low[i + 2] : '';
+
+    // "next friday"
+    if (w === 'next' && w1 in NL_WEEKDAYS) {
+      if (setDate(nlWeekdayDate(NL_WEEKDAYS[w1], true), i, 2)) { i++; continue; }
+    }
+    // "3 October" / "3rd Oct" (+ an optional year, consumed so it cannot poison
+    // the remainder)
+    const dm = NL_DAY_RE.exec(w);
+    if (dm && w1 in NL_MONTHS) {
+      const yr = NL_YEAR_RE.test(w2) ? Number(w2) : null;
+      const n = yr === null ? 2 : 3;
+      if (setDate(nlFromDayMonth(Number(dm[1]), NL_MONTHS[w1], yr), i, n)) { i += n - 1; continue; }
+    }
+    // "October 3" / "Oct 3rd"
+    const md = NL_DAY_RE.exec(w1);
+    if (w in NL_MONTHS && md) {
+      const yr = NL_YEAR_RE.test(w2) ? Number(w2) : null;
+      const n = yr === null ? 2 : 3;
+      if (setDate(nlFromDayMonth(Number(md[1]), NL_MONTHS[w], yr), i, n)) { i += n - 1; continue; }
+    }
+    // Two-word bands before one-word ones, or "red" and "eye" both survive.
+    const pair = `${w} ${w1}`;
+    if (pair in NL_BAND_PAIRS) {
+      if (band !== null && band !== NL_BAND_PAIRS[pair]) clash = true;
+      band = NL_BAND_PAIRS[pair]; take(i, 2); i++; continue;
+    }
+    if (w === 'today' || w === 'tonight') { if (setDate(new Date(), i, 1)) continue; }
+    if (w === 'tomorrow') {
+      const d = new Date(); d.setDate(d.getDate() + 1);
+      if (setDate(d, i, 1)) continue;
+    }
+    if (w in NL_WEEKDAYS) {
+      if (setDate(nlWeekdayDate(NL_WEEKDAYS[w], false), i, 1)) continue;
+    }
+    if (w in NL_BANDS) {
+      if (band !== null && band !== NL_BANDS[w]) clash = true;
+      band = NL_BANDS[w]; take(i, 1); continue;
+    }
+    if (w in NL_SORTS) {
+      if (sort !== null && sort !== NL_SORTS[w]) clash = true;
+      sort = NL_SORTS[w]; take(i, 1); continue;
+    }
+  }
+
+  if (clash || !found) return null;
+
+  const kept = words.filter((_, i) => keep[i]);
+  // Two candidates, tried in order. The first keeps every word that is not a
+  // modifier, so a place containing a filler word survives it; the second drops
+  // the filler, which is what turns "Flight from San Francisco to Abu Dhabi"
+  // into something the route parser's six-word limit will look at.
+  const a = kept.join(' ').trim();
+  const b = kept.filter(w => !NL_FILLER.has(w.toLowerCase())).join(' ').trim();
+  const candidates = [a];
+  if (b !== a && b !== '') candidates.push(b);
+  // "between X and Y" is the one phrasing worth rewriting, because `and` cannot
+  // join ROUTE_SEPARATORS without changing what the existing parser does to
+  // every input. Contained here, it changes nothing outside this candidate.
+  if (low.includes('between')) {
+    const c = b.replace(/^between\s+/i, '').replace(/\s+and\s+/i, ' to ').trim();
+    if (c !== '' && !candidates.includes(c)) candidates.push(c);
+  }
+
+  let dateError: string | null = null;
+  let iso: string | null = null;
+  if (date !== null) {
+    const off = nlOffset(date);
+    if (off < 0) dateError = 'that date has already gone';
+    else if (off > ROUTE_MAX_DATE_DAYS) dateError = `route search reaches ${ROUTE_MAX_DATE_DAYS} days ahead at most`;
+    else iso = localIsoDate(date);
+  }
+
+  return { candidates, mods: { date: iso, band, sort }, dateError };
+}
+
+// THE ROUTER for everything typed into the command line that is not a flight
+// number.
+//
+// PARTIAL UNDERSTANDING, which is the rule the rest of this follows from: an
+// unrecognised phrase is never silently dropped.
+//
+//   - route resolves, modifiers understood        run with all of them
+//   - route resolves, no modifiers present        run exactly as before
+//   - route resolves, a date parsed but is out of the window
+//                                                 DO NOT SEARCH. Say so, free
+//   - anything else in the sentence               it stays in the string, the
+//                                                 route fails, /chat gets it
+//
+// The third case is the one worth defending. "SFO to AUH on 3 October 2027"
+// resolves both ends and names a real date the backend will not serve. Running
+// it with the date quietly dropped returns TODAY's board — a plausible answer
+// to a different question, for two units. Erring costs nothing and is visibly
+// wrong rather than invisibly wrong.
+//
+// The fourth is why "SFO to AUH at dawn" is not a search that ignores "dawn":
+// dawn is not a band word, so it stays, the route fails, and the sentence goes
+// where it went before. Under-reaching is a failure you can see. Over-reaching
+// is a wrong answer you cannot.
+function parseSearchQuery(q: string): SearchParse {
+  // STEP 1, and the reason short routes cost nothing new: the existing parser
+  // on the raw string, first, every time. On a hit nothing below runs.
+  const raw = parseRouteQuery(q);
+  if (raw !== null && raw.kind === 'ok') return { ...raw, mods: NL_NO_MODS };
+
+  const peeled = nlPeel(q);
+  if (peeled !== null) {
+    for (const cand of peeled.candidates) {
+      const r = parseRouteQuery(cand);
+      // ok only. A peeled candidate that produces an ERROR is not trusted: the
+      // error was computed from a string the user did not type.
+      if (r !== null && r.kind === 'ok') {
+        if (peeled.dateError !== null) return { kind: 'error', message: peeled.dateError };
+        return { ...r, mods: peeled.mods };
+      }
+    }
+  }
+  // STEP 3. Whatever the raw parse said, unchanged — including null, which is
+  // what sends a sentence to /chat.
+  return raw;
+}
+
+// The user's own words back, not the app's internal values: a band renders as
+// "morning" rather than "05:00-12:00", which is what was typed and what the
+// filter will show.
+const NL_BAND_LABEL: Record<RouteBand, string> = {
+  '00:00-05:00': 'overnight',
+  '05:00-12:00': 'morning',
+  '12:00-18:00': 'afternoon',
+  '18:00-00:00': 'evening',
+};
+const NL_SORT_LABEL: Record<RouteSort, string> = {
+  duration: 'fastest', departure: 'earliest', arrival: 'by arrival',
+};
+
+function nlModsLabel(m: SearchMods): string {
+  const parts: string[] = [];
+  if (m.date !== null) parts.push(routeDateLabel(m.date));
+  if (m.band !== null) parts.push(NL_BAND_LABEL[m.band]);
+  if (m.sort !== null) parts.push(NL_SORT_LABEL[m.sort]);
+  return parts.join('  \u00b7  ');
+}
+
+// One band on, the rest off, in the shape the filter state already holds.
+function nlBandOnly(b: RouteBand): Record<RouteBand, boolean> {
+  const out = {} as Record<RouteBand, boolean>;
+  for (const k of ROUTE_BANDS) out[k] = k === b;
+  return out;
+}
+
 // The affordance under the command line and the routing branch in handleSearch
 // must test the IDENTICAL string, or the affordance shows for input the search
 // then rejects. One helper, called from both, so the two cannot drift.
@@ -3255,9 +3575,36 @@ export default function Index() {
       return;
     }
     if (routeCandidate !== null) {
+      // A NEW SEARCH STARTS CLEAN. runRouteLookup cannot do this: its other
+      // callers are the date pill and the airport picker, which REFINE the list
+      // on screen, and wiping the filters there would undo a choice the user
+      // just made. Only this branch knows the search was typed from scratch.
+      //
+      // Before the mods, never after, so a sentence that names a band or a sort
+      // still gets exactly what it asked for.
+      //
+      // routeAirlinesOff is NOT here: runRouteLookup already clears it, and
+      // saying so in two places is how the two drift. routeDate is not here
+      // either — it is the SUBJECT of the search rather than a filter on it.
+      setRouteDepBands(ALL_BANDS_ON);
+      setRouteArrBands(ALL_BANDS_ON);
+      setRouteSort(ROUTE_SORT_DEFAULT);
+      // Only what the sentence actually said. With no modifiers every line below
+      // is a no-op and the call is the one this branch has always made:
+      // mods.date is null, so `?? routeDate` is routeDate.
+      const mods = routeCandidate.mods;
+      if (mods.band !== null) {
+        setRouteDepBands(nlBandOnly(mods.band));
+        setRouteArrBands(ALL_BANDS_ON);
+      }
+      if (mods.sort !== null) setRouteSort(mods.sort);
+      // Set so the date pill on the results screen agrees with the board that
+      // was fetched. A sentence overrides the control; it does not reset it.
+      if (mods.date !== null) setRouteDate(mods.date);
       setRoutePick({ from: routeCandidate.from.options, to: routeCandidate.to.options });
       await runRouteLookup(
-        routeCandidate.from.airport.iata, routeCandidate.to.airport.iata, routeDate);
+        routeCandidate.from.airport.iata, routeCandidate.to.airport.iata,
+        mods.date ?? routeDate);
       return;
     }
 
@@ -3271,7 +3618,13 @@ export default function Index() {
       });
       const data = await response.json();
 
-      if (!response.ok) {
+      // data.error as well as the status, which is what every other fetch in
+      // this file already does — see runRouteLookup, runFlightLookup and the
+      // refresh loop. /chat returns its failures as a 200 carrying an error
+      // key, so a status-only check swallowed them: the credit error was being
+      // reported correctly by the backend and discarded here, which is why
+      // "is my flight on time" appeared to do nothing at all.
+      if (data.error || !response.ok) {
         setError(data.error || "Something went wrong. Please try again.");
         setErrorCounter(c => c + 1);
         shake();
@@ -3437,9 +3790,9 @@ export default function Index() {
   //
   // Parsed once per distinct query and cached: the parser scans the dataset,
   // and this runs on every keystroke.
-  const routeParseCache = useRef<{ q: string; v: RouteParse }>({ q: '\u0000', v: null });
+  const routeParseCache = useRef<{ q: string; v: SearchParse }>({ q: '\u0000', v: null });
   if (routeParseCache.current.q !== query) {
-    routeParseCache.current = { q: query, v: parseRouteQuery(query) };
+    routeParseCache.current = { q: query, v: parseSearchQuery(query) };
   }
   const routeCandidate = routeParseCache.current.v;
   // Only a resolved pair shows. An error state says its piece through the error
@@ -4930,6 +5283,15 @@ export default function Index() {
                 {' → '}
                 {`${routeAffordance.to.airport.city} (${routeAffordance.to.airport.iata})`}
               </Text>
+              {/* Only when the sentence carried something. A short route looks
+                  exactly as it did, and this reads from the SAME cached parse
+                  the line above does, so what is shown and what Execute does
+                  cannot disagree. */}
+              {nlModsLabel(routeAffordance.mods) !== '' && (
+                <Text style={s.routeEchoMods} numberOfLines={1}>
+                  {nlModsLabel(routeAffordance.mods)}
+                </Text>
+              )}
             </View>
           )}
 
@@ -5539,6 +5901,11 @@ const s = StyleSheet.create({
 
   // Route search. Row metrics deliberately match sf.row and ir.row exactly.
   routeEcho: { fontSize: 13, color: "rgba(226,226,226,0.55)", fontFamily: SANS },
+  // A step down in size and two down the ramp from the route above it: the
+  // route is what will be searched, these are its settings.
+  routeEchoMods: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS, marginTop: 3,
+  },
   // The codes under the heading, and the airport picker under those. Both are
   // supporting detail at the smallest size in the scale, separated from the
   // heading by weight and opacity rather than by a rule.
