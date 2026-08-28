@@ -3566,6 +3566,24 @@ export default function Index() {
   const refreshingRef = useRef(false);
   const lastRefreshRef = useRef(0);
   const lastAutoRefreshRef = useRef(0);
+  // WHEN THE PROVIDER LAST ANSWERED ABOUT A FLIGHT, by id.
+  //
+  // THE FACT RECORDED IS "ATTEMPTED", NOT "FAILED", and that is the whole idea.
+  // The staleness filter in autoRefresh is meant to be self-clearing: attempt a
+  // flight, it leaves the candidate set, the next run reaches the ones behind
+  // it. That works because touchSavedFlight advances updatedAt — which it does
+  // only on success. So updatedAt is the only record of "we tried this", and a
+  // flight whose lookup fails never leaves the set: it sits at the head of the
+  // list consuming one of the two attempts on every run, for ever, starving
+  // everything behind it. Nothing here is a fairness rule bolted on top; this is
+  // the missing half of a fact the filter already depends on.
+  //
+  // MEMORY ONLY, and correctly so. A failure is a fact about one attempt, not
+  // about the flight, and there is no reason to believe an attempt that failed
+  // this morning still predicts anything after a relaunch. It dies with the
+  // process, which is also why it needs no eviction: it is bounded by the
+  // flights one session actually touches.
+  const lastTriedRef = useRef<Map<string, number>>(new Map());
   const dayRef = useRef(localDayKey(Date.now()));
   const refreshMsgOpacity = useRef(new Animated.Value(0)).current;
   const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4406,13 +4424,32 @@ export default function Index() {
           flightUrl(f.flightNumber, day, f.from.iata || null),
         );
         const data = await response.json();
-        if (data.error || !response.ok) { failures++; continue; }
+        // THE PROVIDER ANSWERED, AND THE ANSWER WAS NO. Recorded, because that
+        // is a fact about THIS FLIGHT: a not-found will be a not-found again in
+        // five minutes, so backing off costs nothing and yields the turn.
+        //
+        // See the catch below for the half that is deliberately not recorded.
+        if (data.error || !response.ok) {
+          lastTriedRef.current.set(f.id, Date.now());
+          failures++;
+          continue;
+        }
+        // A SUCCESS NEEDS NO ENTRY: touchSavedFlight below advances updatedAt,
+        // which the filter already reads.
         // f.id, not the fresh record's: a record filed under "unknown" has no
         // date for its id to have been built from, and this is what lets the
         // response supply one.
         await touchSavedFlight(email, savedFlightFromApi(data), f.id);
         if (openCardId && f.id === openCardId) openCardFresh = data;
       } catch {
+        // NOTHING RECORDED HERE, and the split from the branch above is
+        // load-bearing rather than tidiness. A thrown fetch is a fact about the
+        // NETWORK — offline, DNS, a timeout, a body that would not parse — and
+        // says nothing whatever about this flight. Record it and one offline
+        // stretch puts the first flights attempted into a twelve-hour back-off,
+        // so the run after connectivity returns skips precisely the flights that
+        // most need refreshing. While offline nothing can succeed anyway, so
+        // retrying the same two costs nothing and starves nobody.
         failures++;                                           // one failure must not abort the loop
       }
     }
@@ -4422,7 +4459,28 @@ export default function Index() {
   // Silent background refresh: no spinner, no message. Failures are invisible — the row age tells the truth.
   const autoRefresh = async (list: SavedFlight[], isCancelled: () => boolean) => {
     if (refreshingRef.current) return;
-    const stale = list.filter(f => Date.now() - f.updatedAt > AUTO_REFRESH_MIN_AGE_MS);
+    // THE LATER OF THE TWO. updatedAt says when this flight's data last came
+    // back; the map says when the provider last answered about it at all. A
+    // flight is a candidate only when BOTH are old enough, which is what makes
+    // the filter self-clearing again for failures as well as successes.
+    //
+    // updatedAt IS NOT ADVANCED ON A FAILURE, and must not be — it would be the
+    // shortest fix and it is wrong twice over. It is a storage write, and worse,
+    // updatedAt means "when this data was fetched": flightLineSegments reads it
+    // against COUNTDOWN_MAX_AGE_MS to decide whether a row may show a LIVE
+    // COUNTDOWN at all, so advancing it on a failure would put a ticking
+    // "departs in 2h 14m" over data that was never updated. The row would go
+    // from honestly stale to confidently wrong.
+    //
+    // ONLY autoRefresh READS THIS. onRefresh deliberately does not: a pull is
+    // the user asking, and the user is allowed to retry a flight the background
+    // gave up on.
+    // `at`, not `now`: this component already has a `now` state, and shadowing
+    // the ticking clock with a one-off reading inside a function is how the two
+    // get confused later.
+    const at = Date.now();
+    const stale = list.filter(f =>
+      at - Math.max(f.updatedAt, lastTriedRef.current.get(f.id) ?? 0) > AUTO_REFRESH_MIN_AGE_MS);
     if (stale.length === 0) return;
     refreshingRef.current = true;
     try {
