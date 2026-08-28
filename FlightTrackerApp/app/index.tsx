@@ -4212,7 +4212,23 @@ export default function Index() {
 
       // Active only. An archived flight is not refreshed, which is the whole
       // reason it does not count against MAX_SAVED_FLIGHTS.
-      const { failures, openCardFresh } = await refreshFlights(activeSaved, 5);
+      //
+      // STALEST FIRST, and this is the refresh QUEUE's order only — a copy, so
+      // activeSaved and everything the list renders from are untouched.
+      //
+      // The cap protects the quota and stays. But a cap on top of a FIXED order
+      // is a cliff rather than a queue: activeSaved comes out of savedFlights in
+      // stored order and is never sorted, so every pull walked the same first
+      // five and the sixth and seventh were not refreshed later, they were never
+      // refreshed at all. Two of seven sat at "updated 1d ago" indefinitely.
+      //
+      // Ordering by updatedAt ascending turns the same cap into a rotation: the
+      // five refreshed here become the five freshest, so the next pull starts
+      // with the ones this one could not reach and two pulls cover seven flights.
+      // It also fixes the worst-looking rows first, because the stalest record is
+      // exactly the one whose age is showing.
+      const refreshQueue = [...activeSaved].sort((a, b) => a.updatedAt - b.updatedAt);
+      const { failures, openCardFresh } = await refreshFlights(refreshQueue, 5);
 
       const list = await getSavedFlights(email);              // read once, set state once
       setSavedFlights(list);
