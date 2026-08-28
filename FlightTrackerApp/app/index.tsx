@@ -1212,6 +1212,46 @@ function getStatusBg(status: string) {
   }
 }
 
+// THE PROVIDER'S WORD -> THE WORD ON THE BADGE. Display only.
+//
+// STATUS_MAP on the backend collapses Expected, CheckIn, Boarding, GateClosed
+// and Delayed into one mapped status, "scheduled", because five words is the
+// right vocabulary for SORTING, countdowns, the archive rule and reminderTimes,
+// all of which want to know what kind of thing a flight is doing rather than
+// exactly what it is doing. That collapse is lossy in the one direction a
+// traveller cares about: a flight at the gate and a flight an hour late both
+// read SCHEDULED.
+//
+// So the badge — and only the badge — reads the raw word instead. Nothing
+// branches on this map; it turns a string into a different string.
+//
+// KEYED LOWERCASE and looked up lowercased, so "EnRoute", "enroute" and
+// "ENROUTE" all land. Both spellings of cancelled are here because the provider
+// sends the American one and the app writes the British one everywhere else.
+const BADGE_LABEL: Record<string, string> = {
+  expected: 'SCHEDULED',
+  checkin: 'CHECK-IN',
+  boarding: 'BOARDING',
+  gateclosed: 'GATE CLOSED',
+  delayed: 'DELAYED',
+  departed: 'DEPARTED',
+  enroute: 'IN AIR',
+  approaching: 'LANDING',
+  arrived: 'LANDED',
+  canceled: 'CANCELLED',
+  canceleduncertain: 'CANCELLED',
+  diverted: 'DIVERTED',
+};
+
+// A PURE FALLBACK. An absent or unrecognised raw status returns the uppercased
+// display status, which is character-for-character what this badge rendered
+// before the map existed — so a record saved before v10, and any word the
+// provider adds tomorrow, renders exactly as it does today rather than blank.
+function badgeLabel(rawStatus: string | null | undefined, fallback: string): string {
+  const key = String(rawStatus ?? '').trim().toLowerCase();
+  return BADGE_LABEL[key] ?? fallback.toUpperCase();
+}
+
 // The backend uses "N/A" for a time that does not exist yet, and saved records
 // default to the same string, so neither may be treated as a real value.
 function hasTime(v: string | null | undefined): v is string {
@@ -1258,10 +1298,29 @@ function delayCell(delay: number | null | undefined): { label: string | null; va
 
 // A not-yet-departed flight already running late reads better as "delayed" than
 // as "scheduled". Display only — the stored status vocabulary is unchanged.
-function displayStatus(status: string, departureDelay: number | null | undefined): string {
-  if (status === 'scheduled' && typeof departureDelay === 'number' && departureDelay > 0) {
-    return 'delayed';
-  }
+//
+// TWO WAYS TO BE LATE, AND ONE ANSWER. This already promoted a scheduled flight
+// to "delayed" off the delay minutes, and getStatusColor has had amber for
+// "delayed" all along. The provider ALSO says so in words, as raw status
+// "Delayed", and those two must not become two mechanisms: a second amber rule
+// bolted on beside this one could paint a badge amber that this function still
+// calls scheduled, and the card would then disagree with itself.
+//
+// So the raw word joins the arithmetic HERE, in the one place that decides what
+// the card is showing. getStatusColor and getStatusBg keep their existing keys
+// and gain no new case: they are handed "delayed" and already know that word.
+//
+// The minutes are tested first only because they are the stronger claim — a
+// measured number rather than a label — and both roads lead to the same value,
+// so the order changes nothing.
+function displayStatus(
+  status: string,
+  departureDelay: number | null | undefined,
+  rawStatus: string | null | undefined,
+): string {
+  if (status !== 'scheduled') return status;
+  if (typeof departureDelay === 'number' && departureDelay > 0) return 'delayed';
+  if (String(rawStatus ?? '').trim().toLowerCase() === 'delayed') return 'delayed';
   return status;
 }
 
@@ -1302,7 +1361,8 @@ function computeProgress(f: SavedFlight | null, now: number): number | null {
 function flightDataFromApi(data: any): FlightData {
   const dep = data?.departure ?? {};
   const arr = data?.arrival ?? {};
-  const status = displayStatus((data?.status || "unknown").toLowerCase(), dep.delay);
+  const status = displayStatus(
+    (data?.status || "unknown").toLowerCase(), dep.delay, data?.raw_status ?? null);
   // Formatted BEFORE the cell is chosen, because the cell appends "(predicted)"
   // or "(wheels up)" to the value and there would be no way to reach the time
   // again afterwards. clock24 leaves "N/A" alone, so hasTime still recognises it.
@@ -1318,7 +1378,11 @@ function flightDataFromApi(data: any): FlightData {
   return {
     flight: data?.flight_number || "—",
     airline: data?.airline || "—",
-    status: status.toUpperCase(),
+    // The LABEL comes from the provider's word, the COLOUR from the mapped
+    // status. They are allowed to differ: "BOARDING" in amber says the flight is
+    // at the gate AND running late, which is two facts the old single grey
+    // SCHEDULED could not carry.
+    status: badgeLabel(data?.raw_status ?? null, status),
     statusColor: getStatusColor(status),
     statusBg: getStatusBg(status),
     from: dep.iata || "—",
@@ -3529,7 +3593,8 @@ export default function Index() {
     setChatResponse(null);
     setRouteResult(null);
     setFlightRecord(saved);
-    const savedStatus = displayStatus(saved.status.toLowerCase(), saved.from.delay);
+    const savedStatus = displayStatus(
+      saved.status.toLowerCase(), saved.from.delay, saved.rawStatus);
     const depCell = movementTimeCell(
       clock24(saved.from.actualIso, saved.from.actual),
       clock24(saved.from.estimatedIso, saved.from.estimated),
@@ -3542,7 +3607,10 @@ export default function Index() {
     setFlight({
       flight: saved.flightNumber,
       airline: saved.airline,
-      status: savedStatus.toUpperCase(),
+      // As in flightDataFromApi: label from the provider's word, colour from the
+      // mapped status. A pre-v10 record has rawStatus null and falls back to the
+      // uppercased display status, which is what it already showed.
+      status: badgeLabel(saved.rawStatus, savedStatus),
       statusColor: getStatusColor(savedStatus),
       statusBg: getStatusBg(savedStatus),
       from: saved.from.iata,

@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -72,6 +72,28 @@ export type SavedFlight = {
   // record and this field only says whether that list should have anything in
   // it. See lib/reminders.ts reconcile().
   remindersSetAt: number | null;
+  // THE PROVIDER'S OWN WORD for what the flight is doing, verbatim: "Boarding",
+  // "GateClosed", "EnRoute", "Delayed". Null on a record saved before v10 and on
+  // any response that omitted it.
+  //
+  // FOR DISPLAY ONLY. Nothing branches on this and nothing may start to. The
+  // MAPPED `status` above stays the app's canonical vocabulary — sorting, the
+  // countdowns, the archive rule and reminderTimes all key on it, and they key
+  // on it precisely because it is a closed set of five words this app defines.
+  // This field is an open set the provider defines and can extend without
+  // telling us, which is exactly what makes it safe to print and unsafe to
+  // decide with.
+  //
+  // It exists because that mapping is lossy in the one direction a traveller
+  // cares about: Expected, CheckIn, Boarding, GateClosed and Delayed all become
+  // "scheduled", so a flight at the gate and a flight an hour late wore the same
+  // badge. The badge now reads this; everything else still reads `status`.
+  //
+  // NOT in touchSavedFlight's preserved-fields list, unlike archivedAt and
+  // remindersSetAt: those are the user's decisions and a refresh must not
+  // overwrite them, whereas this is provider data and a refresh SHOULD replace
+  // it. The spread already does that.
+  rawStatus: string | null;
   schemaVersion: number;
 };
 
@@ -150,6 +172,9 @@ export function savedFlightFromApi(data: any): SavedFlight {
     // Same: a lookup carries no reminder decision, and touchSavedFlight is what
     // stops one being lost.
     remindersSetAt: null,
+    // Straight off the response, uppercase and spelling untouched, because the
+    // badge matches it case-insensitively and nothing else reads it.
+    rawStatus: data?.raw_status ?? null,
     schemaVersion: SCHEMA_VERSION,
   };
 }
@@ -267,6 +292,14 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
+  // Absent on every record written before v10. null is correct for all of them:
+  // the field was never stored, so there is nothing to recover. A null renders
+  // exactly as the record does today and corrects itself on the next refresh.
+  if (version < 10 && flight.rawStatus === undefined) {
+    flight.rawStatus = null;
+    changed = true;
+  }
+
   // AFTER the version blocks, not before them: v7 may have just supplied the
   // date the id is built from, and the id has to be derived from the record as
   // it now stands rather than as it arrived.
@@ -276,8 +309,8 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
-  if (version !== 9) {
-    flight.schemaVersion = 9;
+  if (version !== 10) {
+    flight.schemaVersion = 10;
     changed = true;
   }
 
