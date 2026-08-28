@@ -4305,11 +4305,51 @@ export default function Index() {
 
       setChatResponse(data.response);
       if (data.flight) {
-        setFlight(flightDataFromApi(data.flight));
+        // THE RECORD FIRST, as in runFlightLookup, so one clock check serves both
+        // it and the card. This was the last flightDataFromApi call site passing
+        // no effective status, and the omission was visible: computeProgress
+        // reads flightRecord and has applied the demotion since it was written,
+        // so a record claiming to have landed before its own arrival time drew
+        // an EMPTY progress bar under a badge that still said LANDED. The card
+        // disagreed with itself.
         const record = savedFlightFromApi(data.flight);
+        setFlight(flightDataFromApi(data.flight, effectiveStatus(record, Date.now())));
         setFlightRecord(record);
-        const refreshed = await touchSavedFlight(email, record);
-        if (refreshed) setSavedFlights(refreshed);
+
+        // THE STORAGE WRITE IS GATED, and this path is the reason the gate has
+        // to exist here rather than upstream.
+        //
+        // THIS PATH CANNOT PIN A LEG. The assistant's tools call
+        // fetch_flight_full with the flight number alone — no date, no origin —
+        // because a sentence like "is my flight on time" names neither, and the
+        // model is deliberately not allowed to invent them. So _select_item
+        // chooses both the day and the leg, and for a tag flight it returns
+        // whichever leg arrives first regardless of which one is saved.
+        //
+        // touchSavedFlight spreads the response over any record sharing the id,
+        // and the id is the number and the date — which BOTH legs of a tag
+        // flight share. Unguarded, asking the assistant about AI1780 could
+        // rewrite a saved IDR-BOM record as DEL-IDR: endpoints, times, terminal,
+        // gate and status, silently, without the user having done anything but
+        // ask a question. That is the fault 879c1f8 fixed everywhere it could
+        // pass an origin, still reachable through the one path that cannot.
+        //
+        // So the departure airport is the check. An airline does not change
+        // where a flight leaves from; a different departure IATA under the same
+        // id means a different leg, and the only safe thing to do with it is
+        // nothing. The card still shows the response — the user asked for it and
+        // it is a real flight — and only the write is suppressed.
+        //
+        // NO GUARD FOR "NOT SAVED", deliberately. touchSavedFlight returns null
+        // when the id is not in the store, so an unsaved flight falls through to
+        // a call that does nothing. A second check here would be a second answer
+        // to a question that function already answers.
+        const stored = savedFlights.find(f => f.id === record.id);
+        const wrongLeg = stored !== undefined && stored.from.iata !== record.from.iata;
+        if (!wrongLeg) {
+          const refreshed = await touchSavedFlight(email, record);
+          if (refreshed) setSavedFlights(refreshed);
+        }
         setLastUpdated(Date.now());
       }
       showResult();
