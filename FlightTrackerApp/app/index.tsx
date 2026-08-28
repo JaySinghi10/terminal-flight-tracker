@@ -29,6 +29,7 @@ import {
   Animated,
   AppState,
   StatusBar,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -37,6 +38,7 @@ import {
   Pressable,
   Dimensions,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -2271,6 +2273,56 @@ const TOAST_OUT_MS = 260;
 // purpose: it is a notice, not an entrance.
 const TOAST_RISE = 12;
 
+// THE UNDO TOAST IS A DIFFERENT JOB. An ordinary toast is a notice: it says what
+// happened, it cannot be interacted with, and 2.2 seconds is generous for
+// reading four words. This one holds a control, so it has to be read, decided
+// on, and reached — five seconds is the shortest that leaves room for all three.
+const UNDO_TOAST_MS = 5000;
+
+// AND THE WINDOW OUTLIVES THE TOAST, deliberately, by six times over. They
+// answer different questions: the toast asks "do you want this back right now",
+// the window asks "is this decision still reversible". Someone who reads the
+// toast, thinks about it, and taps the bookmark twenty seconds later gets the
+// flight back with its reminders intact, and nothing about the banner having
+// faded should change that. Coupling them would make the undo as short as the
+// notice, which is the shortest of the two for reasons that have nothing to do
+// with how long a decision takes.
+//
+// IN MEMORY ONLY. Nothing is written, so closing the app ends the window and the
+// record stays deleted — closing an app is not an undo. The notifications left
+// pending by that are swept by the next reconcile on launch, which is what that
+// sweep is for.
+const UNDO_WINDOW_MS = 30000;
+
+// WHAT ENABLING REMINDERS CAN COME TO. An outcome rather than a sentence,
+// because two callers report it and they are answering different questions: the
+// swipe was asked to turn reminders on and reports on that alone, while a save
+// was asked to save and reports on that first.
+type RemindOutcome = 'on' | 'denied' | 'too-late' | 'no-time';
+
+// The swipe's wording, unchanged from when it was the only caller.
+const REMIND_SWIPE_MSG: Record<RemindOutcome, string> = {
+  on: 'reminders on',
+  denied: 'notifications are turned off for this app',
+  'too-late': 'too late to set a reminder for this one',
+  'no-time': 'no departure time to remind you about',
+};
+
+// The save's wording. SAVED COMES FIRST IN EVERY ONE OF THEM, because saving is
+// what the user asked for and it succeeded in all four cases — reminders are the
+// thing that happened as well, or did not. A save that reported only a reminder
+// failure would read as a save that failed.
+//
+// Shorter than the swipe's, and deliberately: prefixing "saved · " to the
+// swipe's own strings gives 46 and 45 characters, which overflows one line at
+// any width this app runs at. These are 20 to 26, which fits 320pt.
+const SAVE_MSG: Record<RemindOutcome, string> = {
+  on: 'saved · reminders on',
+  denied: 'saved · reminders off',
+  'too-late': 'saved · too late to remind',
+  'no-time': 'saved · no departure time',
+};
+
 const SWIPE_SPRING = {
   mass: 0.8,
   damping: 26,
@@ -2315,6 +2367,12 @@ const REMIND_DOT = ARCHIVE_ICON;
 // every one of them was allocated afresh on each render of each row. Built once
 // here they are the same objects for the life of the process, which also lets
 // React bail out of reconciling them.
+// The bookmark, as path data rather than a finished element: the card header's
+// copy of it is gone and the swipe button that replaces it needs the SHAPE with
+// its own colours, which change with the save state. Every other glyph here is a
+// finished element because none of them varies.
+const BOOKMARK_D = 'M6 3h12a1 1 0 0 1 1 1v17l-7-5-7 5V4a1 1 0 0 1 1-1z';
+
 const ICON_NOTIFY = (
   <>
     <Path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 3h16z" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinejoin="round" />
@@ -2387,7 +2445,12 @@ function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFlight[] {
 // and so the two cannot describe different shapes.
 type SavedFlightRowProps = {
   flight: SavedFlight;
-  onPress: () => void;
+  // OMITTED ON ARCHIVE ROWS, which are not tappable. An archived flight is
+  // finished and is never refreshed again, so the card behind it could only ever
+  // repeat what the row already says; opening one offered a screen of stale
+  // readings and an action bar that does not apply. The swipe actions are how an
+  // archive row is used, and restore is still among them.
+  onPress?: () => void;
   onUnsave: () => void | Promise<void>;
   now: number;
   // Set only inside a sheet. The main list is a dense column against the page
@@ -2531,8 +2594,11 @@ const SavedFlightRow = memo(function SavedFlightRow({
   const commit = useCallback(async (side: 'left' | 'right') => {
     try {
       if (side === 'right') {
+        // NO onDone HERE ANY MORE. onUnsave now raises the undo banner itself,
+        // and a second toast at the top saying the same thing in different words
+        // is one banner too many — two notices, two places, one action. The
+        // banner says more than this line did: it can be acted on.
         await onUnsave();
-        onDone(`${flight.flightNumber} deleted`);
       } else if (archived) {
         await onArchive(false);
         onDone(`${flight.flightNumber} restored`);
@@ -2678,72 +2744,18 @@ const SavedFlightRow = memo(function SavedFlightRow({
     [archived, canRestore, act, onCrossLeft, flight.remindersSetAt, onRemind],
   );
 
-  return (
-    // The x stays. This is an addition, so the one control that is visible
-    // without knowing the gesture exists is the one that must not move.
-    //
-    // RESISTANCE, in two grades, because the drag has two regions.
-    //
-    // friction 1.15 across the whole drag. The row is applied as
-    // `userDrag / friction`, so it travels at 87% of the finger: enough lag to
-    // feel like something is being pulled, not enough to feel weighed down. The
-    // 128pt panel now costs 147pt of finger instead of 128.
-    //
-    // overshootFriction 2 past the open panel, where the row moves at half the
-    // finger. This is the firmer grade, and it is what makes the panel's own
-    // width feel like a detent rather than a place the row happens to be
-    // passing. The docs suggest 8 or above "for a native feel", which is right
-    // when the space past the panel is dead; here it holds the expansion
-    // threshold, so 8 would put that threshold 256pt of finger further out and
-    // make the gesture a two-stroke affair. At 2 the threshold sits at 221pt of
-    // travel on a 320pt row — one comfortable stroke, and 61pt more than the
-    // 160 it cost when the row was free.
-    //
-    // 1 was the previous value for both, which is the library's default and
-    // means no resistance anywhere: the row was simply under the finger, and
-    // past the panel it kept going as if nothing were attached to it.
-    //
-    // OVERSHOOT IS BACK ON, which is the library's own default and which it
-    // expresses by omission: overshootLeft ?? leftWidth > 0.
-    //
-    // It was off on the reasoning that letting the row be pulled past the panel
-    // promises a full swipe that does not exist. It exists now, so the reasoning
-    // inverts: the travel past the panel is where the expansion threshold lives,
-    // and without overshoot the row hits a wall at 128pt and the threshold at
-    // half the row width is unreachable. The rubber band is not decoration here,
-    // it is the only way to get to the gesture.
-    //
-    // overshootFriction is left at its default of 1, which is no friction at
-    // all. The docs suggest 8 or above "for a native feel", and that is right
-    // when the region past the panel is dead space to be resisted. Here it is
-    // functional, so resisting it would be resisting the gesture: at 8, reaching
-    // a threshold 32pt beyond the panel would cost 256pt of extra finger.
-    //
-    // childrenContainerStyle carries the background: it is the layer the library
-    // translates, so the fill travels with the row and occludes the panel it is
-    // sliding over. See rowSurface.
-    // The wrapper the commit animates, outside the Swipeable because the
-    // library owns the translation inside it. No style of its own beyond the
-    // transform, so it costs nothing until a row is actually thrown.
-    <Reanimated.View style={exitStyle}>
-    <ReanimatedSwipeable
-      ref={swipe}
-      friction={1.15}
-      overshootFriction={2}
-      animationOptions={SWIPE_SPRING}
-      onSwipeableWillOpen={onWillOpen}
-      childrenContainerStyle={sf.rowSurface}
-      renderLeftActions={renderLeft}
-      renderRightActions={renderRight}
-    >
-    <TouchableOpacity
-      style={[sf.row, roomy && sf.rowRoomy, last && sf.rowLast]}
-      onPress={onPress}
-      activeOpacity={0.7}
-      // The children container is exactly the row's width, so this is the
-      // width the expansion fills and the width the threshold is a fraction of.
-      onLayout={e => { rowW.value = e.nativeEvent.layout.width; }}
-    >
+  const rowStyle = [sf.row, roomy && sf.rowRoomy, last && sf.rowLast];
+
+  // The children container is exactly the row's width, so this is the width the
+  // expansion fills and the width the threshold is a fraction of. Lifted out
+  // because both wrappers below need it and a second copy could drift.
+  const onRowLayout = (e: LayoutChangeEvent) => { rowW.value = e.nativeEvent.layout.width; };
+
+  // ONE BODY, TWO WRAPPERS. The row renders identically either way; only whether
+  // it responds to a tap differs, so the contents are lifted out rather than
+  // written twice.
+  const rowBody = (
+    <>
       <View style={sf.line1}>
         <Text style={sf.number}>{flight.flightNumber}</Text>
         {/* ICON_REMIND's path data at 11pt, not the element itself: that
@@ -2811,7 +2823,93 @@ const SavedFlightRow = memo(function SavedFlightRow({
       ) : (
         <StatusLine f={flight} now={now} numberOfLines={1} style={{ marginTop: 4 }} />
       )}
-    </TouchableOpacity>
+    </>
+  );
+
+  return (
+    // The x stays. This is an addition, so the one control that is visible
+    // without knowing the gesture exists is the one that must not move.
+    //
+    // RESISTANCE, in two grades, because the drag has two regions.
+    //
+    // friction 1.15 across the whole drag. The row is applied as
+    // `userDrag / friction`, so it travels at 87% of the finger: enough lag to
+    // feel like something is being pulled, not enough to feel weighed down. The
+    // 128pt panel now costs 147pt of finger instead of 128.
+    //
+    // overshootFriction 2 past the open panel, where the row moves at half the
+    // finger. This is the firmer grade, and it is what makes the panel's own
+    // width feel like a detent rather than a place the row happens to be
+    // passing. The docs suggest 8 or above "for a native feel", which is right
+    // when the space past the panel is dead; here it holds the expansion
+    // threshold, so 8 would put that threshold 256pt of finger further out and
+    // make the gesture a two-stroke affair. At 2 the threshold sits at 221pt of
+    // travel on a 320pt row — one comfortable stroke, and 61pt more than the
+    // 160 it cost when the row was free.
+    //
+    // 1 was the previous value for both, which is the library's default and
+    // means no resistance anywhere: the row was simply under the finger, and
+    // past the panel it kept going as if nothing were attached to it.
+    //
+    // OVERSHOOT IS BACK ON, which is the library's own default and which it
+    // expresses by omission: overshootLeft ?? leftWidth > 0.
+    //
+    // It was off on the reasoning that letting the row be pulled past the panel
+    // promises a full swipe that does not exist. It exists now, so the reasoning
+    // inverts: the travel past the panel is where the expansion threshold lives,
+    // and without overshoot the row hits a wall at 128pt and the threshold at
+    // half the row width is unreachable. The rubber band is not decoration here,
+    // it is the only way to get to the gesture.
+    //
+    // overshootFriction is left at its default of 1, which is no friction at
+    // all. The docs suggest 8 or above "for a native feel", and that is right
+    // when the region past the panel is dead space to be resisted. Here it is
+    // functional, so resisting it would be resisting the gesture: at 8, reaching
+    // a threshold 32pt beyond the panel would cost 256pt of extra finger.
+    //
+    // childrenContainerStyle carries the background: it is the layer the library
+    // translates, so the fill travels with the row and occludes the panel it is
+    // sliding over. See rowSurface.
+    // The wrapper the commit animates, outside the Swipeable because the
+    // library owns the translation inside it. No style of its own beyond the
+    // transform, so it costs nothing until a row is actually thrown.
+    <Reanimated.View style={exitStyle}>
+    <ReanimatedSwipeable
+      ref={swipe}
+      friction={1.15}
+      overshootFriction={2}
+      animationOptions={SWIPE_SPRING}
+      onSwipeableWillOpen={onWillOpen}
+      childrenContainerStyle={sf.rowSurface}
+      renderLeftActions={renderLeft}
+      renderRightActions={renderRight}
+    >
+    {/* A PLAIN VIEW ON ARCHIVE ROWS, not a disabled TouchableOpacity. A dead
+        touchable still reads as one to anything inspecting the tree, and the
+        next person to add a prop to it would be adding it to a control that is
+        not a control. The View keeps the layout, the padding and the measured
+        width, and has no press behaviour to suppress — no onPress, and no
+        activeOpacity, so the row does not dim under a finger and does not
+        invite the tap it would ignore.
+
+        THE SWIPE IS UNTOUCHED and deliberately so: ReanimatedSwipeable is the
+        parent, not this element, so archive, restore, delete and remind all
+        still work. Restore in particular has to stay reachable — without it a
+        flight archived by mistake could not be brought back. */}
+    {archived ? (
+      <View style={rowStyle} onLayout={onRowLayout}>
+        {rowBody}
+      </View>
+    ) : (
+      <TouchableOpacity
+        style={rowStyle}
+        onPress={onPress}
+        activeOpacity={0.7}
+        onLayout={onRowLayout}
+      >
+        {rowBody}
+      </TouchableOpacity>
+    )}
     </ReanimatedSwipeable>
     </Reanimated.View>
   );
@@ -2899,6 +2997,21 @@ const sf = StyleSheet.create({
   // this group fills spans the row's whole box, and the row's box includes the
   // card gap below it. Without this the buttons sit half a gap low.
   swipeGroup: { flexDirection: 'row', alignItems: 'center', marginBottom: CARD_GAP },
+  // THE CARD'S PANEL, and the two differences from swipeGroup above are both
+  // consequences of height.
+  //
+  // alignItems FLEX-START, not centre. Centring is right on a 60pt row, where
+  // the middle of the panel and the middle of the row are the same place. The
+  // card is several hundred points tall, so centring would park the buttons
+  // halfway down a panel whose content — the flight number, the badge — is at
+  // the top, and a long way from wherever the finger started the drag.
+  //
+  // NO marginBottom. swipeGroup's CARD_GAP corrects for the gap below a row in a
+  // list of rows; the card is not in a list and has no gap to correct for.
+  //
+  // paddingTop 4 matches flightHeader's own paddingVertical, so the button's top
+  // edge lines up with the flight number rather than with the block above it.
+  cardSwipeGroup: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 4 },
   // The growing box. alignItems centre for the same reason swipeGroup uses it:
   // the button has a height and should keep it. justifyContent holds the button
   // against the edge the row is being dragged away from.
@@ -3309,6 +3422,8 @@ export default function Index() {
   const [refreshTone, setRefreshTone] = useState<'error' | 'info'>('error');
   // Session only, never persisted. Counter retriggers the fade on repeat taps.
   const [toastMsg, setToastMsg] = useState("");
+  const [undoMsg, setUndoMsg] = useState("");
+  const [undoCounter, setUndoCounter] = useState(0);
   const [toastCounter, setToastCounter] = useState(0);
   const insets = useSafeAreaInsets();
   // The hook, not Dimensions.get: this has to re-render on rotation, or the
@@ -3461,6 +3576,21 @@ export default function Index() {
     opacity: toastAnim.value,
     transform: [{ translateY: (toastAnim.value - 1) * TOAST_RISE }],
   }));
+  // The same value doing the same job, and now in the same place: the banner
+  // shares the toast's position, so it shares its entrance too — down from above
+  // rather than up from below.
+  const undoAnim = useSharedValue(0);
+  const undoStyle = useAnimatedStyle(() => ({
+    opacity: undoAnim.value,
+    transform: [{ translateY: (undoAnim.value - 1) * TOAST_RISE }],
+  }));
+  const undoToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // THE WINDOW ITSELF: the deleted record and the timer that ends its life.
+  //
+  // A ref rather than state, because nothing on screen is derived from it. The
+  // toast is its own state and outlives nothing; this is the record, and a
+  // re-render when it opens or closes would be a render for no visible reason.
+  const undoRef = useRef<{ flight: SavedFlight; timer: ReturnType<typeof setTimeout> } | null>(null);
   // Four values, not two: each overlay drives its content and its scrim
   // separately, so the backdrop can run its own timing. Every property either
   // value touches is opacity or transform, so all of it is native-driven and
@@ -3564,6 +3694,28 @@ export default function Index() {
     return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
   }, [toastMsg, toastCounter]);
 
+  // The same sequence the toast above runs, with its own hold. Kept separate
+  // rather than parameterised because the two banners can be on screen at once —
+  // "restored" at the top while the undo banner is still fading at the bottom —
+  // and one shared animation value could not express that.
+  useEffect(() => {
+    if (undoMsg === '') return;
+    if (undoToastTimerRef.current) clearTimeout(undoToastTimerRef.current);
+    undoAnim.value = 0;
+    undoAnim.value = withSequence(
+      withTiming(1, { duration: TOAST_IN_MS, easing: REasing.out(REasing.cubic) }),
+      withDelay(
+        UNDO_TOAST_MS,
+        withTiming(0, { duration: TOAST_OUT_MS, easing: REasing.in(REasing.cubic) }),
+      ),
+    );
+    undoToastTimerRef.current = setTimeout(
+      () => setUndoMsg(''),
+      TOAST_IN_MS + UNDO_TOAST_MS + TOAST_OUT_MS + 40,
+    );
+    return () => { if (undoToastTimerRef.current) clearTimeout(undoToastTimerRef.current); };
+  }, [undoMsg, undoCounter]);
+
   // The scrim owes nothing to layout, so it starts on the tap rather than
   // waiting behind the panel's measuring pass.
   useEffect(() => {
@@ -3621,10 +3773,73 @@ export default function Index() {
     ]).start();
   }, [routeCalOpen]);
 
+  // ONE SLOT AT THE TOP, AND THE NEWEST MESSAGE WINS. The two banners now share
+  // a position, so they cannot both be shown: stacking them would put a notice
+  // over a control, and a control under a notice is a control nobody presses.
+  //
+  // Newest wins rather than "the actionable one wins", because that is already
+  // how this slot behaves — showToast has always replaced a toast still on
+  // screen — and because a rule about which KIND of message outranks which would
+  // have to be re-decided every time a message is added.
+  //
+  // DISMISSING THE BANNER DOES NOT CLOSE THE WINDOW. The banner is a five-second
+  // offer; the window is thirty seconds of reversibility and lives in a ref that
+  // none of this touches. Someone whose banner is displaced by a "saved" toast
+  // can still bring the flight back from the bookmark for another twenty-five
+  // seconds. That was the point of keeping the two durations apart.
   const showToast = (msg: string) => {
+    setUndoMsg('');
     setToastMsg(msg);
     setToastCounter(c => c + 1);
   };
+
+  const showUndo = (msg: string) => {
+    setToastMsg('');
+    setUndoMsg(msg);
+    setUndoCounter(c => c + 1);
+  };
+
+  // ── THE UNDO WINDOW ────────────────────────────────────────────────────────
+  //
+  // ONE WINDOW AT A TIME. A second unsave replaces the first, and the first
+  // record's notifications are cancelled at that moment rather than left to a
+  // timer nobody is holding: the record is gone from storage and now gone from
+  // memory too, so nothing will ever restore it and its reminders would fire for
+  // a flight that no longer exists anywhere.
+  const beginUndoWindow = (f: SavedFlight) => {
+    const prev = undoRef.current;
+    if (prev !== null) {
+      clearTimeout(prev.timer);
+      cancelFor(prev.flight.id);
+    }
+    // THE CANCEL HAPPENS HERE, ON EXPIRY, AND NOWHERE ELSE. Unsaving does not
+    // touch the schedule at all — that is what makes an undo whole rather than
+    // an undo that restores a record and silently loses its reminders.
+    undoRef.current = {
+      flight: f,
+      timer: setTimeout(() => {
+        undoRef.current = null;
+        cancelFor(f.id);
+      }, UNDO_WINDOW_MS),
+    };
+  };
+
+  // The held record IF it is this flight, and the window closes with it.
+  //
+  // KEYED ON THE ID, which is the number and the date: another instance of the
+  // same number on another day is a different flight and must not be handed
+  // someone else's record.
+  const takeUndoRecord = (id: string): SavedFlight | null => {
+    const w = undoRef.current;
+    if (w === null || w.flight.id !== id) return null;
+    clearTimeout(w.timer);
+    undoRef.current = null;
+    return w.flight;
+  };
+
+  // What reconcile must not sweep. See lib/reminders.ts.
+  const undoKeepIds = (): string[] =>
+    undoRef.current === null ? [] : [undoRef.current.flight.id];
 
   useEffect(() => {
     let cancelled = false;
@@ -3644,7 +3859,7 @@ export default function Index() {
         tick();
         // Cheap, and the only chance to correct a schedule that drifted while
         // the app was not running. Fire and forget: nothing on screen waits.
-        getSavedFlights(email).then(l => { if (!cancelled) reconcile(l); });
+        getSavedFlights(email).then(l => { if (!cancelled) reconcile(l, undoKeepIds()); });
         if (Date.now() - lastAutoRefreshRef.current > AUTO_REFRESH_RESUME_COOLDOWN_MS) {
           getSavedFlights(email).then(l => { if (!cancelled) autoRefresh(l, () => cancelled); });
         }
@@ -3684,6 +3899,9 @@ export default function Index() {
   };
 
   const renderSavedFlight = (saved: SavedFlight) => {
+    // FIRST, as in handleSearch: the card is about to take the screen, and a
+    // keyboard left standing over it is covering the thing the tap asked for.
+    Keyboard.dismiss();
     setError("");
     setSaveError("");
     setChatResponse(null);
@@ -3892,7 +4110,20 @@ export default function Index() {
         return;
       }
 
-      const result = await saveFlight(email, savedFlightFromApi(data), f => !isArchived(f, Date.now()));
+      const record = savedFlightFromApi(data);
+      // The same undo check the card's bookmark makes, for the same reason: the
+      // window belongs to the flight, not to the control that closed it.
+      const held = takeUndoRecord(record.id);
+      if (held !== null) {
+        if (await restoreUnsaved(held)) showToast('restored');
+        else {
+          setError('saved flight limit reached \u2014 unsave one first');
+          setErrorCounter(c => c + 1);
+          shake();
+        }
+        return;
+      }
+      const result = await saveFlight(email, record, f => !isArchived(f, Date.now()));
       setSavedFlights(result.flights);
       if (!result.ok) {
         setError('saved flight limit reached \u2014 unsave one first');
@@ -3900,7 +4131,8 @@ export default function Index() {
         shake();
         return;
       }
-      showToast('saved');
+      // Reminders on by default, exactly as the card's bookmark does it.
+      showToast(SAVE_MSG[await enableReminders(record)]);
     } catch {
       setError("Could not reach the server. Please check your connection and try again.");
       setErrorCounter(c => c + 1);
@@ -3911,6 +4143,11 @@ export default function Index() {
   };
 
   const handleSearch = async () => {
+    // FIRST, and before the empty-query guard: the keyboard should go whether or
+    // not there was anything to search for. Pressing enter already dismisses it
+    // — blurOnSubmit does that — and Execute is the same instruction given with
+    // a thumb, so it should leave the screen in the same state.
+    Keyboard.dismiss();
     const cleaned = query.trim().toUpperCase().replace(/\s/g, "");
     setError("");
     setFlight(null);
@@ -4171,27 +4408,40 @@ export default function Index() {
   // refuses or if there is nothing left to schedule. A record saying reminders
   // are on with no notifications behind it would survive every reconcile,
   // because reconcile trusts this field.
-  const handleRemind = useCallback(async (f: SavedFlight, on: boolean): Promise<string> => {
-    if (!on) {
-      await cancelFor(f.id);
-      setSavedFlights(await setFlightReminders(email, f.id, null));
-      return 'reminders off';
-    }
-    if (!(await ensurePermission())) return 'notifications are turned off for this app';
+  // TURNING THEM ON, and the only place that does it. Two callers now want this
+  // — the remind swipe and every save — and they want to SAY different things
+  // about the same four outcomes, so what comes back is the outcome and not a
+  // sentence. Duplicating the scheduling to get different wording would have put
+  // two copies of the permission check, the arithmetic and the write order in
+  // the file, and the write order is the part that must not vary.
+  //
+  // Permission first, the store LAST, exactly as before: nothing is recorded if
+  // the user refuses or if there is nothing left to schedule, because a record
+  // saying reminders are on with no notifications behind it survives every
+  // reconcile — reconcile trusts this field.
+  const enableReminders = useCallback(async (f: SavedFlight): Promise<RemindOutcome> => {
+    if (!(await ensurePermission())) return 'denied';
     // Both null means the evening before has passed and the leave-now instant —
     // three hours before a domestic departure, four before an international one
     // — has passed too. Nothing is written: an empty reminder is a promise the
     // app cannot keep.
     const t = reminderTimes(f, Date.now());
     if (t.evening === null && t.leave === null) {
-      return f.from.scheduledIso && f.from.timezone
-        ? 'too late to set a reminder for this one'
-        : 'no departure time to remind you about';
+      return f.from.scheduledIso && f.from.timezone ? 'too-late' : 'no-time';
     }
     await scheduleFor(f);
     setSavedFlights(await setFlightReminders(email, f.id, Date.now()));
-    return 'reminders on';
+    return 'on';
   }, [email]);
+
+  const handleRemind = useCallback(async (f: SavedFlight, on: boolean): Promise<string> => {
+    if (!on) {
+      await cancelFor(f.id);
+      setSavedFlights(await setFlightReminders(email, f.id, null));
+      return 'reminders off';
+    }
+    return REMIND_SWIPE_MSG[await enableReminders(f)];
+  }, [email, enableReminders]);
 
   const onRefresh = async () => {
     if (refreshingRef.current) return;                        // synchronous guard; iOS can double-fire the pull
@@ -4237,7 +4487,7 @@ export default function Index() {
       // that was scheduled from the old one, and the one moment a record filed
       // under "unknown" takes a real id. Both leave the schedule wrong, and
       // this is what puts it right.
-      reconcile(list);
+      reconcile(list, undoKeepIds());
 
       if (openCardFresh) {
         // HOISTED, exactly as in runFlightLookup: the record was already being
@@ -4657,7 +4907,7 @@ export default function Index() {
   const archiveButton = (style: any) => (
     <TouchableOpacity
       activeOpacity={0.7}
-      onPress={() => setArchiveOpen(true)}
+      onPress={() => { Keyboard.dismiss(); setArchiveOpen(true); }}
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       style={style}
     >
@@ -4691,7 +4941,10 @@ export default function Index() {
         key={routeRowKey(r)}
         style={[s.routeFlatRow, routeRowKey(r) === routeLastKey && s.routeFlatRowLast]}
         activeOpacity={0.7}
-        onPress={() => runFlightLookup(r.flight_number, false, rowDate, origin || null)}
+        // Same reasoning as handleSearch and renderSavedFlight: this tap opens
+        // the card, and keyboardShouldPersistTaps lets it through with the
+        // keyboard still up.
+        onPress={() => { Keyboard.dismiss(); runFlightLookup(r.flight_number, false, rowDate, origin || null); }}
       >
         <View style={s.routeFlatBody}>
           {/* Identity and flags. Everything variable-width lives on this line so
@@ -5018,6 +5271,9 @@ export default function Index() {
   };
 
   const openRouteCal = () => {
+    // As in handleSearch. The sheet comes up from the bottom, which is exactly
+    // where the keyboard is.
+    Keyboard.dismiss();
     const base = routeDate === null ? new Date() : new Date(`${routeDate}T00:00:00`);
     setRouteCalMonth({ y: base.getFullYear(), m: base.getMonth() });
     setRouteCalOpen(true);
@@ -5072,6 +5328,15 @@ export default function Index() {
   };
 
   const openRouteDrop = (id: 'sort' | 'dep' | 'arr' | 'air' | 'orig' | 'dest') => {
+    // As in handleSearch, and here it is more than tidiness: this panel is
+    // placed into whatever space the arithmetic below says is free, and a
+    // keyboard is the one thing on screen that occupies space without being part
+    // of the window the arithmetic measures.
+    //
+    // IT DOES NOT FIX THE ARITHMETIC. Keyboard.dismiss() is asynchronous and the
+    // measureInWindow callback runs while the keyboard is still on screen — see
+    // the note on spaceBelow below for what that does and does not mean.
+    Keyboard.dismiss();
     const node = routeAnchorRefs.current[id];
     if (!node) return;
     node.measureInWindow((wx, wy, width, height) => {
@@ -5088,6 +5353,19 @@ export default function Index() {
         screen: win.width,
         top: below,
         bottom: above,
+        // MEASURED AGAINST THE WINDOW, WHICH HAS NEVER KNOWN ABOUT THE
+        // KEYBOARD. On iOS Dimensions.get('window') is the full window whether
+        // or not a keyboard is up, so this figure did not shrink when one
+        // appeared and does not grow when one leaves — it was always the height
+        // of the screen. The keyboard could therefore sit inside "free" space
+        // and a panel could be placed underneath it. Dismissing above does not
+        // correct the number; it makes the number true, by removing the thing it
+        // was already ignoring.
+        //
+        // What can still be stale is wy, not the height: the dismiss has not
+        // completed when this callback runs, so if the keyboard's presence had
+        // scrolled the anchor, this is where the anchor was rather than where it
+        // will be.
         spaceBelow: win.height - below - ROUTE_PANEL_EDGE,
         spaceAbove: win.height - above - ROUTE_PANEL_EDGE,
       });
@@ -5307,15 +5585,151 @@ export default function Index() {
   };
 
   const isSaved = !!flightRecord && savedFlights.some(f => f.id === flightRecord.id);
+  // DERIVED, from the stored record and the clock, by the same rule the saved
+  // list and the archive sheet split on — not a new field, because there is
+  // nothing here that isArchived does not already answer.
+  //
+  // It exists because an archived record has isSaved TRUE: it is in
+  // savedFlights, it is simply filed away. Without this the card's left panel
+  // would show a GREEN "unsave" over a flight the user archived rather than
+  // saved, and committing it would permanently delete the record — green being
+  // exactly the wrong signal for that, since it reads as the reversal of a save
+  // the user never made.
+  //
+  // So the panel is suppressed and a right swipe does nothing. Deletion stays in
+  // the archive sheet, where deletion already lives and where the row's own
+  // delete action has the undo window behind it.
+  const isArchivedCard = flightRecord !== null && isArchived(flightRecord, now);
   // Recomputed every render, so the bar tracks the ticking `now` state.
   const progressValue = computeProgress(flightRecord, now);
+
+  // EVERY UNSAVE GOES THROUGH HERE, so the window cannot depend on which control
+  // the user reached for. It does three things and deliberately not a fourth: it
+  // removes the record, it opens the window, and it says so. It does NOT cancel
+  // the notifications — see beginUndoWindow.
+  const handleUnsave = async (f: SavedFlight) => {
+    const hadReminders = f.remindersSetAt !== null;
+    setSavedFlights(await unsaveFlight(email, f.id));
+    beginUndoWindow(f);
+    // THE NUMBER LEADS. "unsaved" alone says nothing about which of seven rows
+    // just went, and that fact used to live in the swipe's own message.
+    //
+    // "reminders" AND NOT "reminders off", and the word cut was the weakest one
+    // in the line twice over. It costs four characters the line does not have —
+    // 30 against a budget of 26 — and it was already a claim slightly ahead of
+    // the facts: the notifications are still pending and are only cancelled when
+    // the window closes. Naming them in the list of what went is the honest
+    // version and the short one.
+    showUndo(hadReminders ? `${f.flightNumber} unsaved · reminders` : `${f.flightNumber} unsaved`);
+  };
+
+  // RESTORING IS SAVING THE HELD RECORD, not building a new one: it carries its
+  // own savedAt, archivedAt and remindersSetAt, so the flight comes back exactly
+  // as it left. Nothing is rescheduled because nothing was cancelled.
+  const restoreUnsaved = async (held: SavedFlight): Promise<boolean> => {
+    const result = await saveFlight(email, held, f => !isArchived(f, Date.now()));
+    setSavedFlights(result.flights);
+    return result.ok;
+  };
+
+  const handleUndo = async () => {
+    const w = undoRef.current;
+    if (w === null) return;
+    const held = takeUndoRecord(w.flight.id);
+    if (held === null) return;
+    setUndoMsg('');                       // acted on; the banner goes now
+    if (await restoreUnsaved(held)) showToast('restored');
+    else showToast('saved flight limit reached — unsave one first');
+  };
+
+  // ── THE CARD'S SWIPE ───────────────────────────────────────────────────────
+  //
+  // The same vocabulary as a saved row — right to save, left to reveal notify —
+  // so nothing moves when push notifications land and the gesture means one
+  // thing in both places.
+  const cardSwipe = useRef<SwipeableMethods>(null);
+  const cardW = useSharedValue(0);
+  const cardArmed = useRef<'left' | 'right' | null>(null);
+  const onCardCrossLeft = useCallback((on: boolean) => {
+    cardArmed.current = on ? 'left' : null;
+    EXPAND_HAPTIC();
+  }, []);
+
+  // THE CARD DOES NOT LEAVE, and that is the whole of what differs from the
+  // row's commit.
+  //
+  // A row is one of a list and a committed swipe removes it from that list, so
+  // it is thrown a screen width and the gap closes behind it. The card is not in
+  // a list; there is nowhere for it to go and nothing to close behind it, and
+  // the flight it shows is still the flight it shows whether or not it is saved.
+  // So the panel simply closes and the action runs — no exit animation, and
+  // nothing touching the card's own Animated.View, whose transform belongs to
+  // the entry animation showResult() drives and must stay that way.
+  const onCardWillOpen = () => {
+    const side = cardArmed.current;
+    if (side === null) return;
+    cardArmed.current = null;
+    cardSwipe.current?.close();
+    if (side === 'left') handleToggleSave();
+  };
+
+  // NOT MEMOISED, unlike the row's. The row memoises because there are up to
+  // twenty of them and a new function identity remounts every Svg in both
+  // panels; there is exactly one card, and these close over isSaved and
+  // handleToggleSave, both of which change with the state the button is
+  // reporting. A stale closure here would be a button showing one thing and
+  // doing another.
+  const renderCardLeft = (progress: SharedValue<number>, translation: SharedValue<number>) => (
+    <View style={sf.cardSwipeGroup}>
+      <ExpandAction side="left" translation={translation} rowW={cardW} others={0} onCross={onCardCrossLeft}>
+        {/* THE GLYPH CARRIES THE STATE, not the fill: green when this flight is
+            already saved, dim when it is not, which is the card header's own
+            treatment of the same shape moved onto the button that replaced it.
+            The fill stays SWIPE_FILL_DIM in both cases, so the button reads as
+            one control changing state rather than as two different buttons. */}
+        <SwipeAction
+          label={isSaved ? 'unsave' : 'save'}
+          fill={SWIPE_FILL_DIM}
+          progress={progress}
+          grow="left"
+          onPress={() => { cardSwipe.current?.close(); handleToggleSave(); }}
+        >
+          <Path
+            d={BOOKMARK_D}
+            fill={isSaved ? '#4ade80' : 'none'}
+            stroke={isSaved ? '#4ade80' : SWIPE_INK_DIM}
+            strokeWidth={1.75}
+          />
+        </SwipeAction>
+      </ExpandAction>
+    </View>
+  );
+
+  // notify only, and inert exactly as it is on a saved row. No ExpandAction: a
+  // full swipe commits the action it uncovers, and there is no action here to
+  // commit. It reveals and waits.
+  const renderCardRight = (progress: SharedValue<number>) => (
+    <View style={sf.cardSwipeGroup}>
+      <SwipeAction label="notify" fill={SWIPE_FILL_DIM} progress={progress} onPress={notImplemented}>
+        {ICON_NOTIFY}
+      </SwipeAction>
+    </View>
+  );
 
   const handleToggleSave = async () => {
     if (!flightRecord) return;
     setSaveError("");
     if (isSaved) {
-      setSavedFlights(await unsaveFlight(email, flightRecord.id));
-      showToast('unsaved');
+      await handleUnsave(flightRecord);
+      return;
+    }
+    // SAVING BACK INSIDE THE WINDOW IS AN UNDO, whichever control does it. The
+    // banner may be long gone; the window is what decides, and it is keyed on
+    // the id so only this exact flight is restored.
+    const held = takeUndoRecord(flightRecord.id);
+    if (held !== null) {
+      if (await restoreUnsaved(held)) showToast('restored');
+      else setSaveError('saved flight limit reached — unsave one first');
       return;
     }
     const result = await saveFlight(email, flightRecord, f => !isArchived(f, Date.now()));
@@ -5324,7 +5738,11 @@ export default function Index() {
       setSaveError('saved flight limit reached — unsave one first');
       return;   // saveError owns this case; no toast
     }
-    showToast('saved');
+    // SAVING IS THE SIGNAL THAT THE USER CARES ABOUT THIS FLIGHT, so reminders
+    // follow from it rather than needing a second action. A refusal never blocks
+    // the save and never asks twice: the flight is saved either way, and the
+    // toast is where the difference is reported.
+    showToast(SAVE_MSG[await enableReminders(flightRecord)]);
   };
 
   // Closing a card opened from a route row returns to the list. Closing a card
@@ -5563,8 +5981,7 @@ export default function Index() {
                         last={i === archivedSaved.length - 1}
                         onDone={showToast}
                         onRemind={(on) => handleRemind(f, on)}
-                        onPress={() => { closeArchive(); renderSavedFlight(f); }}
-                        onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                        onUnsave={() => handleUnsave(f)}
                         onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
                       />
                     </Animated.View>
@@ -5747,8 +6164,11 @@ export default function Index() {
                 <Text style={{ fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.4)', marginTop: 3 }}>{formatClock(now)}</Text>
               )}
             </View>
+            {/* The modal has its own TextInput and its own KeyboardAvoidingView
+                and will raise a keyboard of its own if it asks for a name; what
+                is dismissed here is the one that was already up behind it. */}
             {username !== null && (
-              <TouchableOpacity style={s.profileBtn} onPress={() => setProfileOpen(true)}>
+              <TouchableOpacity style={s.profileBtn} onPress={() => { Keyboard.dismiss(); setProfileOpen(true); }}>
                 <Text style={s.profileTxt}>{'>//'}</Text>
               </TouchableOpacity>
             )}
@@ -5953,7 +6373,7 @@ export default function Index() {
                       onDone={showToast}
                       onRemind={(on) => handleRemind(f, on)}
                       onPress={() => renderSavedFlight(f)}
-                      onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
+                      onUnsave={() => handleUnsave(f)}
                       onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
                     />
                   ))}
@@ -6172,8 +6592,44 @@ export default function Index() {
 
           {/* ── RESULT ── */}
           {flight && (
+            // THE ENTRY ANIMATION STAYS ON THE OUTSIDE and keeps this transform
+            // to itself. showResult() drives it, the Swipeable inside drives its
+            // own translation, and the two compose without either having to know
+            // about the other. s.resultWrap moves in with the content, because
+            // its gap belongs to the children and the Swipeable is now the only
+            // child here.
             <Animated.View
-              style={[s.resultWrap, { opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }]}
+              style={{ opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }}
+            >
+            {/* RIGHT TO SAVE, LEFT TO REVEAL NOTIFY — the saved row's vocabulary,
+                so the gesture means one thing everywhere in the app.
+
+                childrenContainerStyle carries sf.rowSurface, the page's own
+                #050505. The card has no fill of its own, and without one the
+                panel behind it would be legible straight through every gap
+                between its rows the moment a drag began. It is a tall opaque
+                rectangle, and it is invisible: it is painted in exactly the
+                colour it is painted over.
+
+                NO LEFT PANEL ON AN ARCHIVED RECORD: undefined, not a disabled
+                panel, which is the same mechanism renderLeft already uses on an
+                archive row with nothing to restore. The library renders no panel
+                at all and the drag has nothing to uncover. See isArchivedCard.
+                The notify panel is unaffected — an archived flight is finished,
+                but nothing about that makes the right-hand side wrong. */}
+            <ReanimatedSwipeable
+              ref={cardSwipe}
+              friction={1.15}
+              overshootFriction={2}
+              animationOptions={SWIPE_SPRING}
+              onSwipeableWillOpen={onCardWillOpen}
+              childrenContainerStyle={sf.rowSurface}
+              renderLeftActions={isArchivedCard ? undefined : renderCardLeft}
+              renderRightActions={renderCardRight}
+            >
+            <View
+              style={s.resultWrap}
+              onLayout={e => { cardW.value = e.nativeEvent.layout.width; }}
             >
               {/* Flight header + status line, ruled off from the route block */}
               <View style={{ borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)', paddingBottom: 16, marginBottom: 4 }}>
@@ -6185,25 +6641,17 @@ export default function Index() {
                   <Animated.View style={[s.statusBadge, { backgroundColor: flight.statusBg, borderColor: flight.statusColor + "50", opacity: flight.status === 'ACTIVE' ? badgePulse : 1 }]}>
                     <Text style={[s.statusTxt, { color: flight.statusColor }]}>{flight.status}</Text>
                   </Animated.View>
+                  {/* SAVING IS A GESTURE NOW. The bookmark that stood first in
+                      this row has moved into the left swipe panel, where it
+                      still shows the same green when the flight is saved. What
+                      it leaves behind is 32pt — an 18pt glyph, 8pt of its own
+                      padding and one 6pt gap — and every point of it goes back
+                      to the flexing title beside it, so a long flight number or
+                      airline name has more room than it had. Refresh and close
+                      keep their order, their spacing and their alignment; the
+                      close x keeps the negative margin that holds it flush with
+                      the arrival code below. */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <TouchableOpacity
-                      onPress={handleToggleSave}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      style={{
-                        paddingVertical: 6,
-                        paddingHorizontal: 4,
-                      }}
-                    >
-                      <Svg width={18} height={18} viewBox="0 0 24 24">
-                        <Path
-                          d="M6 3h12a1 1 0 0 1 1 1v17l-7-5-7 5V4a1 1 0 0 1 1-1z"
-                          fill={isSaved ? '#4ade80' : 'none'}
-                          stroke={isSaved ? '#4ade80' : 'rgba(226,226,226,0.5)'}
-                          strokeWidth={1.75}
-                        />
-                      </Svg>
-                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={async () => {
                         if (!flightRecord) return;
@@ -6355,11 +6803,56 @@ export default function Index() {
                 <InfoRow label="Arriving At" value={flight.toFull} sans />
               </View>
 
+            </View>
+            </ReanimatedSwipeable>
             </Animated.View>
           )}
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* THE UNDO BANNER. Same material as every other surface in the app —
+          sheetShell for the radius and the clip, GlassLayers for the blur and
+          the tint, sheetEdge for the hairline — because a second glass would be
+          a second thing to keep in step with the first.
+
+          THE TOAST'S OWN POSITION, top and insets.top + 12, sharing s.toastWrap
+          so the two cannot drift apart. It sat at the bottom on the reasoning
+          that a control should be near the thumb, which is true in general and
+          wrong here: it was the only thing at the bottom of this app, and the
+          one place nobody was looking. Every other message arrives at the top,
+          so this one is found by arriving where they do.
+
+          STILL TAPPABLE and still five seconds — those were the actual reasons
+          for the move and neither of them was about where it sat. No
+          pointerEvents="none", unlike the toast: it holds a control.
+
+          STILL AFTER THE PAGE in document order, and now that matters more than
+          it did: absolutely-positioned siblings paint in document order, and a
+          control that paints under the page is a control that cannot be tapped.
+          The ordinary toast stays where it is, before the page, because it takes
+          no touches and has nothing to lose. */}
+      {undoMsg !== '' && (
+        <Reanimated.View
+          style={[s.toastWrap, { top: insets.top + 12 }, undoStyle]}
+        >
+          <View style={[s.sheetShell, s.undoCard]}>
+            <GlassLayers />
+            <View style={s.sheetEdge} pointerEvents="none" />
+            <Text style={s.toastText} numberOfLines={1}>{undoMsg}</Text>
+            {/* #4ade80 because this is live and actionable, which is the one
+                thing the green is for in this app. hitSlop rather than padding:
+                the target grows, the line does not. */}
+            <TouchableOpacity
+              onPress={handleUndo}
+              activeOpacity={0.7}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            >
+              <Text style={s.undoAction}>{'undo'}</Text>
+            </TouchableOpacity>
+          </View>
+        </Reanimated.View>
+      )}
     </View>
   );
 }
@@ -6696,6 +7189,27 @@ const s = StyleSheet.create({
   // every flight number in this app is mono. 13 rather than the old 11: this is
   // now the only report of what happened, not a footnote under a card.
   toastText: { fontFamily: MONO, fontSize: 13, color: '#e2e2e2' },
+  // toastCard plus a row. The gap is what holds the message off the control;
+  // 14 is the same rhythm resultWrap uses between blocks.
+  //
+  // CARD_PAD, not toastCard's 16, and the two points either side are the reason
+  // the longest message fits. WIDTH, at 320pt: the wrap's 20 either side and
+  // this card's 14 either side leave 252pt inside. JetBrains Mono advances
+  // 0.6em, so 13pt is 7.8pt a character — "undo" is 31.2 and the gap is 14,
+  // which leaves the message 206.8pt, or twenty-six characters and change.
+  //
+  // The longest message this banner can produce is a six-character flight number
+  // and the reminder clause, "6E5031 unsaved · reminders", at exactly
+  // twenty-six. At 16 of padding that was 202.8pt against 202.8 needed — no
+  // slack at all, and one rounding away from an ellipsis.
+  undoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 10,
+    paddingHorizontal: CARD_PAD,
+  },
+  undoAction: { fontFamily: MONO_BOLD, fontSize: 13, color: '#4ade80' },
   // Padding only.
   sheetBody: { padding: 20 },
   // FILL, because there is now a height to fill. The shell has a definite

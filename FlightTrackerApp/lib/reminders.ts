@@ -236,7 +236,22 @@ export async function cancelFor(flightId: string): Promise<void> {
 // and takes a real id the first time a refresh returns one — see makeFlightId.
 // The notifications scheduled under the old id are then orphans that no flight
 // will ever cancel, which is what the sweep at the end is for.
-export async function reconcile(flights: SavedFlight[]): Promise<void> {
+//
+// keepFlightIds NAMES FLIGHTS THAT ARE NOT IN THE LIST AND WHOSE NOTIFICATIONS
+// MUST SURVIVE ANYWAY. There is exactly one such case: a flight the user has
+// just unsaved, still inside its undo window. Its record is gone from storage,
+// so it cannot appear in `flights`, and without this the sweep below would read
+// its two notifications as orphans and cancel them — which is precisely what the
+// window exists to prevent. Undo would then restore a record whose reminders had
+// already been thrown away, and nothing would say so.
+//
+// These ids are NOT rescheduled, only spared. There is no record to schedule
+// from, and nothing needs rescheduling: the notifications are still pending,
+// untouched, exactly as they were before the unsave.
+export async function reconcile(
+  flights: SavedFlight[],
+  keepFlightIds: string[] = [],
+): Promise<void> {
   const wanted = flights.filter(f => f.remindersSetAt !== null);
 
   for (const f of wanted) {
@@ -249,6 +264,11 @@ export async function reconcile(flights: SavedFlight[]): Promise<void> {
   for (const f of wanted) {
     keep.add(idFor(f.id, 'evening'));
     keep.add(idFor(f.id, 'leave'));
+  }
+  // Spared, not scheduled. See the note above.
+  for (const id of keepFlightIds) {
+    keep.add(idFor(id, 'evening'));
+    keep.add(idFor(id, 'leave'));
   }
   try {
     const pending = await Notifications.getAllScheduledNotificationsAsync();
