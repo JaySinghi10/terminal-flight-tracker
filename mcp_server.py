@@ -72,6 +72,14 @@ _ARRIVAL_OCCURRED = {"arrived"}
 # Wire format for the *_iso DTO fields. Enforced before anything is emitted.
 _ISO_WIRE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?[+-]\d{2}:\d{2}$")
 
+# THREE LETTERS, and the one definition of "an IATA code" in this file. It sits
+# here rather than with the route search below because fetch_flight_full reads it
+# too and is defined above that section. KEEP IT ABOVE BOTH CONSUMERS: moving it
+# back down would still run — module globals resolve at call time — which is
+# exactly what makes that a bad place for it, since nothing would fail to warn
+# you.
+_IATA_RE = re.compile(r"^[A-Z]{3}$")
+
 # Fallback for datetime strings that are well-formed but not zero-padded.
 # datetime.fromisoformat rejects those outright.
 _LENIENT_DT_RE = re.compile(
@@ -407,13 +415,30 @@ def _arrival_key(item: dict):
     return _movement_utc(item, "arrival") or _movement_utc(item, "departure")
 
 
-def _select_item(items: list):
-    """The endpoint returns every matching day, so one has to be chosen.
+def _departure_iata(item: dict) -> str:
+    """The item's departure airport code, upper-cased, or "" when absent."""
+    airport = ((item or {}).get("departure") or {}).get("airport") or {}
+    return str(airport.get("iata") or "").strip().upper()
 
+
+def _select_item(items: list):
+    """Chooses between DAYS. It cannot choose between LEGS.
+
+    The endpoint returns every matching day, so one has to be chosen.
     Nearest-to-now is symmetric and will happily pick a flight that finished
     yesterday over one departing this evening. Prefer the next relevant flight:
     the earliest one still to arrive, and only when none remain, the most
     recently departed.
+
+    THAT RULE IS MEANINGLESS ACROSS LEGS. A tag flight — one number operating
+    BOM-DEL then DEL-BOM the same day — puts two items in this list, both still
+    to arrive, and "the earliest one still to arrive" then returns the first leg
+    no matter which one the caller wanted. Nothing here can do better: this
+    function is never told an origin, and the two items are equally valid
+    answers to "this number, this day".
+
+    So the CALLER filters by departure airport before calling this, and what
+    arrives here is one leg's worth of days. See fetch_flight_full.
     """
     now = datetime.now(timezone.utc)
 
@@ -490,16 +515,30 @@ def _render_text(dto: dict) -> str:
 # ──────────────────────────────────────────────
 # FETCH FLIGHT STATUS FROM AERODATABOX
 # ──────────────────────────────────────────────
-def fetch_flight_full(flight_number: str, date: str | None = None) -> tuple[str, dict | None]:
-    """One flight, optionally on a specific local departure date.
+def fetch_flight_full(flight_number: str, date: str | None = None,
+                      origin: str | None = None) -> tuple[str, dict | None]:
+    """One flight, optionally on a specific local departure date and from a
+    specific airport.
 
     date is None for the behaviour this has always had: the provider picks the
     nearest instance to now, and _select_item narrows it. A "YYYY-MM-DD" uses the
     provider's dated form instead, which returns that day's instance and nothing
     else. Both forms are TIER 2 upstream, so the date costs no extra units.
+
+    origin is the departure IATA code the caller is asking about, and it is what
+    disambiguates a TAG FLIGHT: one number operating consecutive legs on one day
+    returns two items, and the date cannot separate them because they share it.
+    None means "whichever leg the provider offers", which is every caller's
+    behaviour before this existed and is still correct where the caller genuinely
+    does not know — a flight number typed into the search box names no airport.
+    It costs no extra units: it filters a response that was fetched anyway.
     """
     number = re.sub(r"\s+", "", str(flight_number or "")).upper()
     day = str(date).strip() if date is not None and str(date).strip() else None
+    # Anything that is not exactly three letters is not a code, so it is treated
+    # as absent rather than as a filter that can never match.
+    org = str(origin or "").strip().upper()
+    org = org if _IATA_RE.match(org) else None
     not_found = (
         f"No flight found for {number} on {day}."
         if day else
@@ -511,10 +550,14 @@ def fetch_flight_full(flight_number: str, date: str | None = None) -> tuple[str,
     if not RAPIDAPI_KEY:
         return ("Flight lookup is not configured: RAPIDAPI_KEY is not set.", None)
 
-    # The date is PART OF THE KEY, for the same reason the board cache keys on
-    # it: keyed on the number alone, a dated lookup would be handed whichever
-    # instance happened to be cached — right flight, wrong day, no error.
-    key = (number, day)
+    # The date AND THE ORIGIN are PART OF THE KEY, for the same reason the board
+    # cache keys on the date: keyed on the number alone, a dated lookup would be
+    # handed whichever instance happened to be cached — right flight, wrong day,
+    # no error. The origin is on the key because the filtering below happens
+    # AFTER the cache is consulted, so a hit returns a finished result and no
+    # filter ever runs on it. An origin outside the key would mean the first
+    # caller to ask for a number picks the leg every later caller is given.
+    key = (number, day, org)
     cached = _FLIGHT_CACHE.get(key)
     if cached is not None:
         cached_at, cached_result = cached
@@ -526,6 +569,11 @@ def fetch_flight_full(flight_number: str, date: str | None = None) -> tuple[str,
     # additionally match a flight arriving that date — one that departed the day
     # before — and hand _select_item two instances to choose between on
     # proximity to now, which is the very fault this is fixing.
+    #
+    # WHAT IT DOES NOT SOLVE: two legs sharing one departure date. Departure
+    # excludes YESTERDAY's leg; it cannot exclude the second leg of a tag flight,
+    # because that one departs on the date being asked for and is exactly what
+    # the parameter selects for. Only the origin filter below separates those.
     url = (f"https://{AERODATABOX_HOST}/flights/number/{number}/{day}"
            if day else
            f"https://{AERODATABOX_HOST}/flights/number/{number}")
@@ -555,6 +603,24 @@ def fetch_flight_full(flight_number: str, date: str | None = None) -> tuple[str,
 
     if not isinstance(data, list) or not data:
         return not_found
+
+    # BEFORE _select_item, which chooses between days and has no way to choose
+    # between legs. Filtering here is what makes its rule meaningful again.
+    if org is not None:
+        data = [it for it in data if _departure_iata(it) == org]
+        # NO FALLBACK TO THE UNFILTERED LIST, and this is the whole fix. Falling
+        # back is the bug: the caller asked for the leg leaving org, and handing
+        # it a different leg means the app opens a card for a flight the user did
+        # not tap and — where that id is already saved — writes it over the stored
+        # record. A miss is recoverable and visible. A confident wrong leg is
+        # neither. If this ever needs relaxing, the answer is a new field saying
+        # "this is not the leg you asked for", not a silent substitution.
+        #
+        # ACCEPTED COST: an item carrying no departure IATA at all is dropped by
+        # the same rule, so a gap in the provider's data becomes a visible miss
+        # rather than a wrong leg. That is the intended direction.
+        if not data:
+            return not_found
 
     item = _select_item(data)
     if item is None:
@@ -649,7 +715,8 @@ ROUTE_MAX_FUTURE_DAYS = 60
 # request through for those airports without opening up real history.
 ROUTE_MAX_PAST_DAYS = 1
 
-_IATA_RE = re.compile(r"^[A-Z]{3}$")
+# _IATA_RE now lives with the other module regexes at the top of the file, where
+# fetch_flight_full can also reach it. Nothing else about it changed.
 _ROUTE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Identical on both the relative and the absolute path, so neither can drift.

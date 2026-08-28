@@ -65,15 +65,25 @@ def search_gmail_for_flight(gmail_token: str):
     return None
 
 
+# `origin` is the departure IATA the caller is asking about, and it exists for
+# TAG FLIGHTS: one number operating consecutive legs on one day returns two
+# instances that `date` cannot separate, because they share it. Absent is
+# today's behaviour exactly — every MCP tool passes nothing and is unchanged.
+#
+# NOT VALIDATED HERE, deliberately, where `date` is. A malformed date would cost
+# four units upstream, so it is worth rejecting early; a malformed origin costs
+# nothing, because fetch_flight_full normalises anything that is not three
+# letters to "no filter" and the call it would have made is the call it makes.
+# One normalisation, in one place.
 @app.get("/flight/{flight_number}")
-def get_flight(flight_number: str, date: str | None = None):
+def get_flight(flight_number: str, date: str | None = None, origin: str | None = None):
     # The same validator the route search uses, so the two cannot drift on what
     # a date means or how far it may reach. Every rejection happens here, before
     # any upstream call, so a malformed date costs nothing.
     day, date_error = _validate_route_date(date)
     if date_error is not None:
         return {"error": date_error}
-    _text, dto = fetch_flight_full(flight_number, day)
+    _text, dto = fetch_flight_full(flight_number, day, origin)
     if dto is None:
         suffix = f" on {day}" if day else ""
         return {"error": f"No flight found for {flight_number.strip().upper()}{suffix}"}

@@ -83,6 +83,21 @@ const SANS_SEMI = 'Inter_600SemiBold';
 
 const API_BASE = 'https://flight-tracker-970706733452.asia-south1.run.app';
 
+// The flight endpoint's URL, in one place, because four fetch sites build it and
+// they must agree. Both parameters are optional and both are omitted when null,
+// so an argument-free call produces the URL this file has always sent.
+//
+// The query is ASSEMBLED rather than concatenated. Appending "&origin=" to a
+// path that has no "?date=" on it — which is every route-row tap on an undated
+// board, the commonest case there is — would send a malformed URL and lose the
+// filter silently, which is the same class of fault this change exists to fix.
+function flightUrl(number: string, date: string | null, origin: string | null): string {
+  const parts: string[] = [];
+  if (date !== null && date !== '') parts.push(`date=${date}`);
+  if (origin !== null && origin !== '') parts.push(`origin=${origin}`);
+  return `${API_BASE}/flight/${number}${parts.length === 0 ? '' : `?${parts.join('&')}`}`;
+}
+
 const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
 // Three letters, an optional single separator, three letters. "BLR DEL",
 // "BLR>DEL", "BLR-DEL", "BLR\u2192DEL" and "BLRDEL" all match. Tested after
@@ -3563,10 +3578,17 @@ export default function Index() {
   // `date` is the LOCAL DEPARTURE date of the instance wanted, or null for the
   // nearest one — which is what every caller meant before this existed, so an
   // omitted argument preserves today's behaviour exactly.
+  //
+  // `origin` is the departure IATA, and it is how a TAG FLIGHT is pinned to the
+  // leg the user actually tapped: one number operating BOM-DEL then DEL-BOM on
+  // one day is two instances the date cannot separate. Null where the caller
+  // genuinely does not know — a flight number typed into the search box names no
+  // airport, and guessing one there would be inventing an answer.
   const runFlightLookup = async (
     flightNumber: string,
     keepVisible = false,
     date: string | null = null,
+    origin: string | null = null,
   ): Promise<boolean> => {
     setError("");
     setSaveError("");
@@ -3577,9 +3599,7 @@ export default function Index() {
     }
     setLoading(true);
     try {
-      const response = await fetch(
-        `${API_BASE}/flight/${flightNumber}${date === null ? '' : `?date=${date}`}`,
-      );
+      const response = await fetch(flightUrl(flightNumber, date, origin));
       const data = await response.json();
 
       if (data.error || !response.ok) {
@@ -3658,17 +3678,18 @@ export default function Index() {
   //
   // Costs 2 units per distinct flight. The backend caches a successful lookup for
   // five minutes, so re-tapping the same number inside that window is free.
-  const saveFromRoute = async (flightNumber: string, date: string | null) => {
+  const saveFromRoute = async (flightNumber: string, date: string | null,
+                              origin: string | null = null) => {
     if (routeSavingKey !== null) return;      // one at a time; the UI also disables the rest
     setRouteSavingKey(flightNumber);
     setError("");
     try {
-      // Same date the row was rendered from. Without it this stored TODAY's
-      // instance of the flight under a row the user picked off a future board —
-      // and unlike the card, that one persists.
-      const response = await fetch(
-        `${API_BASE}/flight/${flightNumber}${date === null ? '' : `?date=${date}`}`,
-      );
+      // Same date AND same origin the row was rendered from. Without the date
+      // this stored TODAY's instance of the flight under a row the user picked
+      // off a future board; without the origin it stored whichever leg of a tag
+      // flight the provider offered first. Both persist, which is what makes
+      // them worse here than on the card.
+      const response = await fetch(flightUrl(flightNumber, date, origin));
       const data = await response.json();
 
       if (data.error || !response.ok) {
@@ -3905,8 +3926,14 @@ export default function Index() {
         // card had before it learned to pass a date, and widening the key
         // without fixing it would be worse than the old single overwrite: two
         // records would exist and both would refresh into the same instance.
+        //
+        // ON ITS OWN ORIGIN as well as its own date, from the record being
+        // refreshed. This is the one call site that can read the answer off
+        // storage rather than off the screen, and it is also the one that writes
+        // unconditionally, so a tag flight refreshed without it would replace a
+        // saved BOM-DEL with DEL-BOM under the same id.
         const response = await fetch(
-          `${API_BASE}/flight/${f.flightNumber}${day === null ? '' : `?date=${day}`}`,
+          flightUrl(f.flightNumber, day, f.from.iata || null),
         );
         const data = await response.json();
         if (data.error || !response.ok) { failures++; continue; }
@@ -4208,9 +4235,10 @@ export default function Index() {
         const key = makeFlightId(r.flight_number, day);
         routeFillTried.current.add(key);
         try {
-          const res = await fetch(
-            `${API_BASE}/flight/${r.flight_number}${day === null ? '' : `?date=${day}`}`,
-          );
+          // The board's own origin. Every row here departs from it, and without
+          // it a tag flight fills this row with the other leg's arrival time —
+          // a wrong number in a cell that looks exactly like a right one.
+          const res = await fetch(flightUrl(r.flight_number, day, routeResult.origin));
           const data = await res.json();
           if (!res.ok || data.error) continue;
           const text = data.arrival_scheduled ?? null;
@@ -4448,7 +4476,7 @@ export default function Index() {
         key={routeRowKey(r)}
         style={[s.routeFlatRow, routeRowKey(r) === routeLastKey && s.routeFlatRowLast]}
         activeOpacity={0.7}
-        onPress={() => runFlightLookup(r.flight_number, false, rowDate)}
+        onPress={() => runFlightLookup(r.flight_number, false, rowDate, origin || null)}
       >
         <View style={s.routeFlatBody}>
           {/* Identity and flags. Everything variable-width lives on this line so
@@ -4528,7 +4556,7 @@ export default function Index() {
           activeOpacity={0.7}
           disabled={saved || busy}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          onPress={() => saveFromRoute(r.flight_number, rowDay ?? rowDate)}
+          onPress={() => saveFromRoute(r.flight_number, rowDay ?? rowDate, origin || null)}
         >
           <View style={s.routeFlatMarkBox}>
             {pending ? (
@@ -5968,10 +5996,19 @@ export default function Index() {
                         // backend's own flight_date, derived from the departure
                         // ISO, so it names exactly the day being refreshed; the
                         // shape test lets "N/A" fall through to undated.
+                        //
+                        // AND TO THE LEG ON SCREEN. This is the one call that can
+                        // flip an ALREADY-CORRECT card to the other leg of a tag
+                        // flight: the card may have been opened from a route row
+                        // that got the origin right, and a refresh without one
+                        // would quietly replace it with whichever leg the
+                        // provider offered. It knows the answer from the very
+                        // record it is refreshing.
                         const ok = await runFlightLookup(
                           flightRecord.flightNumber,
                           true,
                           /^\d{4}-\d{2}-\d{2}$/.test(flight.date) ? flight.date : null,
+                          flightRecord.from.iata || null,
                         );
                         if (ok) showToast('updated');
                       }}
