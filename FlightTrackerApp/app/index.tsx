@@ -1346,7 +1346,13 @@ function scheduledDuration(
 // Called at render time from the live `now` so it advances with the clock.
 function computeProgress(f: SavedFlight | null, now: number): number | null {
   if (!f) return null;
-  const s = f.status.toLowerCase();
+  // NOT f.status, for the same reason flightLineSegments does not read it: a
+  // record claiming to have landed before its own arrival time would fill this
+  // bar completely, and a full bar is a stronger claim than the word beside it —
+  // it says the flight is over. A demoted record reads 'scheduled' and the bar
+  // sits at zero, which is what an unflown flight looks like. `now` was already
+  // a parameter, so nothing new is threaded in to get this.
+  const s = effectiveStatus(f, now);
   if (s === 'landed') return 1;
   if (s === 'scheduled') return 0;
   if (s !== 'active') return null; // cancelled, diverted, unknown, anything else
@@ -1358,11 +1364,25 @@ function computeProgress(f: SavedFlight | null, now: number): number | null {
   return Math.min(0.98, Math.max(0.02, (now - dep) / (arr - dep)));
 }
 
-function flightDataFromApi(data: any): FlightData {
+// `effective` is the status AFTER the clock has had its say — see
+// effectiveStatus. It is a parameter rather than something computed here because
+// that rule takes a SavedFlight and this takes a response, and a DTO-shaped copy
+// of it would be two implementations of one rule, free to drift.
+//
+// OMITTED MEANS NO CLOCK CHECK WAS MADE, and then everything below reduces to
+// exactly what it did before the parameter existed: the response's own mapped
+// status, and its raw word trusted. Callers that have no record to check
+// against are unaffected.
+function flightDataFromApi(data: any, effective?: string): FlightData {
   const dep = data?.departure ?? {};
   const arr = data?.arrival ?? {};
-  const status = displayStatus(
-    (data?.status || "unknown").toLowerCase(), dep.delay, data?.raw_status ?? null);
+  const mapped = (data?.status || "unknown").toLowerCase();
+  const effectiveMapped = effective ?? mapped;
+  // The contradicted-raw-word rule, for the reason set out at length in
+  // renderSavedFlight: a raw word the clock has just refuted is the same claim
+  // in finer detail, not a second opinion, so it stops being evidence.
+  const trustedRaw = effectiveMapped === mapped ? (data?.raw_status ?? null) : null;
+  const status = displayStatus(effectiveMapped, dep.delay, trustedRaw);
   // Formatted BEFORE the cell is chosen, because the cell appends "(predicted)"
   // or "(wheels up)" to the value and there would be no way to reach the time
   // again afterwards. clock24 leaves "N/A" alone, so hasTime still recognises it.
@@ -1382,7 +1402,7 @@ function flightDataFromApi(data: any): FlightData {
     // status. They are allowed to differ: "BOARDING" in amber says the flight is
     // at the gate AND running late, which is two facts the old single grey
     // SCHEDULED could not carry.
-    status: badgeLabel(data?.raw_status ?? null, status),
+    status: badgeLabel(trustedRaw, status),
     statusColor: getStatusColor(status),
     statusBg: getStatusBg(status),
     from: dep.iata || "—",
@@ -1713,8 +1733,11 @@ function delaySegment(ep: SavedFlightEndpoint, status: string): LineSeg | null {
     : { text: ` · ${Math.abs(diffMin)}m early`, color: CD_EARLY };
 }
 
-function absoluteTime(f: SavedFlight): string {
-  const s = f.status.toLowerCase();
+// The status is the CALLER'S, not f.status. Re-reading the record here would let
+// this pick the arrival endpoint for a row whose word says scheduled, which is
+// precisely the disagreement effectiveStatus exists to remove.
+function absoluteTime(f: SavedFlight, status: string): string {
+  const s = status;
   if (s === 'landed') {
     return f.to.actual && f.to.actual !== 'N/A'
       ? clock24(f.to.actualIso, f.to.actual)
@@ -1727,7 +1750,10 @@ function absoluteTime(f: SavedFlight): string {
 // Line-2 / card status line. Always leads with the coloured status word so the
 // row still says what the flight is doing when the countdown falls away.
 function flightLineSegments(f: SavedFlight, now: number): LineSeg[] {
-  const s = f.status.toLowerCase();
+  // NOT f.status. A record claiming to have landed six hours before its own
+  // arrival time would otherwise take the landed branch below, read the arrival
+  // endpoint, and print a grey "landed" on a flight still sitting at the gate.
+  const s = effectiveStatus(f, now);
   const statusSeg: LineSeg = { text: s, color: getStatusColor(s) };
   const fresh = now - f.updatedAt < COUNTDOWN_MAX_AGE_MS;
 
@@ -1758,10 +1784,19 @@ function flightLineSegments(f: SavedFlight, now: number): LineSeg[] {
     }
   }
 
-  // Fallback: status · updated <age> [· absolute time]
-  const abs = absoluteTime(f);
+  // Fallback: status · updated <age> [· dep|arr <absolute time>]
+  const abs = absoluteTime(f, s);
+  // WHAT THAT TIME IS. The same slot carries a scheduled departure on one row
+  // and an arrival on the next, and unlabelled they are indistinguishable — a
+  // bare "21:12" on a landed row and a bare "19:50" on a scheduled one look like
+  // the same kind of fact and are not. Airport-board vocabulary, three
+  // characters, because the row has to stay one line.
+  //
+  // Derived from the SAME branch absoluteTime takes, so the label can never name
+  // an endpoint the time did not come from.
+  const absLabel = s === 'landed' || s === 'active' ? 'arr' : 'dep';
   const tail = abs && abs !== 'N/A'
-    ? ` · updated ${timeAgo(f.updatedAt, now)} · ${abs}`
+    ? ` · updated ${timeAgo(f.updatedAt, now)} · ${absLabel} ${abs}`
     : ` · updated ${timeAgo(f.updatedAt, now)}`;
   return [statusSeg, { text: tail, color: CD_AGE }];
 }
@@ -1827,6 +1862,62 @@ function arrivalTs(f: SavedFlight): number | null {
 function hasFlown(f: SavedFlight, now: number): boolean {
   const ts = arrivalTs(f);
   return ts !== null && ts <= now;
+}
+
+// THE STATUS TO DISPLAY AND SORT ON, which is not always the status stored.
+//
+// A stored record can contradict itself. A real one: status "landed", rawStatus
+// "Arrived", arrival actualIso 2026-08-28T21:12+05:30 — written at 15:10 IST the
+// same day, six hours before that arrival could have happened, with no actual or
+// estimated departure time at all. Nothing in this app invents a status; it
+// copies the response. So the app cannot treat a stored status as more reliable
+// than the clock, and this is the same principle hasFlown states above, applied
+// to the word on the row instead of to the archive.
+//
+// THE CLOCK MAY DEMOTE A STATUS, NEVER PROMOTE IT, and the asymmetry is the
+// whole design.
+//
+// A TIME PASSING DOES NOT PROVE AN EVENT HAPPENED. A flight can sit an hour past
+// its scheduled departure still at the gate, and a scheduled arrival can come
+// and go while the aircraft is holding. Promoting on the clock would invent
+// departures and landings that never occurred, which is exactly the failure this
+// exists to correct, pointing the other way. So there is no promotion here at
+// all: nothing is ever moved to "active" or "landed" by the clock.
+//
+// AN EVENT CANNOT HAVE HAPPENED BEFORE ITS OWN TIME. That is what makes
+// demotion sound. If the record says a flight has landed and names an arrival
+// instant still in the future, the two cannot both be true, and the instant is
+// the one with a checkable meaning. Demoting to "scheduled" is the weakest claim
+// that resolves the contradiction, and it is self-correcting: the next refresh
+// that returns a coherent record restores the stored word.
+//
+// ONE NARROW, PROVABLE CONTRADICTION, deliberately. This is not a "does the data
+// look plausible" check and must not grow into one — no missing-field heuristics,
+// no delay-magnitude limits, no cross-field guessing. Two propositions that
+// cannot both hold, and nothing else.
+//
+// AN UNREADABLE TIME IS NOT EVIDENCE. A null from zonedIsoToTs — a pre-v3 record
+// with no ISO, a bad timezone — changes nothing, because absence of a time is
+// not proof the status is wrong.
+//
+// DERIVED, NEVER STORED, exactly like hasFlown and isArchived. Nothing here
+// writes back; a record's stored status is what the provider last said and stays
+// that way.
+function effectiveStatus(f: SavedFlight, now: number): string {
+  const s = f.status.toLowerCase();
+  if (s === 'landed') {
+    // The same instant arrivalTs uses, so the row and the archive rule read one
+    // arrival time rather than two.
+    const ts = arrivalTs(f);
+    if (ts !== null && ts > now) return 'scheduled';
+  } else if (s === 'active') {
+    // arrivalTs's precedence, mirrored onto the departure: actual, then the
+    // estimate, then the schedule.
+    const ts = zonedIsoToTs(
+      f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso, f.from.timezone);
+    if (ts !== null && ts > now) return 'scheduled';
+  }
+  return s;
 }
 
 function isArchived(f: SavedFlight, now: number): boolean {
@@ -2265,8 +2356,13 @@ const ICON_REMIND = (
 // At module scope so it is one function rather than one per row per render.
 const notImplemented = () => {};
 
-function savedSortKey(f: SavedFlight): { rank: number; when: number } {
-  const s = f.status.toLowerCase();
+// `now` for effectiveStatus, and for nothing else: the keys themselves are
+// absolute instants and do not move with the clock.
+function savedSortKey(f: SavedFlight, now: number): { rank: number; when: number } {
+  // The same word the row shows. Keyed on f.status, a wrongly-landed flight
+  // ranks RANK_LAST and sinks under everything real; keyed on this it ranks as
+  // the scheduled flight it actually is and returns to its place in the list.
+  const s = effectiveStatus(f, now);
   const rank = SAVED_RANK[s] ?? RANK_LAST;
   if (rank === 0) {
     // Same precedence flightLineSegments uses for an active flight.
@@ -2279,10 +2375,10 @@ function savedSortKey(f: SavedFlight): { rank: number; when: number } {
 }
 
 // Pure: returns a new array, never mutates the input.
-function sortSavedByRelevance(list: SavedFlight[]): SavedFlight[] {
+function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFlight[] {
   return [...list].sort((a, b) => {
-    const ka = savedSortKey(a);
-    const kb = savedSortKey(b);
+    const ka = savedSortKey(a, now);
+    const kb = savedSortKey(b, now);
     return ka.rank !== kb.rank ? ka.rank - kb.rank : ka.when - kb.when;
   });
 }
@@ -3593,8 +3689,32 @@ export default function Index() {
     setChatResponse(null);
     setRouteResult(null);
     setFlightRecord(saved);
-    const savedStatus = displayStatus(
-      saved.status.toLowerCase(), saved.from.delay, saved.rawStatus);
+    // THE SAME DEMOTION THE ROW APPLIES, so tapping a row cannot contradict the
+    // row that was tapped. Date.now() rather than the `now` state: this runs on
+    // a tap rather than at render, and the tick that maintains `now` is a minute
+    // wide.
+    const storedStatus = saved.status.toLowerCase();
+    const effective = effectiveStatus(saved, Date.now());
+    // A CONTRADICTED rawStatus IS TREATED AS ABSENT, and this is the point of
+    // the whole hunk. The provider said BOTH "landed" and "Arrived" about a
+    // flight whose own arrival time had not come; the raw word is not a second
+    // opinion, it is the same claim in finer detail, and the clock has just
+    // refuted it. So it stops being evidence.
+    //
+    // NULLED AT THE CALL SITE rather than passed to badgeLabel as a third
+    // "trusted" flag, for two reasons. badgeLabel already documents null as
+    // "fall back to the display status", which is exactly the behaviour wanted,
+    // so no new contract is needed; and the clock lives out here, where
+    // effectiveStatus was already called, instead of being handed to a function
+    // whose job is turning one string into another.
+    //
+    // The SAME value goes to displayStatus. It cannot change the outcome today —
+    // demotion only fires on stored 'landed' or 'active', whose raw words are
+    // Arrived, Departed, EnRoute or Approaching, and displayStatus only tests
+    // for 'delayed' — but trusting the word in one call and not the other would
+    // be a distinction with no reason behind it.
+    const trustedRaw = effective === storedStatus ? saved.rawStatus : null;
+    const savedStatus = displayStatus(effective, saved.from.delay, trustedRaw);
     const depCell = movementTimeCell(
       clock24(saved.from.actualIso, saved.from.actual),
       clock24(saved.from.estimatedIso, saved.from.estimated),
@@ -3609,8 +3729,9 @@ export default function Index() {
       airline: saved.airline,
       // As in flightDataFromApi: label from the provider's word, colour from the
       // mapped status. A pre-v10 record has rawStatus null and falls back to the
-      // uppercased display status, which is what it already showed.
-      status: badgeLabel(saved.rawStatus, savedStatus),
+      // uppercased display status, which is what it already showed — and so now
+      // does a record the clock has demoted, by the same route.
+      status: badgeLabel(trustedRaw, savedStatus),
       statusColor: getStatusColor(savedStatus),
       statusBg: getStatusBg(savedStatus),
       from: saved.from.iata,
@@ -3677,9 +3798,13 @@ export default function Index() {
         return false;
       }
 
-      setFlight(flightDataFromApi(data));
-
+      // THE RECORD IS BUILT FIRST so one clock check serves both it and the
+      // card. savedFlightFromApi is pure — it reads `data` and the clock and
+      // writes no state — so moving it above setFlight leaves the order of every
+      // state update below exactly as it was, and every value identical.
       const record = savedFlightFromApi(data);
+      setFlight(flightDataFromApi(data, effectiveStatus(record, Date.now())));
+
       setFlightRecord(record);
       const refreshed = await touchSavedFlight(email, record);
       if (refreshed) setSavedFlights(refreshed);
@@ -4099,13 +4224,19 @@ export default function Index() {
       reconcile(list);
 
       if (openCardFresh) {
-        setFlight(flightDataFromApi(openCardFresh));
+        // HOISTED, exactly as in runFlightLookup: the record was already being
+        // built here for its id, so building it first costs nothing and lets one
+        // clock check serve the card. It is also now built ONCE rather than
+        // twice — the id below reads this record instead of calling
+        // savedFlightFromApi a second time on the same response.
+        const fresh = savedFlightFromApi(openCardFresh);
+        setFlight(flightDataFromApi(openCardFresh, effectiveStatus(fresh, Date.now())));
         // By id, not by number: with two instances saved, matching on the number
         // alone could put the OTHER date's record behind the open card. The id
         // can also change across a refresh — a record filed under "unknown"
         // takes a real date the first time one comes back — so the fresh data's
         // id is tried first and the one the card was opened with second.
-        const freshId = savedFlightFromApi(openCardFresh).id;
+        const freshId = fresh.id;
         const stored = list.find(f => f.id === freshId)
           ?? list.find(f => f.id === (flightRecord?.id ?? ''));
         if (stored) setFlightRecord(stored);                  // from disk, so savedAt stays in sync
@@ -4137,7 +4268,7 @@ export default function Index() {
     .filter(f => isArchived(f, now))
     .sort((a, b) => (arrivalTs(b) ?? 0) - (arrivalTs(a) ?? 0));
 
-  const sortedSaved = sortSavedByRelevance(activeSaved);
+  const sortedSaved = sortSavedByRelevance(activeSaved, now);
 
   // Resolved from the bundled dataset. This used to read the saved flights on
   // the device, which meant a fresh install never saw an airport name at all —
