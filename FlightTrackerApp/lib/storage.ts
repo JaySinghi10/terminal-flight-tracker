@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -55,6 +55,23 @@ export type SavedFlight = {
   // Restoring clears it back to null, which returns the flight to the
   // derivation's judgement rather than to the opposite decision.
   archivedAt: number | null;
+  // WHEN THE USER TURNED REMINDERS ON, or null if they never did.
+  //
+  // Device-owned, exactly as archivedAt is: the provider knows nothing about it
+  // and never will, so a refresh must carry it forward rather than replace it.
+  // See touchSavedFlight.
+  //
+  // A TIMESTAMP rather than a boolean, for the same reason and at the same
+  // cost: it answers "are reminders on" as well as a flag would, and it is the
+  // only record of when the decision was made. Turning them off clears it to
+  // null rather than storing a false, so there is one representation of "off"
+  // and it is the same one a record has before it is ever touched.
+  //
+  // The scheduled notifications themselves are NOT stored. Their identifiers
+  // are derived from the flight's id, so the operating system's own list is the
+  // record and this field only says whether that list should have anything in
+  // it. See lib/reminders.ts reconcile().
+  remindersSetAt: number | null;
   schemaVersion: number;
 };
 
@@ -130,6 +147,9 @@ export function savedFlightFromApi(data: any): SavedFlight {
     // A fresh lookup is never manually archived. touchSavedFlight carries the
     // stored value forward, so a refresh cannot silently un-archive anything.
     archivedAt: null,
+    // Same: a lookup carries no reminder decision, and touchSavedFlight is what
+    // stops one being lost.
+    remindersSetAt: null,
     schemaVersion: SCHEMA_VERSION,
   };
 }
@@ -240,6 +260,13 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
+  // Absent on every record written before v9. null is correct for all of them:
+  // nobody had reminders on, because there was no way to turn them on.
+  if (version < 9 && flight.remindersSetAt === undefined) {
+    flight.remindersSetAt = null;
+    changed = true;
+  }
+
   // AFTER the version blocks, not before them: v7 may have just supplied the
   // date the id is built from, and the id has to be derived from the record as
   // it now stands rather than as it arrived.
@@ -249,8 +276,8 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
-  if (version !== 8) {
-    flight.schemaVersion = 8;
+  if (version !== 9) {
+    flight.schemaVersion = 9;
     changed = true;
   }
 
@@ -439,6 +466,27 @@ export async function setFlightArchived(
   return next;
 }
 
+// Turns reminders on or off for one flight. No-op if not saved.
+//
+// Mirrors setFlightArchived exactly, and deliberately: both write one
+// device-owned field on one record and neither has anything to say about the
+// notifications themselves. Scheduling is lib/reminders.ts's job, and keeping
+// the two apart is what lets reconcile() rebuild the schedule from this field
+// without this file knowing what a notification is.
+export async function setFlightReminders(
+  email: string | null,
+  id: string,
+  remindersSetAt: number | null,
+): Promise<SavedFlight[]> {
+  const flights = await readKey(keyFor(email));
+  const idx = flights.findIndex(f => f.id === id);
+  if (idx < 0) return flights;
+  const next = [...flights];
+  next[idx] = { ...flights[idx], remindersSetAt };
+  await writeKey(keyFor(email), next);
+  return next;
+}
+
 // Updates a stored record after a fresh lookup. No-op if not saved.
 //
 // targetId names the record to update, and defaults to the fresh record's own
@@ -461,10 +509,16 @@ export async function touchSavedFlight(
   const landedAt = flight.status === 'landed'
     ? (prev.landedAt ?? flight.landedAt ?? Date.now())
     : null;
-  // archivedAt joins savedAt and landedAt as a field the DEVICE owns and the
-  // provider knows nothing about. A refresh replaces the flight's data, never
-  // the user's decision about it.
-  next[idx] = { ...flight, savedAt: prev.savedAt, landedAt, archivedAt: prev.archivedAt ?? null };
+  // archivedAt and remindersSetAt join savedAt and landedAt as fields the DEVICE
+  // owns and the provider knows nothing about. A refresh replaces the flight's
+  // data, never the user's decision about it.
+  next[idx] = {
+    ...flight,
+    savedAt: prev.savedAt,
+    landedAt,
+    archivedAt: prev.archivedAt ?? null,
+    remindersSetAt: prev.remindersSetAt ?? null,
+  };
   await writeKey(keyFor(email), next);
   return next;
 }

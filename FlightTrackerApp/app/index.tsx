@@ -47,6 +47,7 @@ import {
   unsaveFlight,
   touchSavedFlight,
   setFlightArchived,
+  setFlightReminders,
   savedFlightFromApi,
   makeFlightId,
   ISO_DAY_RE,
@@ -54,6 +55,19 @@ import {
   mergeGuestInto,
 } from '../lib/storage';
 import { airlineFromFlightNumber } from '../lib/airlines';
+// zonedIsoToTs and clock24 moved to lib/time.ts, which is now the one place
+// either kind of ISO is read. The reasoning that used to sit above them here
+// moved with them, because it is the reasoning that stops the next person
+// calling new Date() on a flight DTO field.
+import { zonedIsoToTs, clock24 } from '../lib/time';
+import {
+  ensureChannel,
+  ensurePermission,
+  reminderTimes,
+  scheduleFor,
+  cancelFor,
+  reconcile,
+} from '../lib/reminders';
 import {
   Airport,
   airportByCode,
@@ -1456,19 +1470,6 @@ function stripZoneLabel(t: string): string {
 //
 // Already zero-padded upstream, so every result is exactly five characters —
 // which is what lets both route time cells share one fixed width.
-const ISO_CLOCK_RE = /T(\d{2}:\d{2})/;
-
-function clock24(iso: string | null, fallback: string): string {
-  if (!iso) return fallback;
-  const m = ISO_CLOCK_RE.exec(iso);
-  // Unparseable, or a record saved before the schema carried ISO at all: show
-  // what was stored, untouched. A pre-v3 saved flight has no ISO to convert
-  // from and would otherwise render nothing; a stale 12-hour value is worse
-  // than the rest of the card but far better than a blank, and it corrects
-  // itself the first time that flight is refreshed.
-  return m ? m[1] : fallback;
-}
-
 // Shown when a row has no arrival time of any kind. An em dash says "not known"
 // in the width of a glyph; the "N/A" that used to arrive here said it in the
 // width of a word and read as an error rather than as a gap. The font already
@@ -1610,60 +1611,6 @@ type LineSeg = { text: string; color: string };
 // The backend's *_iso fields carry a bogus "+00:00"; the value is the airport's
 // LOCAL wall clock. Strip the offset, treat as naive, interpret in the IANA zone.
 // Never use `new Date(iso)` on these directly.
-// ONE FORMATTER PER TIMEZONE, FOREVER.
-//
-// Constructing an Intl.DateTimeFormat builds an ICU formatter, which is among
-// the most expensive routine operations in JavaScript — and zonedIsoToTs built
-// a fresh one on every single call. It is called from arrivalTs, hasFlown,
-// savedSortKey, flightLineSegments and delaySegment, which between them run
-// once per saved flight in each of two filters, twice per comparison in each of
-// two sorts, and up to three times per rendered row. Twenty saved flights come
-// to something on the order of two to four hundred constructions PER RENDER of
-// the screen — tens of milliseconds — and every one of them was for one of a
-// handful of distinct timezone strings.
-//
-// A Map keyed on the timezone reduces that to one construction per distinct
-// zone for the life of the process, and a hash lookup thereafter.
-//
-// Failures are cached too, as null. An invalid timezone throws at construction;
-// without storing the miss, a record carrying a bad zone would pay the throw on
-// every call forever, which is the expensive case made permanent.
-const TZ_FORMATTERS = new Map<string, Intl.DateTimeFormat | null>();
-
-function tzFormatter(timeZone: string): Intl.DateTimeFormat | null {
-  if (TZ_FORMATTERS.has(timeZone)) return TZ_FORMATTERS.get(timeZone) ?? null;
-  let made: Intl.DateTimeFormat | null = null;
-  try {
-    made = new Intl.DateTimeFormat('en-US', {
-      timeZone, hour12: false,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
-  } catch {
-    made = null;
-  }
-  TZ_FORMATTERS.set(timeZone, made);
-  return made;
-}
-
-function zonedIsoToTs(iso: string | null, timeZone: string | null): number | null {
-  if (!iso || !timeZone) return null;
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
-  if (!m) return null;
-  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
-  const fmt = tzFormatter(timeZone);
-  if (fmt === null) return null;
-  try {
-    const parts = fmt.formatToParts(new Date(guess));
-    const p: Record<string, string> = {};
-    for (const part of parts) p[part.type] = part.value;
-    const asZoned = Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, +p.second);
-    return guess - (asZoned - guess); // subtract the zone offset at that instant
-  } catch {
-    return null;
-  }
-}
-
 function formatCountdown(ms: number): string {
   const totalMin = Math.floor(ms / 60000);
   const days = Math.floor(totalMin / 1440);
@@ -2182,6 +2129,16 @@ const SWIPE_FILL_DIM = 'rgba(226,226,226,0.12)';
 const SWIPE_INK_RED = '#ffffff';
 const SWIPE_INK_DIM = '#e2e2e2';
 
+// The reminder indicator on a saved row. ARCHIVE_ICON's grey, which is the
+// file's existing dim ink for a glyph sitting on the page rather than on a
+// fill.
+//
+// NOT #4ade80, deliberately. Green means live and actionable here — an active
+// flight, a countdown that is running. A pending reminder is neither: it is a
+// note about something that has not happened, and colouring it green would put
+// it in the same visual class as a flight in the air.
+const REMIND_DOT = ARCHIVE_ICON;
+
 // THE GLYPHS, as module constants rather than JSX rebuilt inside the row.
 //
 // Twelve Path elements across the four buttons, every one of them static, and
@@ -2290,10 +2247,24 @@ type SavedFlightRowProps = {
   onArchive: (archived: boolean) => void | Promise<void>;
   // Raised after a committed swipe, once the action has actually succeeded.
   onDone: (message: string) => void;
+  // Turns reminders on or off and RETURNS THE MESSAGE to show.
+  //
+  // The message is the caller's because only the caller knows the outcome:
+  // permission refused, no times left to schedule, or done. The row flips a
+  // label and reports what it is told, which keeps `email`, the store and the
+  // scheduler out of a component that renders one flight.
+  onRemind: (on: boolean) => Promise<string>;
 };
 
 // WHAT COUNTS AS THE SAME ROW: the five data props, by identity, and the
 // callbacks deliberately NOT.
+//
+// EVERYTHING ON THE FLIGHT RIDES ON `a.flight` — archivedAt, remindersSetAt and
+// anything added later. The store returns new objects on every write, so a row
+// whose reminder state changed is never the same reference and the first
+// comparison has already failed. Do not add flight.<field> lines here: they can
+// only ever be reached when the identity check passed, which means the field is
+// equal too.
 //
 // Every call site builds its handlers as inline arrows inside a .map, so they
 // are new functions on every parent render; comparing them would defeat the
@@ -2326,6 +2297,7 @@ const SavedFlightRow = memo(function SavedFlightRow({
   archived,
   onArchive,
   onDone,
+  onRemind,
 }: SavedFlightRowProps) {
   const swipe = useRef<SwipeableMethods>(null);
   // Every action closes the row first. Leaving it open behind a modal or a
@@ -2507,15 +2479,28 @@ const SavedFlightRow = memo(function SavedFlightRow({
                 {ICON_ARCHIVE}
               </SwipeAction>
             </ExpandAction>
-            {/* PLACEHOLDER, as above. It is second, so it can never be the one
-                that expands. */}
-            <SwipeAction label="remind" fill={SWIPE_FILL_DIM} progress={progress} onPress={act(notImplemented)}>
+            {/* The label is the state. "remind" when there is nothing set and
+                "cancel" when there is, so the button says what pressing it will
+                do rather than what it is about. Second in the panel, so it can
+                never be the one that expands — a destructive-feeling toggle
+                should not be reachable by a full swipe. */}
+            <SwipeAction
+              label={flight.remindersSetAt === null ? 'remind' : 'cancel'}
+              fill={SWIPE_FILL_DIM}
+              progress={progress}
+              onPress={act(async () => {
+                onDone(await onRemind(flight.remindersSetAt === null));
+              })}
+            >
               {ICON_REMIND}
             </SwipeAction>
           </View>
         ),
+    // remindersSetAt is a dependency because the left panel renders the label
+    // that reads it. Without it the button would keep saying "remind" after the
+    // reminder was set, until something else re-rendered the row.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [archived, canRestore, act, onCrossLeft],
+    [archived, canRestore, act, onCrossLeft, flight.remindersSetAt, onRemind],
   );
 
   return (
@@ -2586,6 +2571,17 @@ const SavedFlightRow = memo(function SavedFlightRow({
     >
       <View style={sf.line1}>
         <Text style={sf.number}>{flight.flightNumber}</Text>
+        {/* ICON_REMIND's path data at 11pt, not the element itself: that
+            constant strokes in SWIPE_INK_DIM, which is the ink for a glyph
+            sitting on a filled button and is far too bright for a mark on the
+            page. The stroke is thickened to 2.25 because 1.75 in a 24-unit
+            viewBox drawn at 11pt is a hairline that disappears. */}
+        {flight.remindersSetAt !== null && (
+          <Svg width={11} height={11} viewBox="0 0 24 24" style={sf.remindMark}>
+            <Path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18" fill="none" stroke={REMIND_DOT} strokeWidth={2.25} />
+            <Path d="M12 7v5l3 2" fill="none" stroke={REMIND_DOT} strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        )}
         {/* Cities, not codes. "Bangalore → Delhi" says where the flight goes to
             someone who does not read IATA, which is most people. city arrived in
             schema v5, so a record older than that carries null and falls back to
@@ -2662,6 +2658,9 @@ const sf = StyleSheet.create({
   rowLast: { marginBottom: 0 },
   line1: { flexDirection: 'row', alignItems: 'center' },
   number: { fontSize: 13, color: '#ffffff', fontFamily: MONO_BOLD },
+  // Against the number, not the route: it is a fact about this flight rather
+  // than about where it goes.
+  remindMark: { marginLeft: 6 },
   // Deliberately outside the type scale: this is a hit target, not text.
   chevron: { fontFamily: MONO, fontSize: 24, color: 'rgba(226,226,226,0.75)' },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -3223,6 +3222,9 @@ export default function Index() {
     if (!authHydrated) return;
     let cancelled = false;
     (async () => {
+      // BEFORE anything is scheduled. Android silently drops notifications with
+      // no channel — no error at the call site, no delivery.
+      await ensureChannel();
       await migrateLegacyIfNeeded();
       const list = email
         ? await mergeGuestInto(email)
@@ -3465,6 +3467,9 @@ export default function Index() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         tick();
+        // Cheap, and the only chance to correct a schedule that drifted while
+        // the app was not running. Fire and forget: nothing on screen waits.
+        getSavedFlights(email).then(l => { if (!cancelled) reconcile(l); });
         if (Date.now() - lastAutoRefreshRef.current > AUTO_REFRESH_RESUME_COOLDOWN_MS) {
           getSavedFlights(email).then(l => { if (!cancelled) autoRefresh(l, () => cancelled); });
         }
@@ -3934,6 +3939,40 @@ export default function Index() {
     }
   };
 
+  // ON OR OFF for one flight, and the single place the three things that have
+  // to agree are put in order: the operating system's schedule, the stored
+  // decision, and what the user is told.
+  //
+  // OFF cancels first and writes second. A cancel that fails leaves a
+  // notification that will fire for a flight the user has turned off, which is
+  // worse than a stored flag that says on.
+  //
+  // ON asks permission first and writes LAST, so nothing is stored if the user
+  // refuses or if there is nothing left to schedule. A record saying reminders
+  // are on with no notifications behind it would survive every reconcile,
+  // because reconcile trusts this field.
+  const handleRemind = useCallback(async (f: SavedFlight, on: boolean): Promise<string> => {
+    if (!on) {
+      await cancelFor(f.id);
+      setSavedFlights(await setFlightReminders(email, f.id, null));
+      return 'reminders off';
+    }
+    if (!(await ensurePermission())) return 'notifications are turned off for this app';
+    // Both null means the evening before has passed and the leave-now instant —
+    // three hours before a domestic departure, four before an international one
+    // — has passed too. Nothing is written: an empty reminder is a promise the
+    // app cannot keep.
+    const t = reminderTimes(f, Date.now());
+    if (t.evening === null && t.leave === null) {
+      return f.from.scheduledIso && f.from.timezone
+        ? 'too late to set a reminder for this one'
+        : 'no departure time to remind you about';
+    }
+    await scheduleFor(f);
+    setSavedFlights(await setFlightReminders(email, f.id, Date.now()));
+    return 'reminders on';
+  }, [email]);
+
   const onRefresh = async () => {
     if (refreshingRef.current) return;                        // synchronous guard; iOS can double-fire the pull
     setGreetingIndex(Math.floor(Math.random() * 60));         // past the double-fire guard, above the cooldown: a throttled pull still rerolls
@@ -3957,6 +3996,12 @@ export default function Index() {
 
       const list = await getSavedFlights(email);              // read once, set state once
       setSavedFlights(list);
+
+      // A refresh is the one moment a departure time can move under a reminder
+      // that was scheduled from the old one, and the one moment a record filed
+      // under "unknown" takes a real id. Both leave the schedule wrong, and
+      // this is what puts it right.
+      reconcile(list);
 
       if (openCardFresh) {
         setFlight(flightDataFromApi(openCardFresh));
@@ -5274,6 +5319,7 @@ export default function Index() {
                         archived
                         last={i === archivedSaved.length - 1}
                         onDone={showToast}
+                        onRemind={(on) => handleRemind(f, on)}
                         onPress={() => { closeArchive(); renderSavedFlight(f); }}
                         onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
                         onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
@@ -5662,6 +5708,7 @@ export default function Index() {
                       now={now}
                       last={i === sortedSaved.length - 1}
                       onDone={showToast}
+                      onRemind={(on) => handleRemind(f, on)}
                       onPress={() => renderSavedFlight(f)}
                       onUnsave={async () => setSavedFlights(await unsaveFlight(email, f.id))}
                       onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
