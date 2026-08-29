@@ -515,6 +515,35 @@ def _render_text(dto: dict) -> str:
 # ──────────────────────────────────────────────
 # FETCH FLIGHT STATUS FROM AERODATABOX
 # ──────────────────────────────────────────────
+def _with_data_age(fetched_at: datetime, result: tuple) -> tuple:
+    """The same (text, dto) pair, with the dto carrying how old the data is.
+
+    WHY THE APP NEEDS THIS AT ALL. A cache hit returns in milliseconds, so the
+    moment a response ARRIVES says nothing about when its data was FETCHED — up
+    to five minutes can separate the two. The device was stamping updatedAt with
+    arrival time, which made a row read "updated just now" over data that could
+    be most of the TTL old, and ran the countdown's freshness gate against an age
+    that was not real.
+
+    A SHALLOW COPY, AND THAT IS LOAD BEARING RATHER THAN TIDINESS. One cache
+    entry hands the SAME dto object to every caller for the life of the entry.
+    Writing the key onto that dict in place would freeze the first request's age
+    into the cache, and every later hit would report whatever age the first
+    caller happened to see. `{**dto, ...}` copies the top level and leaves the
+    nested movement dicts shared, which is correct: nothing here mutates them and
+    the new key is top level.
+
+    Named to match _route_result's field of the same name and the same meaning,
+    so the two payloads cannot drift apart on what it means.
+    """
+    text, dto = result
+    if dto is None:
+        return result
+    age = int((datetime.now(timezone.utc) - fetched_at).total_seconds())
+    # Floored at 0: a clock that steps backwards must not report a negative age.
+    return (text, {**dto, "data_age_seconds": max(0, age)})
+
+
 def fetch_flight_full(flight_number: str, date: str | None = None,
                       origin: str | None = None) -> tuple[str, dict | None]:
     """One flight, optionally on a specific local departure date and from a
@@ -562,7 +591,7 @@ def fetch_flight_full(flight_number: str, date: str | None = None,
     if cached is not None:
         cached_at, cached_result = cached
         if datetime.now(timezone.utc) - cached_at < FLIGHT_CACHE_TTL:
-            return cached_result
+            return _with_data_age(cached_at, cached_result)
 
     # Departure, not Both, on the dated form. The board defines a row's day by
     # its DEPARTURE local date, so that is the day being asked about. Both would
@@ -634,8 +663,12 @@ def fetch_flight_full(flight_number: str, date: str | None = None,
         return not_found
 
     result = (_render_text(dto), dto)
-    _FLIGHT_CACHE[key] = (datetime.now(timezone.utc), result)
-    return result
+    # The UNANNOTATED result is what goes in the cache, and the annotated copy is
+    # what goes out. Caching the annotated one would store an age of 0 and serve
+    # it for the next five minutes.
+    fetched_at = datetime.now(timezone.utc)
+    _FLIGHT_CACHE[key] = (fetched_at, result)
+    return _with_data_age(fetched_at, result)
 
 
 def fetch_flight(flight_number: str) -> str:

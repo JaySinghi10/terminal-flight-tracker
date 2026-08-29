@@ -148,6 +148,33 @@ function endpointFromApi(raw: any): SavedFlightEndpoint {
 
 // Maps a /flight/{number} response into a SavedFlight.
 // savedAt is set to now here; saveFlight preserves the original on re-save.
+// The oldest data age the backend could honestly report. Its flight cache TTL
+// is five minutes and its board cache twelve hours, so a day is far beyond any
+// real value and anything past it is a bug or a broken clock rather than old
+// data.
+const MAX_DATA_AGE_MS = 24 * 60 * 60 * 1000;
+
+// WHEN THIS DATA WAS FETCHED, which is not when the response arrived.
+//
+// The backend caches a flight lookup for five minutes and reports how old the
+// answer is in data_age_seconds. Reading the clock instead would stamp a cache
+// hit as fresh, which is what made a row say "updated just now" over data that
+// could be most of the TTL old — and it fed the countdown's freshness gate a
+// number that was not true.
+//
+// THE FALLBACK IS THE POINT OF THE GUARD. A backend revision that predates the
+// field, a response that omits it, a string, a NaN, a negative from a clock that
+// stepped backwards, or an absurd value all land on `now` — which is exactly
+// what this function did before the field existed. Nothing gets worse than it
+// was; it only gets better when the number is trustworthy.
+function fetchedAt(data: any, now: number): number {
+  const age = data?.data_age_seconds;
+  if (typeof age !== 'number' || !Number.isFinite(age)) return now;
+  const ms = age * 1000;
+  if (ms < 0 || ms > MAX_DATA_AGE_MS) return now;
+  return now - ms;
+}
+
 export function savedFlightFromApi(data: any): SavedFlight {
   const now = Date.now();
   const flightNumber = (data?.flight_number ?? '').toUpperCase();
@@ -163,8 +190,11 @@ export function savedFlightFromApi(data: any): SavedFlight {
     to: endpointFromApi(data?.arrival),
     aircraftModel: data?.aircraft_model ?? null,
     aircraftRegistration: data?.aircraft_registration ?? null,
+    // savedAt and landedAt stay on the clock: they are device-owned facts about
+    // when the user saved this record and when we first saw it land, not claims
+    // about how old the provider's data is.
     savedAt: now,
-    updatedAt: now,
+    updatedAt: fetchedAt(data, now),
     landedAt: status === 'landed' ? now : null,
     // A fresh lookup is never manually archived. touchSavedFlight carries the
     // stored value forward, so a refresh cannot silently un-archive anything.

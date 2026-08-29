@@ -4046,7 +4046,7 @@ export default function Index() {
       const refreshed = await touchSavedFlight(email, record);
       if (refreshed) setSavedFlights(refreshed);
 
-      setLastUpdated(Date.now());
+      setLastUpdated(record.updatedAt);
       if (!keepVisible) showResult();
       return true;
     } catch {
@@ -4370,7 +4370,7 @@ export default function Index() {
           const refreshed = await touchSavedFlight(email, record);
           if (refreshed) setSavedFlights(refreshed);
         }
-        setLastUpdated(Date.now());
+        setLastUpdated(record.updatedAt);
       }
       showResult();
     } catch {
@@ -4606,7 +4606,7 @@ export default function Index() {
         const stored = list.find(f => f.id === freshId)
           ?? list.find(f => f.id === (flightRecord?.id ?? ''));
         if (stored) setFlightRecord(stored);                  // from disk, so savedAt stays in sync
-        setLastUpdated(Date.now());
+        setLastUpdated(fresh.updatedAt);
       }
 
       if (failures > 0) {
