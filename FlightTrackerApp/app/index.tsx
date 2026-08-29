@@ -70,6 +70,7 @@ import {
   cancelFor,
   reconcile,
 } from '../lib/reminders';
+import { registerWatch, deregisterWatch } from '../lib/watch';
 import {
   Airport,
   airportByCode,
@@ -4149,6 +4150,7 @@ export default function Index() {
         shake();
         return;
       }
+      registerWatch(API_BASE, record.flightNumber, record.flightDate);
       // Reminders on by default, exactly as the card's bookmark does it.
       showToast(SAVE_MSG[await enableReminders(record)]);
     } catch {
@@ -5708,6 +5710,7 @@ export default function Index() {
   const handleUnsave = async (f: SavedFlight) => {
     const hadReminders = f.remindersSetAt !== null;
     setSavedFlights(await unsaveFlight(email, f.id));
+    deregisterWatch(API_BASE, f.flightNumber, f.flightDate);
     beginUndoWindow(f);
     // THE NUMBER LEADS. "unsaved" alone says nothing about which of seven rows
     // just went, and that fact used to live in the swipe's own message.
@@ -5727,6 +5730,7 @@ export default function Index() {
   const restoreUnsaved = async (held: SavedFlight): Promise<boolean> => {
     const result = await saveFlight(email, held, f => !isArchived(f, Date.now()));
     setSavedFlights(result.flights);
+    if (result.ok) registerWatch(API_BASE, held.flightNumber, held.flightDate);
     return result.ok;
   };
 
@@ -5836,6 +5840,7 @@ export default function Index() {
       setSaveError('saved flight limit reached — unsave one first');
       return;   // saveError owns this case; no toast
     }
+    registerWatch(API_BASE, flightRecord.flightNumber, flightRecord.flightDate);
     // SAVING IS THE SIGNAL THAT THE USER CARES ABOUT THIS FLIGHT, so reminders
     // follow from it rather than needing a second action. A refusal never blocks
     // the save and never asks twice: the flight is saved either way, and the

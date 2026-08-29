@@ -5,3 +5,4 @@ uvicorn[standard]
 anthropic
 mcp==1.27.1
 tzdata
+google-cloud-storage

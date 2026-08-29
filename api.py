@@ -3,12 +3,15 @@ import os
 import re
 import base64
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 import anthropic
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import store
 from mcp_server import (
     fetch_flight_full,
     extract_flight_number,
@@ -491,3 +494,195 @@ def chat(req: ChatRequest):
         "response": None,
         "flight": captured_flight,
     }
+
+
+# ──────────────────────────────────────────────
+# ALERTS: WEBHOOK, READ-BACK, AND WATCH REGISTRATION
+# ──────────────────────────────────────────────
+#
+# TWO SECRETS, NOT ONE. The webhook secret is given to the provider and lives in
+# a URL they hold; the read secret is only ever used by us. Rotating either one
+# must not break the other, and they have completely different exposure — the
+# webhook one is in somebody else's configuration.
+#
+# Both are Cloud Run environment variables and neither is ever written to a file
+# in this repository.
+ALERT_WEBHOOK_SECRET = os.getenv("ALERT_WEBHOOK_SECRET")
+ALERT_READ_SECRET = os.getenv("ALERT_READ_SECRET")
+
+# At most this much body in the log line. The log is a backstop, not a copy of
+# the payload — the bucket holds the payload — and one large delivery must not
+# push everything else out of a log view.
+ALERT_LOG_PREVIEW_CHARS = 500
+
+# Fixed strings, as everywhere else in this file: the client learns that
+# something did not work, the log learns what.
+WATCH_ERROR = "Could not register this flight for alerts."
+UNWATCH_ERROR = "Could not deregister this flight."
+ALERT_READ_ERROR = "Could not read deliveries."
+
+
+def _secret_ok(supplied: str, expected) -> bool:
+    """Constant-time comparison, and an unset secret matches nothing.
+
+    compare_digest rather than ==, so the comparison does not leak the length of
+    a correct prefix through how long it takes to fail.
+    """
+    if not expected:
+        return False
+    return secrets.compare_digest(str(supplied), str(expected))
+
+
+def _alert_not_found() -> JSONResponse:
+    """404, not 403.
+
+    A 403 confirms the route exists and only the secret was wrong, which tells
+    anyone probing that they have found something worth probing. A 404 says
+    nothing at all, and a URL whose secret is wrong is, for our purposes, a URL
+    that does not exist.
+    """
+    return JSONResponse(status_code=404, content={"error": "not found"})
+
+
+@app.post("/alerts/{secret}")
+async def alerts_webhook(secret: str, request: Request):
+    if not _secret_ok(secret, ALERT_WEBHOOK_SECRET):
+        # The supplied value is NEVER logged. A rejected secret in a log is a
+        # secret in a log, and near-misses are exactly what an attacker wants
+        # read back to them.
+        logger.warning("alert webhook rejected: secret mismatch or unset")
+        return _alert_not_found()
+
+    # PAST THE SECRET CHECK THIS ALWAYS RETURNS 200, AND THAT IS NOT NEGOTIABLE.
+    #
+    # The provider bills on SEND, not on delivery, and its delivery retries
+    # default to zero. A non-2XX therefore loses the alert AND the credit is
+    # already spent — there is no retry to fix it and nothing to recover. So an
+    # unparseable body, an oversized body, a failed bucket write and an
+    # unexpected exception all still return 200, and the log line below is what
+    # tells us something went wrong.
+    body = await request.body()
+    try:
+        delivery = store.build_delivery(body, {
+            # Only these three. Never the full header set, and never any part of
+            # the URL path — the path is where the secret is.
+            "content-type": request.headers.get("content-type"),
+            "user-agent": request.headers.get("user-agent"),
+            "content-length": request.headers.get("content-length"),
+        })
+
+        # LOG FIRST, WRITE SECOND, AND DO NOT REORDER THIS.
+        #
+        # The log line is the backstop: a slow or failing bucket write still
+        # leaves a counted delivery in Cloud Logging, with enough of the payload
+        # to know what arrived. Writing first and logging after would mean a
+        # bucket outage loses the delivery entirely.
+        #
+        # logger.WARNING rather than info, deliberately. This logger has no
+        # handler configuration, so its effective level is the root logger's
+        # WARNING and an info() call would be dropped silently — the line would
+        # simply never appear, which is the one failure this line exists to
+        # prevent.
+        logger.warning(
+            "ALERTDELIVERY id=%s at=%s bytes=%s truncated=%s parsed=%s items=%s credits=%s preview=%r",
+            delivery["delivery_id"],
+            delivery["received_at"],
+            delivery["body_bytes"],
+            delivery["truncated"],
+            delivery["parsed_json"],
+            delivery["item_count"],
+            delivery["credits_remaining"],
+            delivery["raw_body"][:ALERT_LOG_PREVIEW_CHARS],
+        )
+
+        # INLINE, never a BackgroundTask. Cloud Run throttles CPU once the
+        # response is returned unless CPU-always-on is set, so post-response
+        # work is not reliably scheduled and a background write can simply not
+        # happen.
+        result = store.record_delivery(delivery)
+        if not result.get("ok"):
+            logger.warning(
+                "ALERTDELIVERY store failed id=%s error=%s",
+                delivery["delivery_id"], result.get("error"),
+            )
+    except Exception as exc:
+        # Still 200. See above.
+        logger.warning("ALERTDELIVERY handler failed: %s", type(exc).__name__)
+
+    return {"ok": True}
+
+
+@app.get("/alerts/{secret}/deliveries")
+def alerts_list(secret: str, day: str | None = None, limit: int = store.DEFAULT_LIST_LIMIT):
+    if not _secret_ok(secret, ALERT_READ_SECRET):
+        logger.warning("alert read rejected: secret mismatch or unset")
+        return _alert_not_found()
+    result = store.list_deliveries(day, limit)
+    if not result.get("ok"):
+        logger.warning("alert list failed: %s", result.get("error"))
+        return {"error": ALERT_READ_ERROR}
+    # Summaries only. A day of raw bodies is megabytes and none of it is needed
+    # to decide which delivery is worth opening.
+    return {
+        "day": result["day"],
+        "count": result["count"],
+        "deliveries": result["deliveries"],
+    }
+
+
+@app.get("/alerts/{secret}/deliveries/{delivery_id}")
+def alerts_get(secret: str, delivery_id: str, day: str | None = None):
+    if not _secret_ok(secret, ALERT_READ_SECRET):
+        logger.warning("alert read rejected: secret mismatch or unset")
+        return _alert_not_found()
+    result = store.get_delivery(delivery_id, day)
+    if not result.get("ok"):
+        logger.warning("alert get failed: %s", result.get("error"))
+        return {"error": ALERT_READ_ERROR}
+    return result["delivery"]
+
+
+class WatchRequest(BaseModel):
+    device_id: str
+    push_token: str | None = None
+    platform: str | None = None
+    flight_number: str
+    flight_date: str
+
+
+class UnwatchRequest(BaseModel):
+    device_id: str
+    flight_number: str
+    flight_date: str
+
+
+# KNOWN GAP, RECORDED ON PURPOSE: /watch and /unwatch are unauthenticated. Any
+# caller who knows the URL can register or remove a watch for any device id they
+# can guess — and a device id is a v4 UUID, so guessing one is the hard part
+# rather than the impossible part. The validation and the two caps in store.py
+# are the whole of the defence today. This must be closed before public launch;
+# it is acceptable now because the store holds nothing but flight numbers and
+# dates, and because a wrong write costs a notification rather than data.
+@app.post("/watch")
+def watch(req: WatchRequest):
+    result = store.register_watch(
+        req.device_id, req.push_token, req.platform, req.flight_number, req.flight_date,
+    )
+    if not result.get("ok"):
+        # The distinct reason — which cap, which field — goes to the log. The
+        # client gets a fixed string, as with every other error in this file.
+        logger.warning("watch rejected: %s", result.get("error"))
+        return {"error": WATCH_ERROR}
+    return {"ok": True, "created": result.get("created")}
+
+
+# The same known gap as /watch above.
+@app.post("/unwatch")
+def unwatch(req: UnwatchRequest):
+    result = store.unregister_watch(req.device_id, req.flight_number, req.flight_date)
+    if not result.get("ok"):
+        logger.warning("unwatch rejected: %s", result.get("error"))
+        return {"error": UNWATCH_ERROR}
+    # Removing nothing is a success: unsave is fire-and-forget on the device, so
+    # a retry must be indistinguishable from a first attempt.
+    return {"ok": True, "removed": result.get("removed")}
