@@ -4136,7 +4136,7 @@ export default function Index() {
       if (held !== null) {
         if (await restoreUnsaved(held)) showToast('restored');
         else {
-          setError('saved flight limit reached \u2014 unsave one first');
+          setError('watchlist limit reached \u2014 unsave one first');
           setErrorCounter(c => c + 1);
           shake();
         }
@@ -4145,7 +4145,7 @@ export default function Index() {
       const result = await saveFlight(email, record, f => !isArchived(f, Date.now()));
       setSavedFlights(result.flights);
       if (!result.ok) {
-        setError('saved flight limit reached \u2014 unsave one first');
+        setError('watchlist limit reached \u2014 unsave one first');
         setErrorCounter(c => c + 1);
         shake();
         return;
@@ -5741,7 +5741,7 @@ export default function Index() {
     if (held === null) return;
     setUndoMsg('');                       // acted on; the banner goes now
     if (await restoreUnsaved(held)) showToast('restored');
-    else showToast('saved flight limit reached — unsave one first');
+    else showToast('watchlist limit reached — unsave one first');
   };
 
   // ── THE CARD'S SWIPE ───────────────────────────────────────────────────────
@@ -5831,13 +5831,13 @@ export default function Index() {
     const held = takeUndoRecord(flightRecord.id);
     if (held !== null) {
       if (await restoreUnsaved(held)) showToast('restored');
-      else setSaveError('saved flight limit reached — unsave one first');
+      else setSaveError('watchlist limit reached — unsave one first');
       return;
     }
     const result = await saveFlight(email, flightRecord, f => !isArchived(f, Date.now()));
     setSavedFlights(result.flights);
     if (!result.ok) {
-      setSaveError('saved flight limit reached — unsave one first');
+      setSaveError('watchlist limit reached — unsave one first');
       return;   // saveError owns this case; no toast
     }
     registerWatch(API_BASE, flightRecord.flightNumber, flightRecord.flightDate);
@@ -6459,7 +6459,7 @@ export default function Index() {
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
                       <Text style={sf.chevronLeft}>{'\u25BE'}</Text>
-                      <Text style={s.detailsTitle}>{'saved flights'}</Text>
+                      <Text style={s.detailsTitle}>{'watchlist'}</Text>
                     </TouchableOpacity>
                     {archiveButton(sf.archiveBtn)}
                   </View>
