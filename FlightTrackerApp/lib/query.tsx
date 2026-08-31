@@ -22,12 +22,23 @@
 // facts about the BAR and stay in GlassTabBar's own state. This is the one thing
 // that is not: a string another screen will want to read.
 import {
-  createContext, useContext, useState, useMemo, type ReactNode,
+  createContext, useContext, useState, useCallback, useMemo, type ReactNode,
 } from 'react';
 
 type QueryContextValue = {
   query: string;
   setQuery: (q: string) => void;
+  // THE INTENT TO SEARCH, AND NOT THE SEARCH. The tab bar's field raises this
+  // when Return is pressed; app/search.tsx is what performs it. The bar must not
+  // know what a search is, and a callback prop on the bar would be exactly that
+  // knowledge arriving by a different route.
+  //
+  // A COUNTER RATHER THAN A BOOLEAN, because a boolean cannot say "again". Two
+  // identical searches in a row are two presses and must run twice, and a flag
+  // that is already true has nothing left to change. Every increment is one
+  // press, and the reader acts on the CHANGE rather than on the value.
+  submitCount: number;
+  submit: () => void;
 };
 
 const QueryContext = createContext<QueryContextValue | null>(null);
@@ -40,6 +51,13 @@ export function useQuery(): QueryContextValue {
 
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState('');
+  // IT HOLDS NO QUERY OF ITS OWN. What was typed is `query` above; this only
+  // says that a press happened, so the reader takes the text from the same
+  // render it takes the count from and the two cannot disagree.
+  const [submitCount, setSubmitCount] = useState(0);
+  // Stable for the life of the provider: it closes over nothing but the
+  // dispatcher, and the functional update means it never reads a stale count.
+  const submit = useCallback(() => setSubmitCount((c) => c + 1), []);
 
   // THE SETTER NEEDS NO useCallback and would not be improved by one. It is
   // React's own dispatcher from useState, which is stable for the life of the
@@ -51,7 +69,10 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   // because it is a field of the object, on the same rule the saved context
   // follows — the array is the object's fields, one for one, and a field left
   // out is a value whose contents disagree with the render it came from.
-  const value = useMemo(() => ({ query, setQuery }), [query, setQuery]);
+  const value = useMemo(
+    () => ({ query, setQuery, submitCount, submit }),
+    [query, setQuery, submitCount, submit],
+  );
 
   return (
     <QueryContext.Provider value={value}>

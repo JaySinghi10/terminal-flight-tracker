@@ -1517,7 +1517,11 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // THE NAMES ARE THE SAME ON PURPOSE. `query` and `setQuery` mean exactly what
   // they meant, so every reader below — the collapsed line, the clear on exit,
   // the field itself and the placeholder's test — is untouched.
-  const { query, setQuery } = useQuery();
+  // `submit` IS THE THIRD, AND IT IS THE ONLY ONE THE BAR DOES NOT READ. Return
+  // on the full field raises it and nothing here looks at the result: what a
+  // search IS belongs to app/search.tsx, which watches the count. See
+  // lib/query.tsx.
+  const { query, setQuery, submit } = useQuery();
   // The keyboard's height, from its own events. See the listener below.
   const [kbH, setKbH] = useState(0);
   // THE NAME IN THE PROMPT, read the way profile.tsx reads it rather than passed
@@ -3135,6 +3139,12 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
                 value={query}
                 onChangeText={setQuery}
                 autoFocus
+                // RETURN RAISES THE INTENT AND NOTHING ELSE. It increments the
+                // provider's counter; the search screen watches that and runs
+                // its own search. blurOnSubmit below still dismisses the
+                // keyboard, which is what closes the field, and the mode is
+                // untouched — so the query survives for the reader.
+                onSubmitEditing={submit}
                 returnKeyType="search"
                 autoCapitalize="none"
                 autoCorrect={false}

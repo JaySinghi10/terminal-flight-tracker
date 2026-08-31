@@ -1031,7 +1031,7 @@ export default function Search() {
   // THE QUERY IS THE BAR'S, and this screen only reads it. setQuery is here for
   // one purpose: clearResultView wipes the line when the account changes, exactly
   // as it did when sign-in and logout called it on home.
-  const { query, setQuery } = useQuery();
+  const { query, setQuery, submitCount } = useQuery();
   const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
   const { gmailToken } = useAccount();
@@ -1169,6 +1169,32 @@ export default function Search() {
     clearResultView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email]);
+
+  // RETURN ON THE TAB BAR'S FIELD, AND IT IS THE ONLY WAY A SEARCH RUNS.
+  //
+  // The bar cannot call handleSearch — it must not know what a search is, and it
+  // has no callback prop to be handed one through. So it increments a counter on
+  // lib/query.tsx and this watches it. The bar states the intent; this performs
+  // it.
+  //
+  // ON THE CHANGE, NOT THE VALUE, which is what makes two identical searches in
+  // a row two searches. The ref is seeded with the count as it stands at mount,
+  // so mounting is not a press: this screen mounts when the Search tab is first
+  // opened, long after the provider, and running a search on arrival would spend
+  // units nobody asked for.
+  //
+  // AN EMPTY QUERY COSTS NOTHING, and no guard is added here for it.
+  // handleSearch dismisses the keyboard, clears the view and returns on its own
+  // `if (!cleaned)` with the same message Execute used to show, before any fetch
+  // — so Return on an empty field reports and spends exactly what pressing
+  // Execute on one did.
+  const lastSubmit = useRef(submitCount);
+  useEffect(() => {
+    if (lastSubmit.current === submitCount) return;
+    lastSubmit.current = submitCount;
+    handleSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitCount]);
 
   // The scrim owes nothing to layout, so it starts on the tap rather than
   // waiting behind the panel's measuring pass.
@@ -2785,20 +2811,13 @@ export default function Search() {
 
           <FlightError error={error} errorMsgOpacity={errorMsgOpacity} />
 
-          <View style={{ alignItems: 'center', marginBottom: 32 }}>
-            <Animated.View style={{ transform: [{ scale: btnScale }] }}>
-              <TouchableOpacity
-                style={s.searchBtn}
-                onPress={handleSearch}
-                activeOpacity={0.85}
-              >
-                {loading
-                  ? <ActivityIndicator color="#4ade80" />
-                  : <Text style={[s.searchBtnTxt, !query.trim() && s.searchBtnTxtOff]}>{'Execute'}</Text>
-                }
-              </TouchableOpacity>
-            </Animated.View>
-          </View>
+          {/* THE EXECUTE BUTTON IS GONE. Return on the tab bar's field is the
+              only trigger now — see the submit watch above — so a second control
+              saying the same thing would be a second way to spend units.
+
+              AND THE SPINNER WENT WITH IT. That button was the one place
+              `loading` was ever shown; it is now shown nowhere on this screen.
+              Nothing has been invented to replace it. */}
 
           {chatResponse && (
             <Animated.View style={[resultWrap, { opacity: resultOpacity, transform: [{ translateY: resultTranslate }] }]}>
