@@ -946,11 +946,26 @@ const SEARCH_PRESS_SCALE = (SEARCH_CIRCLE + SEARCH_PRESS_GROW * 2) / SEARCH_CIRC
 // in search mode would mean branching capsuleStyle on the mode, which is a
 // second press behaviour for the one object that must feel the same in both.
 //
-// SO IT STILL CROSSES ONTO THE OVAL BY 2.00, on every screen, and that is
-// recorded rather than hidden. It reads as the button pressing into the field,
-// which is the same overhang the pill already takes 8 points past the bar's own
-// end on every normal press. SEARCH_OBJ_GAP at 10 would zero it, at a cost of 4
-// points of oval width, and the oval has none to spare.
+// SO IT STANDS 10.00 PROUD OF THE OVAL ON THREE SIDES, on every screen, and
+// that is recorded rather than hidden.
+//
+// THE FIGURE WAS 2.00 HERE AND THE GEOMETRY MOVED OUT FROM UNDER IT. That number
+// described the arrangement in which the oval stopped SEARCH_OBJ_GAP short of
+// the pill: growing 10 to the left crossed 8 of gap and 2 of oval. The oval runs
+// UNDER the pill now, to the pill's own right edge — see the note at ovalW, which
+// records all three arrangements — so the left growth is entirely over the oval
+// and invisible, and what shows is the other three sides: 10.00 past the oval's
+// right end, and 10.00 above and below its top and bottom edges. The pill and the
+// oval are the same material with the same hairline, so what is actually visible
+// there is capsuleEdge tracing a rounded rect outside the oval's outline.
+//
+// IT IS A TAP'S ACKNOWLEDGEMENT AND NOTHING LONGER. A press releases on the
+// schedule armed at press-in, and a DRAG in search mode releases it at once —
+// see the guard in the pan's onStart, and the reasoning there for why a growth
+// that cannot be acknowledging a travel should not outlive the tap.
+//
+// SEARCH_OBJ_GAP CANNOT ZERO THIS ANY MORE. It bounded the left side, which is
+// the one side that no longer shows.
 //
 // THE TWO OBJECTS STILL CANNOT REACH EACH OTHER. Their centres are three whole
 // slots apart — 277.50 at 402 and 257.25 at 375 — so even at the pill's 10 and
@@ -2281,12 +2296,25 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
       // comes off only when the touch actually ends — see onFinalize below.
       //
       // Clear glass for the length of the move, frosted again when it settles.
-      frostOpacity.value = withTiming(0, { duration: 120 });
+      //
+      // AND NOT IN SEARCH MODE, which is the first of the two statements the
+      // mode guards. A condition on a STATEMENT, never a return: everything
+      // above and below still runs, so the gesture that activated is still one
+      // onFinalize can close.
+      //
+      // WHY THE FROST STAYS THERE. Clearing it is right when the pill is being
+      // pushed around — a pane you are moving should not also frost what is
+      // under it — and in search mode the pill cannot be pushed anywhere, because
+      // the second guard below skips trackFinger. So the fade would strip the
+      // blur for a move that never happens, and what is left of a pill that is
+      // ALSO grown by its own press is a 3% fill and a hairline standing proud of
+      // the oval. Keeping the frost leaves it reading as an expanded pill.
+      if (!searchSV.value) frostOpacity.value = withTiming(0, { duration: 120 });
       runOnJS(setDragActive)(true);
       // Seed from the current tab so the first crossing is measured against
       // where the selection actually is.
       lastCommitted.value = activeSV.value;
-      // THE ONE STATEMENT SEARCH MODE GUARDS, and it is a condition on a CALL
+      // THE SECOND STATEMENT SEARCH MODE GUARDS, and it is a condition on a CALL
       // rather than on the callback. trackFinger is what writes capX and capR,
       // applies the drag squash and detects a crossing, so not calling it is
       // the whole of "the drag does nothing" — and everything above has still
@@ -2709,39 +2737,39 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
                   if (searchMode) {
                     if (i === 0) {
                       homeAmt.value = withSpring(1, PRESS_SPRING);
-                      // AND THE PILL DOES NOT COME WITH IT, WHICH IS THE ONE
-                      // THING THIS BRANCH MAY NOT DO.
+                      // AND THE PILL COMES WITH IT. Pressing Home here ends
+                      // search mode and sends the pill back across the bar on
+                      // release, so this press causes a TRAVEL exactly as any
+                      // other cross-bar press does, and it should ARRIVE the way
+                      // every other arrival does: grown, then settling. Without
+                      // this it was the one landing in the bar with no expansion
+                      // at all. Same delay and same hold as every travelling
+                      // press.
                       //
-                      // It used to raise pressAmt here as well, so that the pill
-                      // made its journey back across the bar grown, the way every
-                      // other travelling press makes it. THE GEOMETRY OF SEARCH
-                      // MODE FORBIDS IT. The pill is not standing on a slot of
-                      // its own here — it lies on the OVAL's last pillW points and
-                      // shares its right edge exactly, in the same material with
-                      // the same hairline. Growing it by PRESS_GROW puts 10pt of
-                      // pill past the oval's end and 10 above and below it, and
-                      // what that reads as on screen is the OVAL bulging when
-                      // Home is pressed. Two objects answering one finger, which
-                      // is the whole thing homeAmt exists to prevent.
+                      // IT WAS DELETED ONCE AND IS BACK DELIBERATELY. Removing it
+                      // did fix a real artefact — the pill lies on the OVAL's last
+                      // pillW points and shares its right edge, so growing it puts
+                      // 10pt of pill and its hairline outside the oval on three
+                      // sides while the finger is still down, which is the bulge
+                      // that was reported. The settle expand was judged worth that
+                      // cost rather than the artefact being judged acceptable, so
+                      // the trade is recorded here rather than rediscovered.
                       //
-                      // IT ALSO GREW THE SEARCH TAB'S GLYPH. WaveIcon and WaveChar
-                      // scale on pressAmt * t, and t is 1 at the slot the pill is
-                      // standing on — so a press on Home swelled the Search icon
-                      // and its label three slots away.
+                      // WHAT IT COSTS, EXACTLY. The growth is delayed by
+                      // PRESS_TRAVEL_LEAD, and a quick tap has released before it
+                      // lands — search mode is already over and the bar is back,
+                      // so the pill grows over its own slot like any other press.
+                      // A PRESS AND HOLD is the case that shows it: search mode is
+                      // still on at 120ms, and the pill sits grown over the oval
+                      // until the finger lifts. See SEARCH_PRESS_GROW.
                       //
-                      // THE TRAVEL IS UNAFFECTED, and that is why this can simply
-                      // go. The journey is capX and capR, sprung by the placement
-                      // effect when activeIndex changes; pressAmt is a SCALE and
-                      // nothing else. The pill still leaves the Search slot and
-                      // settles on Home's, at its resting size — which is what it
-                      // did before that line was added.
-                      //
-                      // releaseAt IS STILL ARMED, deliberately. It only decides
-                      // when pressAmt is sprung back to 0, and springing 0 to 0 is
-                      // a no-op; leaving it set keeps this press on the same
-                      // schedule as every other rather than making the release
-                      // path read a stale timestamp.
+                      // AND IT GROWS THE SEARCH TAB'S GLYPH WITH IT. WaveIcon and
+                      // WaveChar scale on pressAmt * t, and t is 1 at the slot the
+                      // pill is standing on, so the magnifier and the word
+                      // "Search" swell three slots away from the finger for the
+                      // same window.
                       releaseAt.current = Date.now() + PRESS_HOLD_MS + PRESS_TRAVEL_SETTLE_MS;
+                      pressAmt.value = withDelay(PRESS_TRAVEL_LEAD, withSpring(1, PRESS_SPRING));
                     } else if (i === SEARCH_INDEX) {
                       pressAmt.value = withSpring(1, PRESS_SPRING);
                       // Nowhere to travel: the pill is already on this slot, so
