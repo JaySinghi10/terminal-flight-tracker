@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Rect, G } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 // The Reanimated one, deliberately. The root export's Swipeable is marked
 // "@deprecated use Reanimated version of Swipeable instead" in the installed
@@ -14,11 +14,6 @@ import Reanimated, {
   interpolate, runOnJS, Extrapolation, type SharedValue,
   withTiming, withSequence, withDelay, Easing as REasing,
 } from 'react-native-reanimated';
-// The imperative API rather than useRouter: the two call sites here are an
-// effect and a press handler, neither of which needs to re-render when the
-// route changes. useFocusEffect is expo-router's re-export of the navigation
-// one, used below to re-read storage when home comes back into focus.
-import { router, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
@@ -804,6 +799,12 @@ const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to sh
 // The provider's BASIC plan caps requests at one per second and rejects the rest
 // with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
 const REFRESH_SPACING_MS = 1300;
+
+// STILL DECLARED HERE, unlike the rest of the material: the profile modal's own
+// sheet tint is the only thing that uses it, and the modal has not moved out.
+// The value is recovered from the commit that deleted it rather than picked
+// again by eye.
+const PROFILE_FILL = 'rgba(0,0,0,0.45)';
 // The same grey the bookmark outline uses on the flight card.
 const ARCHIVE_ICON = 'rgba(226,226,226,0.5)';
 
@@ -3607,6 +3608,139 @@ const pg = StyleSheet.create({
   plane: { position: "absolute", top: -11, fontSize: 20, color: "#ffffff" },
 });
 
+function ProfileModal({
+  visible, onClose, onGoogleSignIn, onLogout, username,
+  email, effectiveName, askName, onSaveName, onSkipName,
+}: {
+  visible: boolean; onClose: () => void; onGoogleSignIn: () => void; onLogout: () => void;
+  username: string | null; email: string | null; effectiveName: string | null; askName: boolean;
+  onSaveName: (name: string) => void; onSkipName: () => void;
+}) {
+  const [nameDraft, setNameDraft] = useState(effectiveName ?? '');
+  const [editing, setEditing] = useState(false);
+
+  // Re-seed each time the sheet opens so a discarded edit does not linger.
+  useEffect(() => {
+    if (visible) {
+      setNameDraft(effectiveName ?? '');
+      setEditing(false);
+    }
+  }, [visible, effectiveName]);
+
+  // The first-run ask forces the input open; otherwise the pencil does.
+  const showInput = askName || editing;
+
+  const commitName = () => {
+    const cleaned = sanitiseDisplayName(nameDraft);
+    if (!cleaned) return;            // empty after sanitising: keep the old value and stay open
+    setEditing(false);
+    onSaveName(cleaned);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={askName ? onSkipName : onClose}>
+      <View style={pm.backdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={pm.sheet}>
+            <GlassLayers />
+            {/* On top of the shared pair, not instead of it. See PROFILE_FILL. */}
+            <View style={[StyleSheet.absoluteFill, pm.tint]} pointerEvents="none" />
+            <TouchableOpacity style={pm.closeBtn} onPress={askName ? onSkipName : onClose}>
+              <Text style={pm.closeTxt}>X</Text>
+            </TouchableOpacity>
+
+            <View style={pm.avatar}>
+              <Text style={pm.avatarTxt}>{'//'}</Text>
+            </View>
+            {username !== null && showInput && (
+              <>
+                <Text style={pm.nameLabel}>{askName ? 'pick a name' : 'username'}</Text>
+                <View style={pm.nameRow}>
+                  <TextInput
+                    style={pm.nameInput}
+                    value={nameDraft}
+                    onChangeText={setNameDraft}
+                    onSubmitEditing={commitName}
+                    placeholder="terminal"
+                    placeholderTextColor="rgba(226,226,226,0.25)"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={14}
+                    selectionColor="#4ade80"
+                    returnKeyType="done"
+                  />
+                  <TouchableOpacity style={pm.nameBtn} activeOpacity={0.75} onPress={commitName}>
+                    <Text style={pm.nameBtnTxt}>{'save'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {username !== null && !showInput && (
+              <View style={pm.nameLine}>
+                <Text style={pm.name}>{effectiveName ?? 'Guest User'}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setEditing(true)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Text style={pm.pencil}>{'\u270E'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {username === null && (
+              <Text style={[pm.name, { marginBottom: 8 }]}>{effectiveName ?? 'Guest User'}</Text>
+            )}
+
+            <Text style={pm.sub}>{username ? (email ? `signed in as ${email}` : 'signed in') : 'Sign in to sync your flights'}</Text>
+
+            {!username && (
+              <>
+                <TouchableOpacity style={pm.authBtn} activeOpacity={0.75} onPress={onGoogleSignIn}>
+                  <View style={pm.authBtnInner}>
+                    <Svg width="20" height="20" viewBox="0 0 24 24">
+                      <G>
+                        <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <Path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+                        <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </G>
+                    </Svg>
+                    <Text style={pm.authBtnTxt}> Sign in with Google </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={pm.authBtn} activeOpacity={0.75}>
+                  <View style={pm.authBtnInner}>
+                    <Svg width="20" height="20" viewBox="0 0 21 21">
+                      <Rect x="1" y="1" width="9" height="9" fill="#F25022" />
+                      <Rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+                      <Rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+                      <Rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+                    </Svg>
+                    <Text style={pm.authBtnTxt}> Sign in with Microsoft </Text>
+                  </View>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {username && (
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={onLogout}
+                style={{ alignSelf: 'center', marginTop: 20, paddingVertical: 8 }}
+              >
+                <Text style={{ fontFamily: SANS, fontSize: 13, color: 'rgba(248,113,113,0.7)' }}> Log out </Text>
+              </TouchableOpacity>
+            )}
+
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
 const PLACEHOLDER_PROMPTS = [
   'what is the status of EK500...',
   'is my flight on time?',
@@ -3675,6 +3809,7 @@ export default function Index() {
   const [loading, setLoading] = useState(false);
   const [flight, setFlight] = useState<FlightData | null>(null);
   const [focused, setFocused] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [gmailToken, setGmailToken] = useState<string | null>(null);
@@ -3846,58 +3981,25 @@ export default function Index() {
   }, []);
 
   // First-run ask. Only after hydration, only when signed in, and only while
-  // displayName is still unset — which the ask also fills, whether the name is
-  // saved or skipped, so it asks once.
+  // displayName is still unset — which skipping also fills, so it asks once.
   //
-  // A ROUTE NOW, NOT A MODAL, and the ref is what the modal's own visible flag
-  // used to do. Setting profileOpen twice was idempotent; navigating twice is
-  // not, so the guard is explicit rather than a property of the thing being
-  // set. It is a ref and not state because nothing renders differently for it.
-  const askedNameRef = useRef(false);
+  // NO GUARD REF, AND IT DOES NOT NEED ONE. Setting profileOpen twice is
+  // idempotent, which is what a modal buys over a route: the navigate this
+  // briefly became had to remember whether it had already asked, because
+  // navigating twice is not the same as navigating once.
   useEffect(() => {
     if (!authHydrated) return;
     if (username === null) return;
     if (displayName !== null) return;
-    if (askedNameRef.current) return;
-    askedNameRef.current = true;
-    router.navigate('/profile');
+    setProfileOpen(true);
   }, [authHydrated, username, displayName]);
 
-  // WHAT THE PROFILE SCREEN CHANGED, PICKED UP ON THE WAY BACK. A rename or a
-  // sign-out over there writes storage and sets its own state; this screen has
-  // its own copy of all three and would otherwise keep showing the old one
-  // until it remounted.
-  //
-  // NOT ON THE FIRST FOCUS, which fires on mount alongside the hydration effect
-  // above. Two reads racing to set the same three values is a real hazard here:
-  // the sign-in handler sets username and email in memory, and a storage read
-  // that resolves after it would put them back. Hydration owns the first load;
-  // this owns every return to it.
-  //
-  // UNCONDITIONAL SETTERS, unlike hydration's `if (u) setUsername(u)`: a
-  // sign-out on the profile screen clears storage, and null is the value that
-  // has to arrive here for the header to drop its links.
-  const homeFocusedRef = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      if (!homeFocusedRef.current) { homeFocusedRef.current = true; return; }
-      if (Platform.OS === 'web') {
-        setUsername(localStorage.getItem('username'));
-        setEmail(localStorage.getItem('email'));
-        setDisplayName(localStorage.getItem('displayName'));
-      } else {
-        Promise.all([
-          SecureStore.getItemAsync('username'),
-          SecureStore.getItemAsync('email'),
-          SecureStore.getItemAsync('displayName'),
-        ]).then(([u, e, dn]) => {
-          setUsername(u);
-          setEmail(e);
-          setDisplayName(dn);
-        });
-      }
-    }, []),
-  );
+  // AND NO FOCUS EFFECT. While the profile was a screen this file re-read
+  // username, email and displayName from storage every time home came back into
+  // focus, because the other screen owned its own copies and wrote them behind
+  // this one's back. A modal is inside this component and sets this component's
+  // state directly, so there is nothing to pick up on the way back and no read
+  // to race the hydration effect above.
 
   useEffect(() => {
     if (!authHydrated) return;
@@ -6505,6 +6607,43 @@ export default function Index() {
 
   return (
     <View style={s.root}>
+      <ProfileModal
+        visible={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        username={username}
+        email={email}
+        effectiveName={effectiveName}
+        askName={username !== null && displayName === null}
+        onSaveName={async (name) => { await persistDisplayName(name); setProfileOpen(false); }}
+        onSkipName={async () => { if (username) await persistDisplayName(username); setProfileOpen(false); }}
+        onLogout={async () => {
+          if (Platform.OS === 'web') {
+            localStorage.removeItem('username');
+            localStorage.removeItem('email');
+            localStorage.removeItem('displayName');
+          } else {
+            await SecureStore.deleteItemAsync('username');
+            await SecureStore.deleteItemAsync('gmailToken');
+            await SecureStore.deleteItemAsync('email');
+            await SecureStore.deleteItemAsync('displayName');
+          }
+          setUsername(null);
+          setDisplayName(null);
+          setGmailToken(null);
+          setEmail(null);
+          clearResultView();
+          setProfileOpen(false);
+        }}
+        onGoogleSignIn={async () => {
+          console.log('Google sign in tapped, platform: ' + Platform.OS);
+          setProfileOpen(false);
+          if (Platform.OS === 'web') {
+            (window as any).google?.accounts?.id?.prompt();
+          } else {
+            promptAsync();
+          }
+        }}
+      />
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
@@ -7159,7 +7298,7 @@ export default function Index() {
             because it is not trying to clear anything. Do not "fix" it to match.
 
             24 IS DELIBERATELY NOT ENOUGH TO CLEAR THE BAR. GlassTabBar's top
-            edge is insets.bottom + 84 off the bottom of the screen, so at 24
+            edge is insets.bottom + 64 off the bottom of the screen, so at 24
             the last rows of the list end UNDER it and scroll past behind the
             glass. That is the point: a blur with nothing behind it is a grey
             pill, and the material only reads as glass while something is moving
@@ -7197,6 +7336,14 @@ export default function Index() {
                 <Text style={{ fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.4)', marginTop: 3 }}>{formatClock(now)}</Text>
               )}
             </View>
+            {/* The modal has its own TextInput and its own KeyboardAvoidingView
+                and will raise a keyboard of its own if it asks for a name; what
+                is dismissed here is the one that was already up behind it. */}
+            {username !== null && (
+              <TouchableOpacity style={s.profileBtn} onPress={() => { Keyboard.dismiss(); setProfileOpen(true); }}>
+                <Text style={s.profileTxt}>{'>//'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* ── SEARCH ── */}
@@ -7968,6 +8115,16 @@ const s = StyleSheet.create({
   scroll: { paddingHorizontal: 20 },
 
   header: { marginBottom: 36, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  // RESTORED AT THE VALUES THEY HAD, recovered from the commit before the modal
+  // was retired rather than reconstructed by eye. 36 square on an 18 radius is a
+  // circle; the hairline is the same 0.12 white every bordered control here uses.
+  profileBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  profileTxt: { color: 'rgba(226,226,226,0.5)', fontSize: 11, fontFamily: MONO },
 
   inputContainer: {
     flexDirection: "row",
@@ -9014,3 +9171,112 @@ const s = StyleSheet.create({
   },
 });
 
+const pm = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    // The shared scrim, down from its own 0.72. That value was set when the
+    // sheet behind it was opaque and nothing had to be seen through it.
+    backgroundColor: SHEET_SCRIM,
+    justifyContent: 'flex-end',
+  },
+  // A BOTTOM sheet, which is the one structural difference from the others: it
+  // is flush with the bottom of the screen, so it has three edges rather than
+  // four and two rounded corners rather than four. "The same edge" therefore
+  // means the same colour and the same weight on the edges it actually has —
+  // a fourth line across the bottom would be an edge where the sheet does not
+  // end. The per-side WIDTHS stay as they are, and only the colour is shared:
+  // it is mismatched border COLOURS that make React Native abandon the corner
+  // radius and split each arc, and every side here still agrees on 0.08.
+  sheet: {
+    // NO backgroundColor: the blur samples what is behind it, and an ancestor's
+    // fill would be flattened into the result. GlassLayers carries both.
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: SHEET_EDGE,
+    // Clips the blur to the two rounded corners.
+    overflow: 'hidden',
+    paddingHorizontal: 28,
+    paddingTop: 40,
+    paddingBottom: 52,
+    alignItems: 'center',
+  },
+  // Drawn over GlassLayers and under the content, the same slot the shared
+  // tint occupies inside it.
+  tint: { backgroundColor: PROFILE_FILL },
+  closeBtn: {
+    position: 'absolute',
+    top: 20,
+    right: 24,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeTxt: { color: '#4ade80', fontSize: 15, fontFamily: MONO },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 1.5,
+    borderColor: 'rgba(74,222,128,0.4)',
+    backgroundColor: 'rgba(74,222,128,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  avatarTxt: { color: '#4ade80', fontSize: 20, fontFamily: MONO },
+  name: { fontSize: 20, color: '#ffffff', fontFamily: MONO },
+  sub: {
+    fontSize: 13,
+    color: 'rgba(226,226,226,0.4)',
+    fontFamily: MONO,
+    marginBottom: 32,
+    textAlign: 'center',
+  },
+  authBtn: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  authBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  nameLabel: {
+    fontFamily: SANS,
+    fontSize: 11,
+    color: 'rgba(226,226,226,0.4)',
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', marginBottom: 8 },
+  nameInput: {
+    flex: 1,
+    fontFamily: MONO,
+    fontSize: 13,
+    color: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  nameBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  nameBtnTxt: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  pencil: { fontFamily: SANS, fontSize: 13, color: 'rgba(226,226,226,0.4)' },
+  authBtnTxt: { color: '#ffffff', fontSize: 15, fontFamily: MONO },
+});
