@@ -91,6 +91,10 @@ import {
   trimAirportName,
   flightDataFromApi,
 } from '../components/FlightCard';
+// THE MAP BEHIND EVERYTHING. Geometry and place names, absoluteFill under the
+// whole screen, with its own pan and pinch. See the note at the call site for
+// what that means for touches.
+import WorldMap from '../components/WorldMap';
 // THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
 // sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
 import { useAccount } from '../lib/account';
@@ -2546,6 +2550,19 @@ export default function Search() {
 
   return (
     <View style={s.root}>
+      {/* THE MAP, AND IT IS THE FIRST CHILD SO EVERYTHING ELSE PAINTS OVER IT.
+          absoluteFill, under the whole screen.
+
+          IT TAKES TOUCHES NOW, which it did not at step 1: it carries its own
+          pan and pinch, and it is the SURFACE of this screen rather than a
+          picture behind one. The two full-screen boxes in front of it — the
+          KeyboardAvoidingView and the ScrollView — are box-none for exactly
+          that reason, so a finger lands on the map wherever this screen draws
+          nothing. See the note there.
+
+          NOTHING ON THE SCREEN LOST A TOUCH. Every control is a child of one of
+          those two, and box-none leaves children alone. */}
+      <WorldMap />
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
@@ -2752,13 +2769,35 @@ export default function Search() {
           </Animated.View>
         </Pressable>
       </Modal>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, paddingTop: insets.top + 12 }}>
+      {/* box-none ON BOTH THIS AND THE ScrollView, so a finger reaches the map
+          wherever this screen has nothing drawn.
+
+          WHAT box-none MEANS HERE: the view itself stops being a hit target and
+          its children do not. Both of these are full-screen boxes with nothing
+          painted in them, so without it they would swallow every touch on an
+          empty part of the screen and the map underneath could never be reached.
+          Their CONTENTS are untouched — the affordance line, the route rows, the
+          card and every control still take their own touches exactly as before,
+          because each of those is a child and children are unaffected.
+
+          AND THE ScrollView STILL SCROLLS. Its content container is left at the
+          default, so it remains a hit target over its own bounds; a drag that
+          starts on content is hit-tested to that container, the scroll view is
+          its ancestor, and the pan recogniser fires as it always did. What
+          changes is only what happens BELOW the content, where there is nothing
+          to scroll to anyway. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1, paddingTop: insets.top + 12 }}
+        pointerEvents="box-none"
+      >
         {/* The same clearance home gives the floating bar, and for the same
             reason: the list ends under the glass and scrolls past behind it. */}
         <ScrollView
           contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          pointerEvents="box-none"
         >
 
           {/* The resolved pair, with the codes, BEFORE anything is spent. This is
