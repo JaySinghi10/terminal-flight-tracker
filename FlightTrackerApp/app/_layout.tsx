@@ -20,6 +20,11 @@ import { QueryProvider } from "../lib/query";
 // that would have drawn it: the search screen saves, unsaves and refreshes, and
 // a banner mounted on home reports none of it. See lib/toast.tsx.
 import { ToastProvider } from "../lib/toast";
+// AND THE GMAIL TOKEN. Written by the profile modal on home, read by the search
+// screen's /chat request, and owned by neither. It holds that one value and
+// nothing else — see the note at the top of lib/account.tsx for why username and
+// displayName deliberately stayed where they are.
+import { AccountProvider } from "../lib/account";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -69,16 +74,18 @@ export default function Layout() {
   // navigator's default white.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SavedProvider>
-        <QueryProvider>
-          <ToastProvider>
-            <Tabs
-              tabBar={props => <GlassTabBar {...props} />}
-              screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
-            />
-          </ToastProvider>
-        </QueryProvider>
-      </SavedProvider>
+      <AccountProvider>
+        <SavedProvider>
+          <QueryProvider>
+            <ToastProvider>
+              <Tabs
+                tabBar={props => <GlassTabBar {...props} />}
+                screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
+              />
+            </ToastProvider>
+          </QueryProvider>
+        </SavedProvider>
+      </AccountProvider>
     </GestureHandlerRootView>
   );
 }

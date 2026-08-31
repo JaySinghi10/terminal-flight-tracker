@@ -120,6 +120,10 @@ import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c } from '../lib/c
 // screen. See the notes at the top of each.
 import { useToast } from '../lib/toast';
 import { useFlightCardHost, FlightError } from '../lib/flightcard';
+// THE GMAIL TOKEN, and it is the only thing in there. Sign-in and logout are on
+// this screen and the /chat request that sends it is on the search screen, so it
+// is the one piece of the account that had to stop being one screen's.
+import { useAccount } from '../lib/account';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -1052,6 +1056,10 @@ export default function Index() {
   // raises most of them now — a banner drawn here reports nothing while the user
   // is looking at a search result.
   const { showToast } = useToast();
+  // THE GMAIL TOKEN. This screen only ever WRITES it — sign-in and logout are
+  // both here — and the search screen is what reads it, for the /chat request.
+  // See lib/account.tsx.
+  const { persistGmailToken } = useAccount();
   // EVERYTHING THIS SCREEN NEEDS TO OWN A FLIGHT CARD, and the search screen owns
   // one too. The lookup, the save, the refresh, the entry animation, the error
   // channel and the minute tick moved to lib/flightcard.tsx so that a card opened
@@ -1072,7 +1080,6 @@ export default function Index() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const [gmailToken, setGmailToken] = useState<string | null>(null);
   // Persisted under 'savedCollapsed'. Starts true so an absent key means
   // collapsed; hydration only overrides it when the key exists.
   const [savedCollapsed, setSavedCollapsed] = useState(true);
@@ -1112,10 +1119,14 @@ export default function Index() {
           const name = user.email.split('@')[0].match(/^[a-zA-Z]+/)[0];
           const validEmail = typeof user.email === 'string' && user.email.trim() ? user.email : null;
           await SecureStore.setItemAsync('username', name);
-          await SecureStore.setItemAsync('gmailToken', accessToken);
+          // BOTH HALVES IN ONE CALL, where this was a storage write here and a
+          // setState three lines below. The token is lib/account.tsx's now — the
+          // search screen sends it to /chat and cannot see this screen's state —
+          // and that module writes and sets together so a caller cannot do one
+          // without the other. Nothing else on these lines moved.
+          await persistGmailToken(accessToken);
           if (validEmail) await SecureStore.setItemAsync('email', validEmail);
           setUsername(name);
-          setGmailToken(accessToken);
           if (validEmail) setEmail(validEmail);
           clearResultView();
           // Sheet stays open: displayName is null here, so the first-run ask
@@ -1146,12 +1157,10 @@ export default function Index() {
       // logout still WRITE it, through setEmail off the hook.
       Promise.all([
         SecureStore.getItemAsync('username'),
-        SecureStore.getItemAsync('gmailToken'),
         SecureStore.getItemAsync('displayName'),
         AsyncStorage.getItem('savedCollapsed'),
-      ]).then(([u, t, dn, c]) => {
+      ]).then(([u, dn, c]) => {
         if (u) setUsername(u);
-        if (t) setGmailToken(t);
         if (dn) setDisplayName(dn);
         if (c !== null) setSavedCollapsed(c === 'true');
         setAuthHydrated(true);
@@ -1261,8 +1270,6 @@ export default function Index() {
     Keyboard.dismiss();
     setError("");
     setSaveError("");
-    setChatResponse(null);
-    setRouteResult(null);
     setFlightRecord(saved);
     // THE SAME DEMOTION THE ROW APPLIES, so tapping a row cannot contradict the
     // row that was tapped. Date.now() rather than the `now` state: this runs on
@@ -1508,13 +1515,15 @@ export default function Index() {
             localStorage.removeItem('displayName');
           } else {
             await SecureStore.deleteItemAsync('username');
-            await SecureStore.deleteItemAsync('gmailToken');
             await SecureStore.deleteItemAsync('email');
             await SecureStore.deleteItemAsync('displayName');
           }
           setUsername(null);
           setDisplayName(null);
-          setGmailToken(null);
+          // The delete came off the native branch above and went with it: this
+          // clears the key and the value together, and carries the same web guard
+          // that branch gave it. See lib/account.tsx.
+          await persistGmailToken(null);
           setEmail(null);
           clearResultView();
           setProfileOpen(false);

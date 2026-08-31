@@ -61,6 +61,7 @@ import {
   flightUrl,
   NO_TIME,
   SAVE_MSG,
+  effectiveStatus,
   localIsoDate,
 } from '../lib/saved';
 import {
@@ -84,7 +85,15 @@ import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c } from '../lib/c
 import { useQuery } from '../lib/query';
 import { useToast } from '../lib/toast';
 import { useFlightCardHost, FlightError } from '../lib/flightcard';
-import { FlightCard, resultWrap, trimAirportName } from '../components/FlightCard';
+import {
+  FlightCard,
+  resultWrap,
+  trimAirportName,
+  flightDataFromApi,
+} from '../components/FlightCard';
+// THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
+// sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
+import { useAccount } from '../lib/account';
 import {
   Airport,
   airportByCode,
@@ -1023,8 +1032,9 @@ export default function Search() {
   // one purpose: clearResultView wipes the line when the account changes, exactly
   // as it did when sign-in and logout called it on home.
   const { query, setQuery } = useQuery();
-  const { savedFlights, email, saveRecord } = useSaved();
+  const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
+  const { gmailToken } = useAccount();
   // EVERYTHING A SCREEN NEEDS TO OWN A FLIGHT CARD. One copy, shared with home,
   // so a card opened from a route row and a card opened from a watchlist row are
   // driven by the same lookup, the same save and the same entry animation.
@@ -1035,6 +1045,7 @@ export default function Search() {
     error, setError, setErrorCounter,
     setSaveError,
     loading, setLoading,
+    setLastUpdated,
     errorMsgOpacity, resultOpacity, resultTranslate,
     showResult,
     runFlightLookup, refreshFlightCard, handleToggleSave,
