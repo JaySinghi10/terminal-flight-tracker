@@ -1441,6 +1441,47 @@ export function airportByCode(code: string): Airport | null {
   return INDEX!.get(k) ?? null;
 }
 
+// EVERY AIRPORT, FOR DRAWING RATHER THAN FOR ANSWERING. Every other export here
+// takes a term and returns a verdict; this one hands over the rows, because the
+// map plots the whole set and culls it against a camera. That is the one caller
+// that wants the data rather than a decision about it.
+//
+// BUILT ONCE AND HANDED OUT AS-IS. The array is cached rather than rebuilt,
+// because a caller that reads it on every camera change must not pay 1,223
+// allocations to do so. Callers must not mutate it.
+let ALL: Airport[] | null = null;
+export function allAirports(): Airport[] {
+  build();
+  if (ALL === null) ALL = HAYSTACK.map(h => h.a);
+  return ALL;
+}
+
+// THE AIRPORTS OF A CITY, AS ROWS.
+//
+// STILL NOT AN EXPORT OF CITY_AIRPORTS, for the reason given at isKnownPlace:
+// the map holds CODES, and a caller holding codes has to reimplement the lookup
+// from code to row — which is the second implementation the note there is about.
+// This returns the thing a caller actually wants.
+//
+// THE CURATED LIST WINS WHERE THERE IS ONE, because it carries an order a person
+// would expect: "new york" is JFK, EWR, LGA rather than whatever order the rows
+// happen to sit in. Everything else falls back to every row whose city matches,
+// which is the common case and is usually exactly one.
+export function cityAirports(city: string): Airport[] {
+  build();
+  const q = normalizeTerm(city);
+  const curated = CITY_AIRPORTS[q];
+  if (curated !== undefined) {
+    const out: Airport[] = [];
+    for (const code of curated) {
+      const a = INDEX!.get(code);
+      if (a !== undefined) out.push(a);
+    }
+    return out;
+  }
+  return HAYSTACK.filter(h => normalizeTerm(h.a.city) === q).map(h => h.a);
+}
+
 // Whole-word test against a normalised haystack. Both sides are already
 // lowercase and single-spaced, so this is four string compares rather than a
 // regular expression built fresh for every one of the 1,212 rows.

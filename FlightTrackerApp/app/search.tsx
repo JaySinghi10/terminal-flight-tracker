@@ -94,7 +94,7 @@ import {
 // THE MAP BEHIND EVERYTHING. Geometry and place names, absoluteFill under the
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
-import WorldMap from '../components/WorldMap';
+import GlobeMap from '../components/GlobeMap';
 // THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
 // sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
 import { useAccount } from '../lib/account';
@@ -2562,7 +2562,9 @@ export default function Search() {
 
           NOTHING ON THE SCREEN LOST A TOUCH. Every control is a child of one of
           those two, and box-none leaves children alone. */}
-      <WorldMap />
+      {/* IT TAKES NO PROPS YET. The route arc, the camera fly and the place
+          heading are not ported; when they are, this is where they arrive. */}
+      <GlobeMap />
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
