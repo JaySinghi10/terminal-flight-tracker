@@ -22,6 +22,12 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 // is a SHEET's radius and the field is a capsule, so it takes half its own
 // height instead. lib/glass.tsx is untouched and still owns the 16 for sheets.
 import { SHEET_EDGE } from '../lib/glass';
+// THE TYPED QUERY, WHICH IS THE ONE PIECE OF THIS BAR'S STATE THAT IS NOT
+// ABOUT THE BAR. Everything else here describes what the control is doing;
+// this is a string another screen will read. It is its OWN context and not
+// the saved one, because it changes on every keystroke and the saved one's
+// consumers must not. See lib/query.tsx.
+import { useQuery } from '../lib/query';
 
 // Declared here rather than imported from a screen, for the same reason
 // profile.tsx declares its own: a component reaching into a route for a string
@@ -1502,10 +1508,16 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // those are deliberately different things.
   const [searchMode, setSearchMode] = useState(false);
   const [typing, setTyping] = useState(false);
-  // NOT PERSISTED AND NOT READ BY ANYTHING. It is here so the field is
-  // controlled and the placeholder knows whether to show; submitting does
-  // nothing yet, by design. When a provider is wired in, this is what it reads.
-  const [query, setQuery] = useState('');
+  // SHARED NOW, AND STILL NOT PERSISTED. It is here so the field is controlled
+  // and the placeholder knows whether to show; submitting still does nothing, by
+  // design. What changed is only where the string lives: it was a useState of
+  // this component and is now lib/query.tsx's, so a screen can read what was
+  // typed without the bar having to hand it anywhere.
+  //
+  // THE NAMES ARE THE SAME ON PURPOSE. `query` and `setQuery` mean exactly what
+  // they meant, so every reader below — the collapsed line, the clear on exit,
+  // the field itself and the placeholder's test — is untouched.
+  const { query, setQuery } = useQuery();
   // The keyboard's height, from its own events. See the listener below.
   const [kbH, setKbH] = useState(0);
   // THE NAME IN THE PROMPT, read the way profile.tsx reads it rather than passed

@@ -26,7 +26,6 @@ import {
   ScrollView,
   RefreshControl,
   Animated,
-  AppState,
   StatusBar,
   Keyboard,
   KeyboardAvoidingView,
@@ -43,17 +42,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   SavedFlight,
   SavedFlightEndpoint,
-  getSavedFlights,
-  saveFlight,
-  unsaveFlight,
-  touchSavedFlight,
-  setFlightArchived,
-  setFlightReminders,
   savedFlightFromApi,
   makeFlightId,
   ISO_DAY_RE,
-  migrateLegacyIfNeeded,
-  mergeGuestInto,
 } from '../lib/storage';
 import { airlineFromFlightNumber } from '../lib/airlines';
 // zonedIsoToTs and clock24 moved to lib/time.ts, which is now the one place
@@ -61,15 +52,28 @@ import { airlineFromFlightNumber } from '../lib/airlines';
 // moved with them, because it is the reasoning that stops the next person
 // calling new Date() on a flight DTO field.
 import { zonedIsoToTs, clock24 } from '../lib/time';
+// THE STORE. The saved list, the account email, the refresh loop and its caps,
+// the undo window and the reminder scheduling all moved to lib/saved.tsx, so the
+// tab bar and every screen after it can reach the same records rather than a
+// copy. lib/reminders.ts and lib/watch.ts are reached through it now and are no
+// longer imported here at all.
+//
+// THE PURE RULES WENT WITH THEM, and are imported back from there rather than
+// left on a screen for the store to reach into: a screen must never be the place
+// another module imports from. One copy each.
 import {
-  ensureChannel,
-  ensurePermission,
-  reminderTimes,
-  scheduleFor,
-  cancelFor,
-  reconcile,
-} from '../lib/reminders';
-import { registerWatch, deregisterWatch } from '../lib/watch';
+  useSaved,
+  API_BASE,
+  flightUrl,
+  NO_TIME,
+  SAVE_MSG,
+  arrivalTs,
+  hasFlown,
+  effectiveStatus,
+  isArchived,
+  sortSavedByRelevance,
+  localIsoDate,
+} from '../lib/saved';
 // THE MATERIAL, and it is no longer declared here. Every constant and the
 // GlassLayers component moved to lib/glass.tsx unchanged, so the tab bar can
 // render the same glass without importing a screen. The comments that specify
@@ -105,23 +109,6 @@ const SANS_SEMI = 'Inter_600SemiBold';
 // the airport lines silently leaves the aircraft behind, which is the tie this
 // exists to keep.
 const SHEET_QUIET_SIZE = 13;
-
-const API_BASE = 'https://flight-tracker-970706733452.asia-south1.run.app';
-
-// The flight endpoint's URL, in one place, because four fetch sites build it and
-// they must agree. Both parameters are optional and both are omitted when null,
-// so an argument-free call produces the URL this file has always sent.
-//
-// The query is ASSEMBLED rather than concatenated. Appending "&origin=" to a
-// path that has no "?date=" on it — which is every route-row tap on an undated
-// board, the commonest case there is — would send a malformed URL and lose the
-// filter silently, which is the same class of fault this change exists to fix.
-function flightUrl(number: string, date: string | null, origin: string | null): string {
-  const parts: string[] = [];
-  if (date !== null && date !== '') parts.push(`date=${date}`);
-  if (origin !== null && origin !== '') parts.push(`origin=${origin}`);
-  return `${API_BASE}/flight/${number}${parts.length === 0 ? '' : `?${parts.join('&')}`}`;
-}
 
 const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
 // Three letters, an optional single separator, three letters. "BLR DEL",
@@ -790,15 +777,10 @@ function routeResolveDestination(raw: string | null | undefined): Airport | null
   return null;
 }
 
-// These caps protect the AeroDataBox quota.
-const PULL_COOLDOWN_MS = 60 * 1000;
-const AUTO_REFRESH_MAX_FLIGHTS = 2;
-const AUTO_REFRESH_MIN_AGE_MS = 100 * 365 * 24 * 60 * 60 * 1000; // auto-refresh disabled while on the free tier; set to 12 * 60 * 60 * 1000 to re-enable
-const AUTO_REFRESH_RESUME_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+// HOW FRESH DATA MUST BE TO SHOW A LIVE COUNTDOWN, and the only one of these
+// caps left on this screen: it is read by flightLineSegments, which renders. The
+// rest protect the quota and moved to lib/saved.tsx with the loop that spends it.
 const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to show a live countdown; lower to 30 * 60 * 1000 or 10 * 60 * 1000 for stricter honesty
-// The provider's BASIC plan caps requests at one per second and rejects the rest
-// with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
-const REFRESH_SPACING_MS = 1300;
 
 // STILL DECLARED HERE, unlike the rest of the material: the profile modal's own
 // sheet tint is the only thing that uses it, and the modal has not moved out.
@@ -817,10 +799,6 @@ const ARCHIVE_ROW_STAGGER = 0.07;
 const ARCHIVE_ROW_FADE = 0.45;
 const ARCHIVE_ROW_MAX = 6;
 const ARCHIVE_ROW_RISE = 6;
-// The backend accepts one day back (ROUTE_MAX_PAST_DAYS). A record older than
-// that can only ever be refused, so it is never asked for. Kept slightly under
-// two days so a local date one side of the server's UTC date still qualifies.
-const REFRESH_MAX_PAST_MS = 36 * 60 * 60 * 1000;
 // The backend fetches a 12-hour board whichever value it is sent, then filters
 // down to this. At 6 half of what was already paid for was discarded, so 12 is
 // strictly more for the same 2 units.
@@ -1361,14 +1339,6 @@ function greetingPrefix(ts: number, index: number): string {
   return prefix.replace('{day}', WEEKDAYS_LONG[day]);
 }
 
-// YYYY-MM-DD from the device's own calendar parts. Never toISOString, which
-// reports UTC and lands on the wrong day either side of midnight.
-function localIsoDate(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
 // "Sat, 29 Aug" from a YYYY-MM-DD string, or the string itself if unparseable.
 // Built from the fixed WEEKDAYS/MONTHS arrays so it never shifts with locale.
 function routeDateLabel(iso: string | null): string {
@@ -1392,11 +1362,6 @@ function routeShortDate(iso: string | null): string {
 // Display-only handle. Saved flights are keyed on email, never on this.
 function sanitiseDisplayName(raw: string) {
   return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 14);
-}
-
-function localDayKey(ts: number) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
 // "6:40 PM IST" -> "6:40 PM". A departure board omits the origin airport
@@ -2185,120 +2150,6 @@ function StatusLine({ f, now, style, numberOfLines, hideStatus, hideAbsolute }: 
   );
 }
 
-// Relevance order: in the air, then upcoming, then finished. Unparseable times
-// sink to the end of their own group rather than the end of the list.
-const SAVED_RANK: Record<string, number> = { active: 0, scheduled: 1, delayed: 1 };
-const RANK_LAST = 2;
-const NO_TIME = Number.MAX_SAFE_INTEGER;
-
-// WHEN A FLIGHT LEAVES THE LIST.
-//
-// Arrival, not departure: a long-haul that left eleven hours ago may still be
-// in the air, and a list that drops it mid-flight is worse than useless.
-//
-// Six hours after it lands. The card is still worth having for a while after
-// touchdown — the belt, the terminal, the actual arrival time — and a red-eye
-// that lands at 06:00 should still be there over breakfast. Short enough that
-// this morning's flight is gone before tomorrow's crowd the list.
-const ARCHIVE_AFTER_ARRIVAL_MS = 6 * 60 * 60 * 1000;
-
-// The instant a flight arrived, or is expected to. Actual first, then the
-// estimate, then the schedule — the same precedence the status line uses.
-function arrivalTs(f: SavedFlight): number | null {
-  return zonedIsoToTs(f.to.actualIso ?? f.to.estimatedIso ?? f.to.scheduledIso, f.to.timezone);
-}
-
-// DERIVED, never stored, so there is no schema change and no migration.
-//
-// A stored flag would have to be recomputed on every read anyway — a flight
-// crosses this line while the app is open, not while it is writing — so the
-// flag would be a second answer to a question the arrival time already answers
-// exactly, and the two could disagree.
-//
-// A record with no arrival ISO at all is NEVER archived. Those are pre-v3
-// records; guessing that they are old enough to file away would hide a flight
-// the user saved on purpose.
-// HAS IT ACTUALLY FLOWN, which is a different question from whether it is in
-// the archive: the archive waits six hours after arrival, this is true the
-// moment the arrival time passes.
-//
-// Read from the CLOCK, never from f.status. A saved record's status only ever
-// changes when a refresh returns a new one, and refreshes stop at 36 hours
-// past — before that, the backend has no record of a flight that has landed and
-// been cleared. So an archived flight's stored status is frozen at whatever it
-// was the last time anyone asked, which for anything saved in advance is
-// "scheduled" forever. The arrival time is the only thing here that is still
-// true a week later.
-function hasFlown(f: SavedFlight, now: number): boolean {
-  const ts = arrivalTs(f);
-  return ts !== null && ts <= now;
-}
-
-// THE STATUS TO DISPLAY AND SORT ON, which is not always the status stored.
-//
-// A stored record can contradict itself. A real one: status "landed", rawStatus
-// "Arrived", arrival actualIso 2026-08-28T21:12+05:30 — written at 15:10 IST the
-// same day, six hours before that arrival could have happened, with no actual or
-// estimated departure time at all. Nothing in this app invents a status; it
-// copies the response. So the app cannot treat a stored status as more reliable
-// than the clock, and this is the same principle hasFlown states above, applied
-// to the word on the row instead of to the archive.
-//
-// THE CLOCK MAY DEMOTE A STATUS, NEVER PROMOTE IT, and the asymmetry is the
-// whole design.
-//
-// A TIME PASSING DOES NOT PROVE AN EVENT HAPPENED. A flight can sit an hour past
-// its scheduled departure still at the gate, and a scheduled arrival can come
-// and go while the aircraft is holding. Promoting on the clock would invent
-// departures and landings that never occurred, which is exactly the failure this
-// exists to correct, pointing the other way. So there is no promotion here at
-// all: nothing is ever moved to "active" or "landed" by the clock.
-//
-// AN EVENT CANNOT HAVE HAPPENED BEFORE ITS OWN TIME. That is what makes
-// demotion sound. If the record says a flight has landed and names an arrival
-// instant still in the future, the two cannot both be true, and the instant is
-// the one with a checkable meaning. Demoting to "scheduled" is the weakest claim
-// that resolves the contradiction, and it is self-correcting: the next refresh
-// that returns a coherent record restores the stored word.
-//
-// ONE NARROW, PROVABLE CONTRADICTION, deliberately. This is not a "does the data
-// look plausible" check and must not grow into one — no missing-field heuristics,
-// no delay-magnitude limits, no cross-field guessing. Two propositions that
-// cannot both hold, and nothing else.
-//
-// AN UNREADABLE TIME IS NOT EVIDENCE. A null from zonedIsoToTs — a pre-v3 record
-// with no ISO, a bad timezone — changes nothing, because absence of a time is
-// not proof the status is wrong.
-//
-// DERIVED, NEVER STORED, exactly like hasFlown and isArchived. Nothing here
-// writes back; a record's stored status is what the provider last said and stays
-// that way.
-function effectiveStatus(f: SavedFlight, now: number): string {
-  const s = f.status.toLowerCase();
-  if (s === 'landed') {
-    // The same instant arrivalTs uses, so the row and the archive rule read one
-    // arrival time rather than two.
-    const ts = arrivalTs(f);
-    if (ts !== null && ts > now) return 'scheduled';
-  } else if (s === 'active') {
-    // arrivalTs's precedence, mirrored onto the departure: actual, then the
-    // estimate, then the schedule.
-    const ts = zonedIsoToTs(
-      f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso, f.from.timezone);
-    if (ts !== null && ts > now) return 'scheduled';
-  }
-  return s;
-}
-
-function isArchived(f: SavedFlight, now: number): boolean {
-  // The hand overrules the clock, and only in one direction: archivedAt can put
-  // a flight in the archive early, and clearing it hands the flight back to the
-  // rule rather than pinning it out. See setFlightArchived.
-  if (f.archivedAt !== null) return true;
-  const ts = arrivalTs(f);
-  return ts !== null && now - ts > ARCHIVE_AFTER_ARRIVAL_MS;
-}
-
 // ── SWIPE ACTIONS ────────────────────────────────────────────────────────────
 //
 // A FIXED 52 x 52 SQUARE, and the fix for buttons that looked squashed and
@@ -2695,49 +2546,10 @@ const TOAST_RISE = 12;
 // on, and reached — five seconds is the shortest that leaves room for all three.
 const UNDO_TOAST_MS = 5000;
 
-// AND THE WINDOW OUTLIVES THE TOAST, deliberately, by six times over. They
-// answer different questions: the toast asks "do you want this back right now",
-// the window asks "is this decision still reversible". Someone who reads the
-// toast, thinks about it, and taps the bookmark twenty seconds later gets the
-// flight back with its reminders intact, and nothing about the banner having
-// faded should change that. Coupling them would make the undo as short as the
-// notice, which is the shortest of the two for reasons that have nothing to do
-// with how long a decision takes.
-//
-// IN MEMORY ONLY. Nothing is written, so closing the app ends the window and the
-// record stays deleted — closing an app is not an undo. The notifications left
-// pending by that are swept by the next reconcile on launch, which is what that
-// sweep is for.
-const UNDO_WINDOW_MS = 30000;
-
-// WHAT ENABLING REMINDERS CAN COME TO. An outcome rather than a sentence,
-// because two callers report it and they are answering different questions: the
-// swipe was asked to turn reminders on and reports on that alone, while a save
-// was asked to save and reports on that first.
-type RemindOutcome = 'on' | 'denied' | 'too-late' | 'no-time';
-
-// The swipe's wording, unchanged from when it was the only caller.
-const REMIND_SWIPE_MSG: Record<RemindOutcome, string> = {
-  on: 'reminders on',
-  denied: 'notifications are turned off for this app',
-  'too-late': 'too late to set a reminder for this one',
-  'no-time': 'no departure time to remind you about',
-};
-
-// The save's wording. SAVED COMES FIRST IN EVERY ONE OF THEM, because saving is
-// what the user asked for and it succeeded in all four cases — reminders are the
-// thing that happened as well, or did not. A save that reported only a reminder
-// failure would read as a save that failed.
-//
-// Shorter than the swipe's, and deliberately: prefixing "saved · " to the
-// swipe's own strings gives 46 and 45 characters, which overflows one line at
-// any width this app runs at. These are 20 to 26, which fits 320pt.
-const SAVE_MSG: Record<RemindOutcome, string> = {
-  on: 'saved · reminders on',
-  denied: 'saved · reminders off',
-  'too-late': 'saved · too late to remind',
-  'no-time': 'saved · no departure time',
-};
+// THE WINDOW ITSELF IS IN lib/saved.tsx, and it outlives this banner by six
+// times over. They answer different questions: the toast asks "do you want this
+// back right now", the window asks "is this decision still reversible". See
+// UNDO_WINDOW_MS there, and the note that goes with it.
 
 const SWIPE_SPRING = {
   mass: 0.8,
@@ -2857,33 +2669,6 @@ const ICON_REFRESH = (
     />
   </>
 );
-
-// `now` for effectiveStatus, and for nothing else: the keys themselves are
-// absolute instants and do not move with the clock.
-function savedSortKey(f: SavedFlight, now: number): { rank: number; when: number } {
-  // The same word the row shows. Keyed on f.status, a wrongly-landed flight
-  // ranks RANK_LAST and sinks under everything real; keyed on this it ranks as
-  // the scheduled flight it actually is and returns to its place in the list.
-  const s = effectiveStatus(f, now);
-  const rank = SAVED_RANK[s] ?? RANK_LAST;
-  if (rank === 0) {
-    // Same precedence flightLineSegments uses for an active flight.
-    return { rank, when: zonedIsoToTs(f.to.estimatedIso ?? f.to.scheduledIso, f.to.timezone) ?? NO_TIME };
-  }
-  if (rank === 1) {
-    return { rank, when: zonedIsoToTs(f.from.estimatedIso ?? f.from.scheduledIso, f.from.timezone) ?? NO_TIME };
-  }
-  return { rank, when: -f.updatedAt };   // negated so the newest sorts first
-}
-
-// Pure: returns a new array, never mutates the input.
-function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFlight[] {
-  return [...list].sort((a, b) => {
-    const ka = savedSortKey(a, now);
-    const kb = savedSortKey(b, now);
-    return ka.rank !== kb.rank ? ka.rank - kb.rank : ka.when - kb.when;
-  });
-}
 
 // Lifted out of the parameter list so the memo comparison below can name it,
 // and so the two cannot describe different shapes.
@@ -3804,6 +3589,19 @@ function AnimatedPlaceholder() {
 }
 
 export default function Index() {
+  // THE STORE, AND WHAT IS LEFT HERE WITHOUT IT. Everything that REPORTS on the
+  // saved list stayed on this screen — the toasts, the undo banner, the refresh
+  // message, the collapse state and the archive sheet — and everything that
+  // decides what the list IS went to lib/saved.tsx.
+  //
+  // `now` IS NOT ON IT, deliberately. This screen keeps its own minute tick below
+  // for the countdowns; the store runs a separate one for the day rollover and
+  // the AppState resume. See the note at the top of lib/saved.tsx.
+  const {
+    savedFlights, email, setEmail, refreshing,
+    saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
+    handleRemind, setArchived,
+  } = useSaved();
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -3882,15 +3680,15 @@ export default function Index() {
   // set, so an empty array means "all on" without having to seed state for
   // carriers we have not seen yet.
   const [routeAirlinesOff, setRouteAirlinesOff] = useState<string[]>([]);
-  const [savedFlights, setSavedFlights] = useState<SavedFlight[]>([]);
   // Persisted under 'savedCollapsed'. Starts true so an absent key means
   // collapsed; hydration only overrides it when the key exists.
   const [savedCollapsed, setSavedCollapsed] = useState(true);
   const [flightRecord, setFlightRecord] = useState<SavedFlight | null>(null);
   const [saveError, setSaveError] = useState("");
-  const [email, setEmail] = useState<string | null>(null);
+  // THIS SCREEN'S OWN HYDRATION FLAG, and not the store's. It gates the collapse
+  // state and the first-run ask, both of which are read out of the pass below;
+  // lib/saved.tsx keeps a private one of its own for the account it reads there.
   const [authHydrated, setAuthHydrated] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   // Picked on mount, re-picked only by onRefresh. The header re-renders every
@@ -3952,8 +3750,6 @@ export default function Index() {
     if (Platform.OS === 'web') {
       const u = localStorage.getItem('username');
       if (u) setUsername(u);
-      const e = localStorage.getItem('email');
-      if (e) setEmail(e);
       const dn = localStorage.getItem('displayName');
       if (dn) setDisplayName(dn);
       // Resolved before authHydrated, which gates the saved-list load, so the
@@ -3963,16 +3759,18 @@ export default function Index() {
         setAuthHydrated(true);
       });
     } else {
+      // 'email' IS NOT READ HERE ANY MORE. lib/saved.tsx reads it itself, because
+      // the store owns the account it is keyed on; leaving it here would have
+      // made this screen the authority on when the store is ready. Sign-in and
+      // logout still WRITE it, through setEmail off the hook.
       Promise.all([
         SecureStore.getItemAsync('username'),
         SecureStore.getItemAsync('gmailToken'),
-        SecureStore.getItemAsync('email'),
         SecureStore.getItemAsync('displayName'),
         AsyncStorage.getItem('savedCollapsed'),
-      ]).then(([u, t, e, dn, c]) => {
+      ]).then(([u, t, dn, c]) => {
         if (u) setUsername(u);
         if (t) setGmailToken(t);
-        if (e) setEmail(e);
         if (dn) setDisplayName(dn);
         if (c !== null) setSavedCollapsed(c === 'true');
         setAuthHydrated(true);
@@ -4000,25 +3798,6 @@ export default function Index() {
   // this one's back. A modal is inside this component and sets this component's
   // state directly, so there is nothing to pick up on the way back and no read
   // to race the hydration effect above.
-
-  useEffect(() => {
-    if (!authHydrated) return;
-    let cancelled = false;
-    (async () => {
-      // BEFORE anything is scheduled. Android silently drops notifications with
-      // no channel — no error at the call site, no delivery.
-      await ensureChannel();
-      await migrateLegacyIfNeeded();
-      const list = email
-        ? await mergeGuestInto(email)
-        : await getSavedFlights(null);
-      if (!cancelled) {
-        setSavedFlights(list);
-        autoRefresh(list, () => cancelled);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [authHydrated, email]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -4056,28 +3835,6 @@ export default function Index() {
   const badgePulse = useRef(new Animated.Value(1)).current;
   const errorMsgOpacity = useRef(new Animated.Value(0)).current;
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshingRef = useRef(false);
-  const lastRefreshRef = useRef(0);
-  const lastAutoRefreshRef = useRef(0);
-  // WHEN THE PROVIDER LAST ANSWERED ABOUT A FLIGHT, by id.
-  //
-  // THE FACT RECORDED IS "ATTEMPTED", NOT "FAILED", and that is the whole idea.
-  // The staleness filter in autoRefresh is meant to be self-clearing: attempt a
-  // flight, it leaves the candidate set, the next run reaches the ones behind
-  // it. That works because touchSavedFlight advances updatedAt — which it does
-  // only on success. So updatedAt is the only record of "we tried this", and a
-  // flight whose lookup fails never leaves the set: it sits at the head of the
-  // list consuming one of the two attempts on every run, for ever, starving
-  // everything behind it. Nothing here is a fairness rule bolted on top; this is
-  // the missing half of a fact the filter already depends on.
-  //
-  // MEMORY ONLY, and correctly so. A failure is a fact about one attempt, not
-  // about the flight, and there is no reason to believe an attempt that failed
-  // this morning still predicts anything after a relaunch. It dies with the
-  // process, which is also why it needs no eviction: it is bounded by the
-  // flights one session actually touches.
-  const lastTriedRef = useRef<Map<string, number>>(new Map());
-  const dayRef = useRef(localDayKey(Date.now()));
   const refreshMsgOpacity = useRef(new Animated.Value(0)).current;
   const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // One value for both opacity and travel, so they cannot drift apart, and a
@@ -4096,12 +3853,6 @@ export default function Index() {
     transform: [{ translateY: (undoAnim.value - 1) * TOAST_RISE }],
   }));
   const undoToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // THE WINDOW ITSELF: the deleted record and the timer that ends its life.
-  //
-  // A ref rather than state, because nothing on screen is derived from it. The
-  // toast is its own state and outlives nothing; this is the record, and a
-  // re-render when it opens or closes would be a render for no visible reason.
-  const undoRef = useRef<{ flight: SavedFlight; timer: ReturnType<typeof setTimeout> } | null>(null);
   // Four values, not two: each overlay drives its content and its scrim
   // separately, so the backdrop can run its own timing. Every property either
   // value touches is opacity or transform, so all of it is native-driven and
@@ -4342,78 +4093,19 @@ export default function Index() {
     setUndoCounter(c => c + 1);
   };
 
-  // ── THE UNDO WINDOW ────────────────────────────────────────────────────────
+  // THIS SCREEN'S MINUTE TICK, and it now does one job: advance `now` for the
+  // countdowns, the archive split and the clock in the header.
   //
-  // ONE WINDOW AT A TIME. A second unsave replaces the first, and the first
-  // record's notifications are cancelled at that moment rather than left to a
-  // timer nobody is holding: the record is gone from storage and now gone from
-  // memory too, so nothing will ever restore it and its reminders would fire for
-  // a flight that no longer exists anywhere.
-  const beginUndoWindow = (f: SavedFlight) => {
-    const prev = undoRef.current;
-    if (prev !== null) {
-      clearTimeout(prev.timer);
-      cancelFor(prev.flight.id);
-    }
-    // THE CANCEL HAPPENS HERE, ON EXPIRY, AND NOWHERE ELSE. Unsaving does not
-    // touch the schedule at all — that is what makes an undo whole rather than
-    // an undo that restores a record and silently loses its reminders.
-    undoRef.current = {
-      flight: f,
-      timer: setTimeout(() => {
-        undoRef.current = null;
-        cancelFor(f.id);
-      }, UNDO_WINDOW_MS),
-    };
-  };
-
-  // The held record IF it is this flight, and the window closes with it.
-  //
-  // KEYED ON THE ID, which is the number and the date: another instance of the
-  // same number on another day is a different flight and must not be handed
-  // someone else's record.
-  const takeUndoRecord = (id: string): SavedFlight | null => {
-    const w = undoRef.current;
-    if (w === null || w.flight.id !== id) return null;
-    clearTimeout(w.timer);
-    undoRef.current = null;
-    return w.flight;
-  };
-
-  // What reconcile must not sweep. See lib/reminders.ts.
-  const undoKeepIds = (): string[] =>
-    undoRef.current === null ? [] : [undoRef.current.flight.id];
-
+  // THE DAY ROLLOVER AND THE AppState RESUME WENT WITH THE STORE, which runs a
+  // tick of its own for them. Two intervals rather than one, deliberately: this
+  // value re-renders this screen every sixty seconds and has to, and putting it
+  // on the context would re-render every OTHER screen every sixty seconds too.
   useEffect(() => {
-    let cancelled = false;
-    const tick = () => {
-      const t = Date.now();
-      setNow(t);
-      const d = localDayKey(t);
-      if (d !== dayRef.current) {
-        dayRef.current = d;
-        getSavedFlights(email).then(list => { if (!cancelled) setSavedFlights(list); });
-      }
-    };
+    const tick = () => setNow(Date.now());
     tick(); // run immediately on mount, not only on the first 60s tick
     const id = setInterval(tick, 60000);
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        tick();
-        // Cheap, and the only chance to correct a schedule that drifted while
-        // the app was not running. Fire and forget: nothing on screen waits.
-        getSavedFlights(email).then(l => { if (!cancelled) reconcile(l, undoKeepIds()); });
-        if (Date.now() - lastAutoRefreshRef.current > AUTO_REFRESH_RESUME_COOLDOWN_MS) {
-          getSavedFlights(email).then(l => { if (!cancelled) autoRefresh(l, () => cancelled); });
-        }
-      }
-    });
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-      sub.remove();
-    };
-  }, [email]);
+    return () => clearInterval(id);
+  }, []);
 
   const shake = () => {
     Animated.sequence([
@@ -4572,8 +4264,7 @@ export default function Index() {
       setFlight(flightDataFromApi(data, effectiveStatus(record, Date.now())));
 
       setFlightRecord(record);
-      const refreshed = await touchSavedFlight(email, record);
-      if (refreshed) setSavedFlights(refreshed);
+      await refreshOne(record);
 
       setLastUpdated(record.updatedAt);
       if (!keepVisible) showResult();
@@ -4659,29 +4350,20 @@ export default function Index() {
       }
 
       const record = savedFlightFromApi(data);
-      // The same undo check the card's bookmark makes, for the same reason: the
-      // window belongs to the flight, not to the control that closed it.
-      const held = takeUndoRecord(record.id);
-      if (held !== null) {
-        if (await restoreUnsaved(held)) showToast('restored');
-        else {
-          setError('watchlist limit reached \u2014 unsave one first');
-          setErrorCounter(c => c + 1);
-          shake();
-        }
-        return;
-      }
-      const result = await saveFlight(email, record, f => !isArchived(f, Date.now()));
-      setSavedFlights(result.flights);
-      if (!result.ok) {
+      // THE WHOLE SAVE IS saveRecord's, the undo check included — the window
+      // belongs to the flight, not to the control that closed it. What is left
+      // here is this path's own wording for the three endings, which is the
+      // error channel and a shake where the card raises a toast.
+      const outcome = await saveRecord(record);
+      if (outcome.kind === 'restored') { showToast('restored'); return; }
+      if (outcome.kind === 'limit') {
         setError('watchlist limit reached \u2014 unsave one first');
         setErrorCounter(c => c + 1);
         shake();
         return;
       }
-      registerWatch(API_BASE, record.flightNumber, record.flightDate);
       // Reminders on by default, exactly as the card's bookmark does it.
-      showToast(SAVE_MSG[await enableReminders(record)]);
+      showToast(SAVE_MSG[outcome.remind]);
     } catch {
       setError("Could not reach the server. Please check your connection and try again.");
       setErrorCounter(c => c + 1);
@@ -4895,10 +4577,7 @@ export default function Index() {
         // to a question that function already answers.
         const stored = savedFlights.find(f => f.id === record.id);
         const wrongLeg = stored !== undefined && stored.from.iata !== record.from.iata;
-        if (!wrongLeg) {
-          const refreshed = await touchSavedFlight(email, record);
-          if (refreshed) setSavedFlights(refreshed);
-        }
+        if (!wrongLeg) await refreshOne(record);
         setLastUpdated(record.updatedAt);
       }
       showResult();
@@ -4911,241 +4590,52 @@ export default function Index() {
     }
   };
 
-  // Shared fetch-and-store loop. Sequential; per-flight try/catch; touchSavedFlight on
-  // success; captures the open card's fresh data. Returns counts only — no UI side effects.
-  const refreshFlights = async (list: SavedFlight[], maxAttempts: number): Promise<{ failures: number; openCardFresh: any }> => {
-    // The open card's ID, not its number: two instances of one number can be
-    // saved, and only the one actually on screen should be refreshed into it.
-    const openCardId = flightRecord?.id ?? null;
-    let openCardFresh: any = null;
-    let failures = 0;
-    let attempts = 0;
-
-    // One day back is all the backend accepts, so anything older is refused
-    // before it reaches the provider. Computed once, outside the loop.
-    const oldest = localIsoDate(new Date(Date.now() - REFRESH_MAX_PAST_MS));
-
-    for (const f of list) {                                   // sequential — never parallel
-      if (attempts >= maxAttempts) break;
-      const day = ISO_DAY_RE.test(f.flightDate) ? f.flightDate : null;
-      // SKIPPED, NOT ATTEMPTED, and therefore not a failure. A past date is
-      // rejected by the backend every single time, so these records failed on
-      // every pull and "could not be updated" became permanent furniture rather
-      // than news. Before attempts++ as well as before the fetch: a skip must
-      // not consume one of the attempts a live flight could have used.
-      if (day !== null && day < oldest) continue;
-      // Between attempts only — never before the first, never after the last, so
-      // a single saved flight waits no longer than it does today.
-      if (attempts > 0) await new Promise(resolve => setTimeout(resolve, REFRESH_SPACING_MS));
-      attempts++;
-      try {
-        // ON ITS OWN DATE. Undated, this asked for whichever instance is nearest
-        // now and wrote that over the record — so a flight saved for the 31st
-        // was quietly replaced by today's. That is the same fault the flight
-        // card had before it learned to pass a date, and widening the key
-        // without fixing it would be worse than the old single overwrite: two
-        // records would exist and both would refresh into the same instance.
-        //
-        // ON ITS OWN ORIGIN as well as its own date, from the record being
-        // refreshed. This is the one call site that can read the answer off
-        // storage rather than off the screen, and it is also the one that writes
-        // unconditionally, so a tag flight refreshed without it would replace a
-        // saved BOM-DEL with DEL-BOM under the same id.
-        const response = await fetch(
-          flightUrl(f.flightNumber, day, f.from.iata || null),
-        );
-        const data = await response.json();
-        // THE PROVIDER ANSWERED, AND THE ANSWER WAS NO. Recorded, because that
-        // is a fact about THIS FLIGHT: a not-found will be a not-found again in
-        // five minutes, so backing off costs nothing and yields the turn.
-        //
-        // See the catch below for the half that is deliberately not recorded.
-        if (data.error || !response.ok) {
-          lastTriedRef.current.set(f.id, Date.now());
-          failures++;
-          continue;
-        }
-        // A SUCCESS NEEDS NO ENTRY: touchSavedFlight below advances updatedAt,
-        // which the filter already reads.
-        // f.id, not the fresh record's: a record filed under "unknown" has no
-        // date for its id to have been built from, and this is what lets the
-        // response supply one.
-        await touchSavedFlight(email, savedFlightFromApi(data), f.id);
-        if (openCardId && f.id === openCardId) openCardFresh = data;
-      } catch {
-        // NOTHING RECORDED HERE, and the split from the branch above is
-        // load-bearing rather than tidiness. A thrown fetch is a fact about the
-        // NETWORK — offline, DNS, a timeout, a body that would not parse — and
-        // says nothing whatever about this flight. Record it and one offline
-        // stretch puts the first flights attempted into a twelve-hour back-off,
-        // so the run after connectivity returns skips precisely the flights that
-        // most need refreshing. While offline nothing can succeed anyway, so
-        // retrying the same two costs nothing and starves nobody.
-        failures++;                                           // one failure must not abort the loop
-      }
-    }
-    return { failures, openCardFresh };
-  };
-
-  // Silent background refresh: no spinner, no message. Failures are invisible — the row age tells the truth.
-  const autoRefresh = async (list: SavedFlight[], isCancelled: () => boolean) => {
-    if (refreshingRef.current) return;
-    // THE LATER OF THE TWO. updatedAt says when this flight's data last came
-    // back; the map says when the provider last answered about it at all. A
-    // flight is a candidate only when BOTH are old enough, which is what makes
-    // the filter self-clearing again for failures as well as successes.
-    //
-    // updatedAt IS NOT ADVANCED ON A FAILURE, and must not be — it would be the
-    // shortest fix and it is wrong twice over. It is a storage write, and worse,
-    // updatedAt means "when this data was fetched": flightLineSegments reads it
-    // against COUNTDOWN_MAX_AGE_MS to decide whether a row may show a LIVE
-    // COUNTDOWN at all, so advancing it on a failure would put a ticking
-    // "departs in 2h 14m" over data that was never updated. The row would go
-    // from honestly stale to confidently wrong.
-    //
-    // ONLY autoRefresh READS THIS. onRefresh deliberately does not: a pull is
-    // the user asking, and the user is allowed to retry a flight the background
-    // gave up on.
-    // `at`, not `now`: this component already has a `now` state, and shadowing
-    // the ticking clock with a one-off reading inside a function is how the two
-    // get confused later.
-    const at = Date.now();
-    const stale = list.filter(f =>
-      at - Math.max(f.updatedAt, lastTriedRef.current.get(f.id) ?? 0) > AUTO_REFRESH_MIN_AGE_MS);
-    if (stale.length === 0) return;
-    refreshingRef.current = true;
-    try {
-      await refreshFlights(stale, AUTO_REFRESH_MAX_FLIGHTS);
-      const fresh = await getSavedFlights(email);             // re-read once, set state once
-      if (isCancelled()) return;                              // account switched / unmounted mid-flight
-      setSavedFlights(fresh);
-      lastAutoRefreshRef.current = Date.now();
-    } finally {
-      refreshingRef.current = false;
-    }
-  };
-
-  // ON OR OFF for one flight, and the single place the three things that have
-  // to agree are put in order: the operating system's schedule, the stored
-  // decision, and what the user is told.
-  //
-  // OFF cancels first and writes second. A cancel that fails leaves a
-  // notification that will fire for a flight the user has turned off, which is
-  // worse than a stored flag that says on.
-  //
-  // ON asks permission first and writes LAST, so nothing is stored if the user
-  // refuses or if there is nothing left to schedule. A record saying reminders
-  // are on with no notifications behind it would survive every reconcile,
-  // because reconcile trusts this field.
-  // TURNING THEM ON, and the only place that does it. Two callers now want this
-  // — the remind swipe and every save — and they want to SAY different things
-  // about the same four outcomes, so what comes back is the outcome and not a
-  // sentence. Duplicating the scheduling to get different wording would have put
-  // two copies of the permission check, the arithmetic and the write order in
-  // the file, and the write order is the part that must not vary.
-  //
-  // Permission first, the store LAST, exactly as before: nothing is recorded if
-  // the user refuses or if there is nothing left to schedule, because a record
-  // saying reminders are on with no notifications behind it survives every
-  // reconcile — reconcile trusts this field.
-  const enableReminders = useCallback(async (f: SavedFlight): Promise<RemindOutcome> => {
-    if (!(await ensurePermission())) return 'denied';
-    // Both null means the evening before has passed and the leave-now instant —
-    // three hours before a domestic departure, four before an international one
-    // — has passed too. Nothing is written: an empty reminder is a promise the
-    // app cannot keep.
-    const t = reminderTimes(f, Date.now());
-    if (t.evening === null && t.leave === null) {
-      return f.from.scheduledIso && f.from.timezone ? 'too-late' : 'no-time';
-    }
-    await scheduleFor(f);
-    setSavedFlights(await setFlightReminders(email, f.id, Date.now()));
-    return 'on';
-  }, [email]);
-
-  const handleRemind = useCallback(async (f: SavedFlight, on: boolean): Promise<string> => {
-    if (!on) {
-      await cancelFor(f.id);
-      setSavedFlights(await setFlightReminders(email, f.id, null));
-      return 'reminders off';
-    }
-    return REMIND_SWIPE_MSG[await enableReminders(f)];
-  }, [email, enableReminders]);
-
   const onRefresh = async () => {
-    if (refreshingRef.current) return;                        // synchronous guard; iOS can double-fire the pull
-    setGreetingIndex(Math.floor(Math.random() * 60));         // past the double-fire guard, above the cooldown: a throttled pull still rerolls
-    refreshingRef.current = true;
-    setRefreshing(true);
-    setRefreshMsg("");
-    try {
-      if (activeSaved.length === 0) return;                   // spinner alone acknowledges; message can't render here
+    // THE PULL IS THE STORE'S; THE MESSAGES ARE THIS SCREEN'S.
+    //
+    // onStarted FIRES SYNCHRONOUSLY, past the double-fire guard and above the
+    // cooldown, which is exactly where these two statements sat. Acting on the
+    // returned `ran` instead would have moved both to the far side of a network
+    // round trip, and the greeting would reroll seconds after the pull.
+    const r = await refreshAll(flightRecord?.id ?? null, () => {
+      setGreetingIndex(Math.floor(Math.random() * 60));         // past the double-fire guard, above the cooldown: a throttled pull still rerolls
+      setRefreshMsg("");
+    });
 
-      if (Date.now() - lastRefreshRef.current < PULL_COOLDOWN_MS) {
-        setRefreshMsg('> already up to date');
-        setRefreshTone('info');
-        setRefreshMsgCounter(c => c + 1);
-        return;
-      }
-      lastRefreshRef.current = Date.now();
+    if (r.throttled) {
+      setRefreshMsg('> already up to date');
+      setRefreshTone('info');
+      setRefreshMsgCounter(c => c + 1);
+    }
 
-      // Active only. An archived flight is not refreshed, which is the whole
-      // reason it does not count against MAX_SAVED_FLIGHTS.
-      //
-      // STALEST FIRST, and this is the refresh QUEUE's order only — a copy, so
-      // activeSaved and everything the list renders from are untouched.
-      //
-      // The cap protects the quota and stays. But a cap on top of a FIXED order
-      // is a cliff rather than a queue: activeSaved comes out of savedFlights in
-      // stored order and is never sorted, so every pull walked the same first
-      // five and the sixth and seventh were not refreshed later, they were never
-      // refreshed at all. Two of seven sat at "updated 1d ago" indefinitely.
-      //
-      // Ordering by updatedAt ascending turns the same cap into a rotation: the
-      // five refreshed here become the five freshest, so the next pull starts
-      // with the ones this one could not reach and two pulls cover seven flights.
-      // It also fixes the worst-looking rows first, because the stalest record is
-      // exactly the one whose age is showing.
-      const refreshQueue = [...activeSaved].sort((a, b) => a.updatedAt - b.updatedAt);
-      const { failures, openCardFresh } = await refreshFlights(refreshQueue, 5);
+    // THE OPEN CARD, and this is the second untangling: the refresh reports what
+    // came back for it and this screen decides what to do with that. `r.list` is
+    // the list as read back from storage rather than the state it set, because a
+    // setState is not visible to the call that awaited it in the same turn.
+    if (r.openCardFresh && r.list !== null) {
+      // HOISTED, exactly as in runFlightLookup: the record was already being
+      // built here for its id, so building it first costs nothing and lets one
+      // clock check serve the card. It is also now built ONCE rather than
+      // twice — the id below reads this record instead of calling
+      // savedFlightFromApi a second time on the same response.
+      const fresh = savedFlightFromApi(r.openCardFresh);
+      setFlight(flightDataFromApi(r.openCardFresh, effectiveStatus(fresh, Date.now())));
+      // By id, not by number: with two instances saved, matching on the number
+      // alone could put the OTHER date's record behind the open card. The id
+      // can also change across a refresh — a record filed under "unknown"
+      // takes a real date the first time one comes back — so the fresh data's
+      // id is tried first and the one the card was opened with second.
+      const freshId = fresh.id;
+      const stored = r.list.find(f => f.id === freshId)
+        ?? r.list.find(f => f.id === (flightRecord?.id ?? ''));
+      if (stored) setFlightRecord(stored);                  // from disk, so savedAt stays in sync
+      setLastUpdated(fresh.updatedAt);
+    }
 
-      const list = await getSavedFlights(email);              // read once, set state once
-      setSavedFlights(list);
-
-      // A refresh is the one moment a departure time can move under a reminder
-      // that was scheduled from the old one, and the one moment a record filed
-      // under "unknown" takes a real id. Both leave the schedule wrong, and
-      // this is what puts it right.
-      reconcile(list, undoKeepIds());
-
-      if (openCardFresh) {
-        // HOISTED, exactly as in runFlightLookup: the record was already being
-        // built here for its id, so building it first costs nothing and lets one
-        // clock check serve the card. It is also now built ONCE rather than
-        // twice — the id below reads this record instead of calling
-        // savedFlightFromApi a second time on the same response.
-        const fresh = savedFlightFromApi(openCardFresh);
-        setFlight(flightDataFromApi(openCardFresh, effectiveStatus(fresh, Date.now())));
-        // By id, not by number: with two instances saved, matching on the number
-        // alone could put the OTHER date's record behind the open card. The id
-        // can also change across a refresh — a record filed under "unknown"
-        // takes a real date the first time one comes back — so the fresh data's
-        // id is tried first and the one the card was opened with second.
-        const freshId = fresh.id;
-        const stored = list.find(f => f.id === freshId)
-          ?? list.find(f => f.id === (flightRecord?.id ?? ''));
-        if (stored) setFlightRecord(stored);                  // from disk, so savedAt stays in sync
-        setLastUpdated(fresh.updatedAt);
-      }
-
-      if (failures > 0) {
-        setRefreshMsg(`> ${failures} ${failures === 1 ? 'flight' : 'flights'} could not be updated`);
-        setRefreshTone('error');
-        setRefreshMsgCounter(c => c + 1);
-      }
-    } finally {
-      refreshingRef.current = false;
-      setRefreshing(false);
+    if (r.failures > 0) {
+      setRefreshMsg(`> ${r.failures} ${r.failures === 1 ? 'flight' : 'flights'} could not be updated`);
+      setRefreshTone('error');
+      setRefreshMsgCounter(c => c + 1);
     }
   };
 
@@ -6303,45 +5793,20 @@ export default function Index() {
   // Recomputed every render, so the bar tracks the ticking `now` state.
   const progressValue = computeProgress(flightRecord, now);
 
-  // EVERY UNSAVE GOES THROUGH HERE, so the window cannot depend on which control
-  // the user reached for. It does three things and deliberately not a fourth: it
-  // removes the record, it opens the window, and it says so. It does NOT cancel
-  // the notifications — see beginUndoWindow.
-  const handleUnsave = async (f: SavedFlight) => {
-    const hadReminders = f.remindersSetAt !== null;
-    setSavedFlights(await unsaveFlight(email, f.id));
-    deregisterWatch(API_BASE, f.flightNumber, f.flightDate);
-    beginUndoWindow(f);
-    // THE NUMBER LEADS. "unsaved" alone says nothing about which of seven rows
-    // just went, and that fact used to live in the swipe's own message.
-    //
-    // "reminders" AND NOT "reminders off", and the word cut was the weakest one
-    // in the line twice over. It costs four characters the line does not have —
-    // 30 against a budget of 26 — and it was already a claim slightly ahead of
-    // the facts: the notifications are still pending and are only cancelled when
-    // the window closes. Naming them in the list of what went is the honest
-    // version and the short one.
-    showUndo(hadReminders ? `${f.flightNumber} unsaved · reminders` : `${f.flightNumber} unsaved`);
-  };
-
-  // RESTORING IS SAVING THE HELD RECORD, not building a new one: it carries its
-  // own savedAt, archivedAt and remindersSetAt, so the flight comes back exactly
-  // as it left. Nothing is rescheduled because nothing was cancelled.
-  const restoreUnsaved = async (held: SavedFlight): Promise<boolean> => {
-    const result = await saveFlight(email, held, f => !isArchived(f, Date.now()));
-    setSavedFlights(result.flights);
-    if (result.ok) registerWatch(API_BASE, held.flightNumber, held.flightDate);
-    return result.ok;
+  // THE UNSAVE IS THE STORE'S AND THE BANNER IS THIS SCREEN'S. handleUnsave
+  // composes the line, because it is the only thing that knows whether the
+  // record had reminders on it when it went; showUndo is what puts it on screen.
+  const unsaveWithBanner = async (f: SavedFlight) => {
+    showUndo(await handleUnsave(f));
   };
 
   const handleUndo = async () => {
-    const w = undoRef.current;
-    if (w === null) return;
-    const held = takeUndoRecord(w.flight.id);
-    if (held === null) return;
-    setUndoMsg('');                       // acted on; the banner goes now
-    if (await restoreUnsaved(held)) showToast('restored');
-    else showToast('watchlist limit reached — unsave one first');
+    // onTaken RUNS THE MOMENT THE RECORD IS IN HAND and before the restore is
+    // awaited, which is where setUndoMsg('') always was: the banner goes when
+    // undo is pressed, not when storage comes back.
+    const r = await undoUnsave(() => setUndoMsg(''));
+    if (r === 'restored') showToast('restored');
+    else if (r === 'limit') showToast('watchlist limit reached — unsave one first');
   };
 
   // ── THE CARD'S SWIPE ───────────────────────────────────────────────────────
@@ -6519,22 +5984,16 @@ export default function Index() {
     if (!flightRecord) return;
     setSaveError("");
     if (isSaved) {
-      await handleUnsave(flightRecord);
+      await unsaveWithBanner(flightRecord);
       return;
     }
-    // SAVING BACK INSIDE THE WINDOW IS AN UNDO, whichever control does it. The
-    // banner may be long gone; the window is what decides, and it is keyed on
-    // the id so only this exact flight is restored.
-    const held = takeUndoRecord(flightRecord.id);
-    if (held !== null) {
-      if (await restoreUnsaved(held)) showToast('restored');
-      else showToast('watchlist limit reached — unsave one first');
-      return;
-    }
-    const result = await saveFlight(email, flightRecord, f => !isArchived(f, Date.now()));
-    setSavedFlights(result.flights);
-    if (!result.ok) {
-      // A TOAST NOW, because the thing that used to show this is gone. It was
+    // THE WHOLE SAVE IS saveRecord's, and saving back inside the undo window is
+    // an undo whichever control does it — the window is keyed on the id, so only
+    // this exact flight is restored. What is left here is the card's wording.
+    const outcome = await saveRecord(flightRecord);
+    if (outcome.kind === 'restored') { showToast('restored'); return; }
+    if (outcome.kind === 'limit') {
+      // A TOAST, because the thing that used to show this is gone. It was
       // setSaveError, rendered by the status band inside the card, and the line
       // here said "saveError owns this case; no toast" — true while the band
       // existed. Without it the refusal was set, timed out three seconds later
@@ -6543,12 +6002,11 @@ export default function Index() {
       showToast('watchlist limit reached — unsave one first');
       return;
     }
-    registerWatch(API_BASE, flightRecord.flightNumber, flightRecord.flightDate);
     // SAVING IS THE SIGNAL THAT THE USER CARES ABOUT THIS FLIGHT, so reminders
     // follow from it rather than needing a second action. A refusal never blocks
     // the save and never asks twice: the flight is saved either way, and the
     // toast is where the difference is reported.
-    showToast(SAVE_MSG[await enableReminders(flightRecord)]);
+    showToast(SAVE_MSG[outcome.remind]);
   };
 
   // LIFTED OUT OF THE HEADER ROW, unchanged. It was an inline arrow on the
@@ -7125,8 +6583,8 @@ export default function Index() {
                         last={i === archivedSaved.length - 1}
                         onDone={showToast}
                         onRemind={(on) => handleRemind(f, on)}
-                        onUnsave={() => handleUnsave(f)}
-                        onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
+                        onUnsave={() => unsaveWithBanner(f)}
+                        onArchive={(on) => setArchived(f, on)}
                       />
                     </Animated.View>
                   ))}
@@ -7545,8 +7003,8 @@ export default function Index() {
                       onDone={showToast}
                       onRemind={(on) => handleRemind(f, on)}
                       onPress={() => renderSavedFlight(f)}
-                      onUnsave={() => handleUnsave(f)}
-                      onArchive={async (on) => setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null))}
+                      onUnsave={() => unsaveWithBanner(f)}
+                      onArchive={(on) => setArchived(f, on)}
                     />
                   ))}
                 </>

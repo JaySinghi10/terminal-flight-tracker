@@ -1,6 +1,20 @@
 import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import GlassTabBar from "../components/GlassTabBar";
+// THE STORE, MOUNTED ONCE FOR THE WHOLE APP. Inside GestureHandlerRootView
+// because that has to stay the outermost thing in the tree, and wrapping Tabs
+// rather than sitting inside a screen: the saved list is the tab bar's as much
+// as home's, and a provider mounted on one screen is a provider that unmounts
+// when that screen does.
+import { SavedProvider } from "../lib/saved";
+// AND THE QUERY, SEPARATELY. Two providers rather than one value with both
+// on it: the saved list changes a handful of times a session and the query
+// changes on every keystroke, and a consumer of either must not be woken by
+// the other. See the note at the top of lib/query.tsx.
+//
+// INSIDE SavedProvider, and the nesting order carries no meaning: neither
+// reads the other, so this is only a place to stand.
+import { QueryProvider } from "../lib/query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -50,10 +64,14 @@ export default function Layout() {
   // navigator's default white.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Tabs
-        tabBar={props => <GlassTabBar {...props} />}
-        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
-      />
+      <SavedProvider>
+        <QueryProvider>
+          <Tabs
+            tabBar={props => <GlassTabBar {...props} />}
+            screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
+          />
+        </QueryProvider>
+      </SavedProvider>
     </GestureHandlerRootView>
   );
 }
