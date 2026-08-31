@@ -1,4 +1,4 @@
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Easing } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 // THE APP'S GLASS, IN ONE PLACE. Every value and comment below was lifted out of
@@ -148,6 +148,45 @@ export const SHEET_EDGE = 'rgba(255,255,255,0.08)';
 // — which is exactly the drift this constant exists to stop.
 export const SHEET_SCRIM = 'rgba(0,0,0,0.40)';
 
+// Declared here rather than imported from a screen, for the same reason
+// components/GlassTabBar.tsx and lib/flightstatus.tsx declare their own: a module
+// reaching into a route for a string constant would couple the two. The value is
+// the family name _layout registers. sheetTitle below is its only reader.
+const MONO_BOLD = 'JetBrainsMono_700Bold';
+
+// HOW A GLASS SURFACE ARRIVES AND LEAVES, moved here whole from app/index.tsx.
+//
+// THE WHOLE BLOCK CAME, including the three figures the anchored dropdown panel
+// uses, because the two comments in it describe the named constants and the
+// unnamed ones TOGETHER — "the panel travels less than the calendar" is one
+// sentence about OVERLAY_RISE and CAL_RISE at once — and splitting it would have
+// meant either orphaning a comment or writing a second copy of it. The dropdown
+// panel is a glass surface too: it renders GlassLayers behind its options and
+// wears SHEET_EDGE and SHEET_RADIUS, so its motion belongs beside the sheets'.
+// Overlay motion. Entry decelerates hard and settles; exit accelerates away and
+// is shorter. The asymmetry is the point: a surface arriving should look like it
+// is coming to rest, and one leaving should not make you wait for it.
+//
+// EASE_OUT is the standard expo-out bezier. Easing.out(Easing.cubic), which
+// these used before, spends too much of its budget near the end to read as
+// motion at all over 140ms.
+export const EASE_OUT = Easing.bezier(0.16, 1, 0.3, 1);
+export const EASE_IN = Easing.bezier(0.4, 0, 1, 1);
+
+// The panel travels less than the calendar because it starts beside its trigger
+// and only has to look like it came out of it.
+export const OVERLAY_RISE = 10;
+export const CAL_RISE = 28;
+
+export const PANEL_IN_MS = 220;
+export const PANEL_OUT_MS = 150;
+export const CAL_IN_MS = 260;
+export const CAL_OUT_MS = 170;
+// Its own timing, on its own value. Slightly ahead going in and slightly behind
+// coming out, so the backdrop never looks welded to the surface it sits under.
+export const SCRIM_IN_MS = 200;
+export const SCRIM_OUT_MS = 150;
+
 // THE MATERIAL, as one component, so it cannot be spelled differently in two
 // places. Every glass surface renders this pair behind its content and nothing
 // else: the blur samples what is behind the surface, then the tint darkens the
@@ -186,8 +225,117 @@ export function GlassLayers() {
   );
 }
 
-const g = StyleSheet.create({
+// THE CHROME EVERY GLASS SURFACE WEARS, and the entries are index.tsx's own,
+// unchanged. They came here because three surfaces already share them — the
+// archive sheet, the details sheet and the calendar — and two of those three are
+// leaving for the search screen. A second copy is how the sheet that stays and
+// the sheets that go would come to sit, pad and rule differently.
+//
+// THE ONE EDIT THE MOVE FORCED IS AT THE CALL SITES, not here: index.tsx read
+// these as `s.sheetShell` and now reads them as `g.sheetShell`, because they are
+// no longer entries of its own stylesheet. Every declaration below is verbatim.
+//
+// sheetHeadTitle IS DELIBERATELY NOT HERE. It composes with airportTitle, which
+// is the flight card's typography rather than the glass's, so it stays with the
+// card and travels with it.
+export const g = StyleSheet.create({
   // Over the blur, under the content. Order in the tree is what makes this a
   // tint on the blur rather than something the blur eats.
   sheetTint: { backgroundColor: SHEET_FILL },
+  // Centred, unlike pm.backdrop which anchors its sheet to the bottom.
+  routeCalScrim: {
+    flex: 1,
+    justifyContent: "center", paddingHorizontal: 16,
+  },
+  // 0.55. It went to 0.88 to do a job that was not its own: with nothing
+  // blurring the page, only brute darkness could stop the text behind competing
+  // with the text in front, and the result was a black rectangle on a black
+  // screen. The blur does that job properly now, so the scrim can go back to
+  // what a scrim is for — pushing one plane behind another — and the page is
+  // allowed to be visible again.
+  //
+  // 0.40, down from 0.55, and it is the panel this is for rather than the page.
+  //
+  // A subtractive panel can only be as dark as the light behind it lets it be.
+  // At 0.55 the page outside sat at rgb(2.25) and the panel at rgb(1.13): the
+  // panel was removing 50% of nothing, so there was nothing to see. Turning the
+  // scrim DOWN puts light back outside for the panel to take away.
+  //
+  // Where the page is empty this is bounded and stays small — even at no scrim
+  // at all the gap tops out at 2.5 levels, because the page itself is only
+  // rgb(5). Where the page has content it is the whole effect: a line of white
+  // text outside goes from rgb(102) to rgb(138) while the same line inside,
+  // blurred and taken through the tint and the fill, stays near rgb(23).
+  //
+  // An earlier note here claimed 0.45 would "start competing with the sheet".
+  // That was asserted, not worked out. At 0.40 the page's text renders at
+  // rgb(138) against the sheet's own rgb(255) — 25% of its relative luminance,
+  // which recedes clearly. 0.30 would be rgb(161) and 35%, which would not.
+  //
+  // It is also NOT deleted in favour of the blur's own tint. This layer is the
+  // one whose value is known exactly on every platform; if a device renders no
+  // blur at all, this is what still separates the sheet from the page.
+  //
+  // Shared with the calendar sheet, deliberately: both are centred sheets that
+  // take over the screen, and a scrim that means one thing on one and another
+  // on the other would be a bug in waiting. The dropdown panels now take this
+  // same value through SHEET_SCRIM rather than the lighter one of their own
+  // they used to carry.
+  routeCalDim: { backgroundColor: SHEET_SCRIM },
+  // THE SHELL. Deliberately generic: the dropdown panels take this same
+  // treatment by swapping routePanel's background, border and radius for these
+  // and putting the same GlassLayers pair in behind their content.
+  // Nothing here knows anything about archives.
+  sheetShell: {
+    borderRadius: SHEET_RADIUS,
+    // Clips the blur — and the rows — to the radius. This is now doing real
+    // work: it is what confines the blur to the panel's own rounded rectangle
+    // instead of the whole screen.
+    overflow: "hidden",
+    // NO backgroundColor. The blur samples what is drawn behind it, and an
+    // ancestor's background counts as behind it — a fill here would be blurred
+    // into the result and flatten it. The fill is a sibling drawn AFTER the
+    // blur instead: see GlassLayers in lib/glass.tsx.
+    //
+    // NO border and no stroke. The overflow above is the whole edge treatment:
+    // it is what stops the blur at the radius, and that stop is what the eye
+    // reads as the boundary. See SHEET_RADIUS.
+  },
+  // Fills the shell exactly and carries the border, so the shell's own layout
+  // is untouched. Its radius MATCHES the shell's, which is what puts the line on
+  // the shell's edge rather than floating inside it, and what makes the corners
+  // curve instead of meeting.
+  sheetEdge: {
+    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 1, borderColor: SHEET_EDGE, borderRadius: SHEET_RADIUS,
+  },
+  // Padding only.
+  sheetBody: { padding: 20 },
+  // FILL, because there is now a height to fill. The shell has a definite
+  // minimum, so the body takes all of it and the list takes what is left after
+  // the header — which is what bounds the list, and an unbounded ScrollView
+  // does not scroll. Only a sheet with a fixed height may use this: flex: 1 in
+  // an auto-height parent collapses to nothing.
+  sheetBodyFill: { flex: 1 },
+  // More above than below. sheetBody's 20 put the title the same distance from
+  // the top edge as the rule was from the title, so the header read as pinned
+  // to the ceiling rather than seated under it. 8 more above makes it 28 and 18.
+  sheetHead: {
+    flexDirection: "row", alignItems: "center",
+    marginTop: 8,
+    paddingBottom: 14, marginBottom: 4,
+    borderBottomWidth: 1, borderBottomColor: SHEET_RULE,
+  },
+  // The close button's LAYOUT width: 20pt glyph + 4pt padding each side, less
+  // the 4pt it outdents. Matching it exactly is what centres the title on the
+  // sheet rather than on the space left beside the button.
+  sheetHeadSpacer: { width: 24 },
+  sheetTitle: {
+    flex: 1, fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD,
+    textAlign: "center",
+  },
+  // Identical to routeCalClose. The padding is the touch target the ring used
+  // to imply, and the negative margin lets the glyph sit level with the edge of
+  // the content rather than one padding-width inside it.
+  sheetClose: { paddingVertical: 4, paddingHorizontal: 4, marginRight: -4 },
 });

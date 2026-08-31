@@ -120,9 +120,19 @@ import {
 // render the same glass without importing a screen. The comments that specify
 // all of it went with them; read them there.
 import {
-  SHEET_BLUR, SHEET_FILL, SHEET_RADIUS, SHEET_RULE, SHEET_EDGE, SHEET_SCRIM,
+  SHEET_BLUR, SHEET_FILL, SHEET_RADIUS, SHEET_EDGE, SHEET_SCRIM,
   GlassLayers,
+  // THE SHEET CHROME AND THE OVERLAY MOTION, moved to sit beside the material
+  // they are the chrome and the motion FOR. `g` is that file's stylesheet: the
+  // eight sheet entries and the calendar scrim are read from it now rather than
+  // from this screen's own `s`.
+  EASE_OUT, EASE_IN, OVERLAY_RISE, CAL_RISE,
+  PANEL_IN_MS, PANEL_OUT_MS, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
+  g,
 } from '../lib/glass';
+// THE FLAT SURFACES, and they are not glass. See the note at the top of that
+// file for why the card vocabulary did not go in beside the blur.
+import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG } from '../lib/cards';
 import {
   Airport,
   airportByCode,
@@ -882,30 +892,6 @@ const ROUTE_PANEL_MAX_WIDTH = 260;
 // and bottom of the window when deciding which side it opens on.
 const ROUTE_PANEL_GAP = 6;
 const ROUTE_PANEL_EDGE = 12;
-
-// Overlay motion. Entry decelerates hard and settles; exit accelerates away and
-// is shorter. The asymmetry is the point: a surface arriving should look like it
-// is coming to rest, and one leaving should not make you wait for it.
-//
-// EASE_OUT is the standard expo-out bezier. Easing.out(Easing.cubic), which
-// these used before, spends too much of its budget near the end to read as
-// motion at all over 140ms.
-const EASE_OUT = Easing.bezier(0.16, 1, 0.3, 1);
-const EASE_IN = Easing.bezier(0.4, 0, 1, 1);
-
-// The panel travels less than the calendar because it starts beside its trigger
-// and only has to look like it came out of it.
-const OVERLAY_RISE = 10;
-const CAL_RISE = 28;
-
-const PANEL_IN_MS = 220;
-const PANEL_OUT_MS = 150;
-const CAL_IN_MS = 260;
-const CAL_OUT_MS = 170;
-// Its own timing, on its own value. Slightly ahead going in and slightly behind
-// coming out, so the backdrop never looks welded to the surface it sits under.
-const SCRIM_IN_MS = 200;
-const SCRIM_OUT_MS = 150;
 
 // Local-only view controls. Nothing here re-fetches: every option reorders or
 // hides rows already in state.
@@ -2040,49 +2026,6 @@ function movementTile(label: string, value: string, delay: number | null): {
 // expansion, where the 72pt slots cost 166 and 202. Nineteen points more to
 // arm, because a narrower panel leaves more of the distance to the overshoot's
 // firmer friction; overshootFriction is the knob if that reads as too far.
-// ── CARDS ────────────────────────────────────────────────────────────────────
-//
-// A row was a band of text with a hairline under it. It is now a shape.
-//
-// FILL rgba(255,255,255,0.03), which is already in the file as the pill
-// triggers' background and composites over the page to about rgb(12). Seven
-// levels above the page: enough to read as a raised surface, far too little to
-// compete with anything written on it. The hairline goes with it — a card that
-// is a distinct shape does not also need a line telling you where it ends.
-//
-// RADIUS 12, and the three radii in the app now read as a nesting order. The
-// sheets are 16 because they are the largest shapes and hold everything else. A
-// card is 12: smaller than its container, which is what stops a card inside a
-// sheet looking like a sheet. The swipe buttons are 18, larger than either
-// despite being the smallest things on screen, because they are CONTROLS rather
-// than containers and roundness is how a control says so.
-//
-// GAP 8 between cards, which replaces the separator rather than adding to it.
-//
-// HEIGHT is unchanged, and slightly less. Every paddingVertical is exactly what
-// it was — 13 on a saved row, 18 on an archive row and a route row — and the
-// 1pt border has gone, so a row is 1pt SHORTER than before. The list is taller,
-// but by the gaps between rows rather than by anything inside them.
-//
-// PADDING 14 horizontally, which the rows did not have at all: content used to
-// run to the page's own margin. This is the one number that needed checking
-// against the route rows, whose whole layout depends on the departure times
-// starting at one x and the arrival times ending at another. It survives
-// because every row takes the SAME padding, including the pinned "fastest" row
-// above the list — the column moves inward by 14 as a block and stays a column.
-// What does change is that the times no longer align with the group headings
-// above them, which sit at the page margin. That is correct: the heading labels
-// the cards, it is not one of them.
-const CARD_FILL = 'rgba(255,255,255,0.03)';
-const CARD_RADIUS = 12;
-const CARD_GAP = 8;
-const CARD_PAD = 14;
-
-// THE PAGE. Three things need to name this colour rather than two: the root,
-// the static row fill under the flight card, and the animated one the saved
-// rows now use, which spells it inside a worklet where a StyleSheet entry
-// cannot be read.
-const PAGE_BG = '#050505';
 
 // THE CONFIRMATION, and it REPLACES the toast rather than joining it.
 //
@@ -5622,14 +5565,14 @@ export default function Index() {
         animationType="none"
         onRequestClose={closeAirportSheet}
       >
-        <Pressable style={s.routeCalScrim} onPress={closeAirportSheet}>
+        <Pressable style={g.routeCalScrim} onPress={closeAirportSheet}>
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: airportSheetScrimAnim }]}
+            style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: airportSheetScrimAnim }]}
           />
           <Animated.View
             style={[
-              s.sheetShell,
+              g.sheetShell,
               s.airportSheet,
               {
                 opacity: airportSheetAnim,
@@ -5645,13 +5588,13 @@ export default function Index() {
             ]}
           >
             <GlassLayers />
-            <View style={s.sheetEdge} pointerEvents="none" />
+            <View style={g.sheetEdge} pointerEvents="none" />
             {/* Swallows the tap so the scrim's dismiss does not fire through. */}
-            <Pressable style={s.sheetBody}>
-              <View style={s.sheetHead}>
+            <Pressable style={g.sheetBody}>
+              <View style={g.sheetHead}>
                 {/* Exactly the close button's width, so the title centres on the
                     sheet rather than on whatever space is left beside it. */}
-                <View style={s.sheetHeadSpacer} />
+                <View style={g.sheetHeadSpacer} />
                 {/* THE TITLE ALONE. It carried the flight number under it for a
                     while, on the reasoning that a sheet floating over a page of
                     several cards has to say which one it belongs to. It does not:
@@ -5672,7 +5615,7 @@ export default function Index() {
                   activeOpacity={0.7}
                   onPress={closeAirportSheet}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={s.sheetClose}
+                  style={g.sheetClose}
                 >
                   {/* The app's own close X, character for character. */}
                   <Svg width={20} height={20} viewBox="0 0 24 24">
@@ -5917,17 +5860,17 @@ export default function Index() {
 
       {/* ── DATE CALENDAR ── */}
       <Modal visible={archiveOpen} transparent animationType="none" onRequestClose={closeArchive}>
-        <Pressable style={s.routeCalScrim} onPress={closeArchive}>
+        <Pressable style={g.routeCalScrim} onPress={closeArchive}>
           {/* The dim alone, full screen and unblurred. The blur lives inside the
               sheet now, so outside it the page stays sharp. */}
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: archiveScrimAnim }]}
+            style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: archiveScrimAnim }]}
           />
           {/* Unchanged: the same rise, scale and fade the calendar sheet uses. */}
           <Animated.View
             style={[
-              s.sheetShell,
+              g.sheetShell,
               s.archiveSheet,
               {
                 opacity: archiveAnim,
@@ -5949,19 +5892,19 @@ export default function Index() {
                 surface renders too. They were written out here once; that was
                 one copy of the material too many. */}
             <GlassLayers />
-            <View style={s.sheetEdge} pointerEvents="none" />
+            <View style={g.sheetEdge} pointerEvents="none" />
             {/* Swallows the tap so the scrim's dismiss does not fire through. */}
-            <Pressable style={[s.sheetBody, s.sheetBodyFill]}>
-              <View style={s.sheetHead}>
+            <Pressable style={[g.sheetBody, g.sheetBodyFill]}>
+              <View style={g.sheetHead}>
                 {/* Exactly the close button's width, so the title centres on the
                     sheet rather than on whatever space is left beside it. */}
-                <View style={s.sheetHeadSpacer} />
-                <Text style={s.sheetTitle}>{'Archives'}</Text>
+                <View style={g.sheetHeadSpacer} />
+                <Text style={g.sheetTitle}>{'Archives'}</Text>
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={closeArchive}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={s.sheetClose}
+                  style={g.sheetClose}
                 >
                   {/* The app's own close X, character for character: the same
                       20pt box, the same 5..19 span, the same weight, cap and
@@ -6016,7 +5959,7 @@ export default function Index() {
       </Modal>
 
       <Modal visible={routeCalOpen} transparent animationType="none" onRequestClose={closeRouteCal}>
-        <Pressable style={s.routeCalScrim} onPress={closeRouteCal}>
+        <Pressable style={g.routeCalScrim} onPress={closeRouteCal}>
           {/* The dim is its own layer so it can fade on its own curve. Folding it
               into the sheet's value would drag the whole backdrop through the
               sheet's travel and scale.
@@ -6025,11 +5968,11 @@ export default function Index() {
               blur belongs to the panel, not to the backdrop. */}
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, s.routeCalDim, { opacity: routeCalScrimAnim }]}
+            style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: routeCalScrimAnim }]}
           />
           <Animated.View
             style={[
-              s.sheetShell,
+              g.sheetShell,
               {
                 opacity: routeCalAnim,
                 transform: [
@@ -6042,8 +5985,8 @@ export default function Index() {
             {/* The same three layers, in the same order, as the archive sheet.
                 Two centred sheets, one treatment. */}
             <GlassLayers />
-            <View style={s.sheetEdge} pointerEvents="none" />
-            <Pressable style={s.sheetBody}>
+            <View style={g.sheetEdge} pointerEvents="none" />
+            <Pressable style={g.sheetBody}>
               <View style={s.routeCalNav}>
                 {/* Month stepping is one group, so the close control can hold the
                     right edge on its own. */}
@@ -6157,9 +6100,9 @@ export default function Index() {
           pointerEvents="none"
           style={[s.toastWrap, { top: insets.top + 12 }, toastStyle]}
         >
-          <View style={[s.sheetShell, s.toastCard]}>
+          <View style={[g.sheetShell, s.toastCard]}>
             <GlassLayers />
-            <View style={s.sheetEdge} pointerEvents="none" />
+            <View style={g.sheetEdge} pointerEvents="none" />
             <Text style={s.toastText} numberOfLines={1}>{toastMsg}</Text>
           </View>
         </Reanimated.View>
@@ -6762,10 +6705,10 @@ export default function Index() {
               <View
                 ref={airportCardRef}
                 collapsable={false}
-                style={[s.sheetShell, s.airportCard, airportSheetOpen && s.airportCardStood]}
+                style={[g.sheetShell, s.airportCard, airportSheetOpen && s.airportCardStood]}
               >
                 <GlassLayers />
-                <View style={[s.sheetEdge, s.airportCardEdge]} pointerEvents="none" />
+                <View style={[g.sheetEdge, s.airportCardEdge]} pointerEvents="none" />
                 {/* THE WORD SITS IN THE HEADING'S ROW, centred on the CARD
                     rather than on the space beside the heading — which is what
                     the absolute positioning is for. left 0 and right 0 span the
@@ -6967,9 +6910,9 @@ export default function Index() {
         <Reanimated.View
           style={[s.toastWrap, { top: insets.top + 12 }, undoStyle]}
         >
-          <View style={[s.sheetShell, s.undoCard]}>
+          <View style={[g.sheetShell, s.undoCard]}>
             <GlassLayers />
-            <View style={s.sheetEdge} pointerEvents="none" />
+            <View style={g.sheetEdge} pointerEvents="none" />
             <Text style={s.toastText} numberOfLines={1}>{undoMsg}</Text>
             {/* #4ade80 because this is live and actionable, which is the one
                 thing the green is for in this app. hitSlop rather than padding:
@@ -7710,73 +7653,6 @@ const s = StyleSheet.create({
   // different materials lit differently.
   routePanelDim: { backgroundColor: SHEET_SCRIM },
 
-  // Centred, unlike pm.backdrop which anchors its sheet to the bottom.
-  routeCalScrim: {
-    flex: 1,
-    justifyContent: "center", paddingHorizontal: 16,
-  },
-  // 0.55. It went to 0.88 to do a job that was not its own: with nothing
-  // blurring the page, only brute darkness could stop the text behind competing
-  // with the text in front, and the result was a black rectangle on a black
-  // screen. The blur does that job properly now, so the scrim can go back to
-  // what a scrim is for — pushing one plane behind another — and the page is
-  // allowed to be visible again.
-  //
-  // 0.40, down from 0.55, and it is the panel this is for rather than the page.
-  //
-  // A subtractive panel can only be as dark as the light behind it lets it be.
-  // At 0.55 the page outside sat at rgb(2.25) and the panel at rgb(1.13): the
-  // panel was removing 50% of nothing, so there was nothing to see. Turning the
-  // scrim DOWN puts light back outside for the panel to take away.
-  //
-  // Where the page is empty this is bounded and stays small — even at no scrim
-  // at all the gap tops out at 2.5 levels, because the page itself is only
-  // rgb(5). Where the page has content it is the whole effect: a line of white
-  // text outside goes from rgb(102) to rgb(138) while the same line inside,
-  // blurred and taken through the tint and the fill, stays near rgb(23).
-  //
-  // An earlier note here claimed 0.45 would "start competing with the sheet".
-  // That was asserted, not worked out. At 0.40 the page's text renders at
-  // rgb(138) against the sheet's own rgb(255) — 25% of its relative luminance,
-  // which recedes clearly. 0.30 would be rgb(161) and 35%, which would not.
-  //
-  // It is also NOT deleted in favour of the blur's own tint. This layer is the
-  // one whose value is known exactly on every platform; if a device renders no
-  // blur at all, this is what still separates the sheet from the page.
-  //
-  // Shared with the calendar sheet, deliberately: both are centred sheets that
-  // take over the screen, and a scrim that means one thing on one and another
-  // on the other would be a bug in waiting. The dropdown panels now take this
-  // same value through SHEET_SCRIM rather than the lighter one of their own
-  // they used to carry.
-  routeCalDim: { backgroundColor: SHEET_SCRIM },
-  // THE SHELL. Deliberately generic: the dropdown panels take this same
-  // treatment by swapping routePanel's background, border and radius for these
-  // and putting the same GlassLayers pair in behind their content.
-  // Nothing here knows anything about archives.
-  sheetShell: {
-    borderRadius: SHEET_RADIUS,
-    // Clips the blur — and the rows — to the radius. This is now doing real
-    // work: it is what confines the blur to the panel's own rounded rectangle
-    // instead of the whole screen.
-    overflow: "hidden",
-    // NO backgroundColor. The blur samples what is drawn behind it, and an
-    // ancestor's background counts as behind it — a fill here would be blurred
-    // into the result and flatten it. The fill is a sibling drawn AFTER the
-    // blur instead: see GlassLayers in lib/glass.tsx.
-    //
-    // NO border and no stroke. The overflow above is the whole edge treatment:
-    // it is what stops the blur at the radius, and that stop is what the eye
-    // reads as the boundary. See SHEET_RADIUS.
-  },
-  // Fills the shell exactly and carries the border, so the shell's own layout
-  // is untouched. Its radius MATCHES the shell's, which is what puts the line on
-  // the shell's edge rather than floating inside it, and what makes the corners
-  // curve instead of meeting.
-  sheetEdge: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    borderWidth: 1, borderColor: SHEET_EDGE, borderRadius: SHEET_RADIUS,
-  },
   // OUT OF FLOW, which is the layout guarantee. `top` is set at the call site
   // from the safe-area inset. alignItems centre so the card is only as wide as
   // its message rather than a full-width bar.
@@ -7807,31 +7683,6 @@ const s = StyleSheet.create({
     paddingHorizontal: CARD_PAD,
   },
   undoAction: { fontFamily: MONO_BOLD, fontSize: 13, color: '#4ade80' },
-  // Padding only.
-  sheetBody: { padding: 20 },
-  // FILL, because there is now a height to fill. The shell has a definite
-  // minimum, so the body takes all of it and the list takes what is left after
-  // the header — which is what bounds the list, and an unbounded ScrollView
-  // does not scroll. Only a sheet with a fixed height may use this: flex: 1 in
-  // an auto-height parent collapses to nothing.
-  sheetBodyFill: { flex: 1 },
-  // More above than below. sheetBody's 20 put the title the same distance from
-  // the top edge as the rule was from the title, so the header read as pinned
-  // to the ceiling rather than seated under it. 8 more above makes it 28 and 18.
-  sheetHead: {
-    flexDirection: "row", alignItems: "center",
-    marginTop: 8,
-    paddingBottom: 14, marginBottom: 4,
-    borderBottomWidth: 1, borderBottomColor: SHEET_RULE,
-  },
-  // The close button's LAYOUT width: 20pt glyph + 4pt padding each side, less
-  // the 4pt it outdents. Matching it exactly is what centres the title on the
-  // sheet rather than on the space left beside the button.
-  sheetHeadSpacer: { width: 24 },
-  sheetTitle: {
-    flex: 1, fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD,
-    textAlign: "center",
-  },
   // FOUR PROPERTIES ON TOP OF airportTitle, and only four. The family, the
   // letterSpacing and the uppercase transform all still come from that style, so
   // the sheet's title and the card's heading are set in one voice and cannot
@@ -7856,10 +7707,6 @@ const s = StyleSheet.create({
   sheetHeadTitle: {
     flex: 1, fontSize: 20, color: "#ffffff", textAlign: "center",
   },
-  // Identical to routeCalClose. The padding is the touch target the ring used
-  // to imply, and the negative margin lets the glyph sit level with the edge of
-  // the content rather than one padding-width inside it.
-  sheetClose: { paddingVertical: 4, paddingHorizontal: 4, marginRight: -4 },
   // A CEILING ONLY, unlike archiveSheet's floor and ceiling. That sheet holds a
   // list of unknown length and needs a minimum so it does not open as a stub;
   // this one holds a bounded amount — at most five tiles in two columns, so
