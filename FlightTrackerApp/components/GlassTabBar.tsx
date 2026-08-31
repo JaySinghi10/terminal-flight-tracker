@@ -386,10 +386,10 @@ const TYPING_OFFSCREEN_SHIFT = 1000;
 //
 // 10 POINTS AT 800pt/s, AND THE 800 IS MEASURED RATHER THAN GUESSED. It was
 // 2000, which was calibrated for the wrong gesture entirely: 2000 to 3000pt/s is
-// a SCROLL FLING, and a drag inside a 316pt bar cannot run anywhere near that
-// because there is nowhere to go. The instrumented gesture peaked at 983.8pt/s
-// and produced 4.92pt of squash, five per cent of the pill, which is a number
-// you have to be told about to see.
+// a SCROLL FLING, and a drag inside a bar 370pt wide at 402 (343 at 375)
+// cannot run anywhere near that because there is nowhere to go. The
+// instrumented gesture peaked at 983.8pt/s and produced 4.92pt of squash, five
+// per cent of the pill, which is a number you have to be told about to see.
 //
 // WHAT 800 GIVES, across the range a real drag covers:
 //
@@ -431,9 +431,17 @@ const TYPING_OFFSCREEN_SHIFT = 1000;
 // with room to spare.
 //
 // IT DOES NOT HOLD BELOW 375. At a 320pt window the pill is 68.00 and the
-// ceiling is 2.40, so no useful cap clears it. That is a property of a
-// screen-derived pill and not of this number; if a 320 phone ever matters, the
-// label is what has to give, not the squash.
+// ceiling is 0.00: "My Flights" at 60.00 plus its two 4pt clearances is exactly
+// the pill, so there is no room for a squash of any size at all — not merely
+// too little for a useful one. That is a property of a screen-derived pill and
+// not of this number; if a 320 phone ever matters, the label is what has to
+// give, not the squash.
+//
+// 2.40 WAS THE FIGURE HERE, AND IT IS WHERE THE TYPE SIZE SHOWS. It was
+// 68.00 - (57.60 + 8), where 57.60 is "Bookings" at eight characters of 7.2 —
+// LABEL_ADV at a 12pt type, from when Bookings was the binding label. Both
+// halves have moved since: the type is 10 and the longest label is ten
+// characters, which is why the ceiling closed the rest of the way.
 const DRAG_SQUASH_MAX = 7;
 const DRAG_SQUASH_VEL = 800;
 
@@ -1227,42 +1235,6 @@ function WaveIcon({
 // render would remount the node.
 const AnimatedRect = Reanimated.createAnimatedComponent(Rect);
 
-// [TABBAR] DIAGNOSTIC ONLY. Temporary. Module scope so the pan's worklets can
-// capture it, reached through runOnJS so the ordering against the JS-thread
-// handlers is the ordering you actually see.
-//
-// ——— THE RULE FOR LOGGING FROM A WORKLET ———
-//
-// A WORKLET MAY ONLY CONCATENATE PRIMITIVES AND SHARED-VALUE READS INTO A
-// runOnJS CALL. Numbers, booleans, strings, `sv.value`, and built-in methods on
-// them such as toFixed. Nothing else.
-//
-// CALLING A PLAIN JS FUNCTION INSIDE A WORKLET THROWS ON THE UI THREAD, and it
-// crashes the app with no error surfaced in the console — the throw happens
-// before any log in that callback can emit, so the last thing you see is
-// whatever ran before the touch. react-native-worklets captures such a function
-// as a REMOTE FUNCTION and refuses to call it synchronously:
-// "[Worklets] Tried to synchronously call a non-worklet function on the UI
-// thread" (valueUnpacker.ts:70, bundleUnpacker.ts:28).
-//
-// THAT IS WHAT dbgState DID. It was a plain arrow that mapped RNGH's State enum
-// to a name, and it was called INSIDE onBegin to build the log string — the
-// string is assembled on the UI thread, so runOnJS never got the chance to hop
-// anything. Touching the pill killed the app instantly. The states are logged as
-// RAW NUMBERS now and named here instead:
-//
-//   0 UNDETERMINED   1 FAILED   2 BEGAN   3 CANCELLED   4 ACTIVE   5 END
-//
-// (State.ts:3-10.) Reading them across as numbers costs nothing and cannot
-// throw; naming them was never worth a function call on the wrong thread.
-//
-// runOnJS ITSELF IS FINE, and so is `dbg` — that is the whole point of it. What
-// is forbidden is calling a plain function to COMPUTE AN ARGUMENT, because the
-// arguments are evaluated before runOnJS is reached.
-const dbg = (line: string) => {
-  console.log('[TABBAR] ' + line);
-};
-
 type Slot = { x: number; w: number };
 
 export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
@@ -1410,26 +1382,6 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // 129ms instead of snapping. Nothing else reads it and nothing branches on it;
   // it is only ever an interpolation weight.
   const dragAmt = useSharedValue(0);
-  // [TABBAR] DIAGNOSTIC ONLY. Counts onUpdate frames so the first can be logged
-  // without logging sixty a second.
-  const dbgUpdates = useSharedValue(0);
-  // [TABBAR] DIAGNOSTIC ONLY. One id per BEGAN, so three onBegins in a row can
-  // be told apart from one gesture beginning three times: onFinalize reports the
-  // id it is closing, and a single gesture pairs one id with one finalize.
-  //
-  // A SHARED VALUE, which is the correct channel and was never the crash. A
-  // worklet writing `sv.value` is exactly what shared values are for; a worklet
-  // writing a plain variable or a ref would hit a COPY and be lost.
-  const dbgGestureId = useSharedValue(0);
-  // [TABBAR] DIAGNOSTIC ONLY. How many times the track has reported a layout,
-  // and the last box it reported. React Native does not re-fire onLayout for an
-  // unchanged box on an existing view, so a fresh layout with the SAME numbers
-  // is evidence the view was re-created rather than merely re-measured.
-  //
-  // REFS, not shared values, and only ever touched on the JS thread — in
-  // onTrackLayout and in the effect below, both of which are ordinary handlers.
-  const dbgLayouts = useRef(0);
-  const dbgTrackBox = useRef('never');
   // SEARCH MODE, ON THE UI THREAD, for the same reason activeSV exists: the
   // pan's callbacks are worklets and cannot read React state. Written by an
   // effect below, read by the touch guard that replaced .enabled().
@@ -1704,33 +1656,7 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     });
   };
 
-  const onTrackLayout = (e: LayoutChangeEvent) => {
-    // [TABBAR] DIAGNOSTIC ONLY, and all of it on the JS thread: onLayout is an
-    // ordinary handler, so `dbg` is called directly and the rule above does not
-    // apply here.
-    //
-    // NO NATIVE TAG, AND THAT IS DELIBERATE. React Native's LayoutChangeEvent is
-    // NativeSyntheticEvent<{layout: LayoutRectangle}> (CoreEventTypes.d.ts:21) —
-    // its nativeEvent carries the box and nothing else, and `target` on the
-    // synthetic event is a HostInstance rather than a tag. Reaching for the tag
-    // would mean casting into an untyped field, so the COUNT answers the same
-    // question instead: onLayout does not re-fire for an unchanged box on a view
-    // that still exists, so an extra layout with identical numbers means the
-    // view is new.
-    const { x: lx, width: lw, height: lh } = e.nativeEvent.layout;
-    dbgLayouts.current += 1;
-    dbgTrackBox.current = 'x=' + lx.toFixed(1) + ' w=' + lw.toFixed(1) + ' h=' + lh.toFixed(1);
-    dbg('trackLayout  #' + dbgLayouts.current + ' ' + dbgTrackBox.current);
-    trackW.value = e.nativeEvent.layout.width;
-  };
-
-  // [TABBAR] DIAGNOSTIC ONLY. Prints on every change of mode, so the layout
-  // count above can be read against it: if the count moves when the mode does,
-  // the track went with it. An effect, so the JS thread again.
-  useEffect(() => {
-    dbg('MODE         searchMode=' + searchMode
-      + ' trackLayouts=' + dbgLayouts.current + ' lastBox=' + dbgTrackBox.current);
-  }, [searchMode]);
+  const onTrackLayout = (e: LayoutChangeEvent) => { trackW.value = e.nativeEvent.layout.width; };
 
   useEffect(() => {
     activeSV.value = activeIndex;
@@ -2313,28 +2239,8 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // mode-dependent config this note exists to forbid.
   const pan = Gesture.Pan()
     .activeOffsetX([-8, 8])
-    // [TABBAR] DIAGNOSTIC ONLY, and it goes with the rest of the logging. It is
-    // safe to add: onBegin sets no config at all (gesture.ts:182-186), and in
-    // particular does NOT set needsPointerData, which is the flag that caused
-    // the second bug. If this line does not print, the recogniser never saw the
-    // touch.
-    .onBegin((e) => {
-      'worklet';
-      dbgUpdates.value = 0;
-      dbgGestureId.value += 1;
-      // PRIMITIVES ONLY. e.state and e.oldState go across as the numbers they
-      // are; see the rule at `dbg` for why nothing names them here.
-      runOnJS(dbg)('onBegin      #' + dbgGestureId.value + ' x=' + e.x.toFixed(1)
-        + ' state=' + e.state + '<-' + e.oldState
-        + ' searchSV=' + searchSV.value);
-    })
     .onStart((e) => {
       'worklet';
-      // [TABBAR] DIAGNOSTIC ONLY. If onBegin printed and this did not, the
-      // gesture never crossed activeOffsetX or was cancelled before it could.
-      runOnJS(dbg)('onStart      x=' + e.x.toFixed(1) + ' vx=' + e.velocityX.toFixed(0)
-        + ' slots=' + slotsSV.value.length + ' activeSV=' + activeSV.value
-        + ' searchSV=' + searchSV.value);
       // NO RETURN HERE, IN EITHER MODE. Everything below runs every time, so
       // the gesture that activated is always one onFinalize can close. See the
       // rule above.
@@ -2366,40 +2272,13 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     })
     .onUpdate((e) => {
       'worklet';
-      // [TABBAR] DIAGNOSTIC ONLY. The first frame only; the total is reported in
-      // onFinalize.
-      dbgUpdates.value += 1;
-      if (dbgUpdates.value === 1) {
-        runOnJS(dbg)('onUpdate     FIRST x=' + e.x.toFixed(1) + ' vx=' + e.velocityX.toFixed(0));
-      }
       // THE SAME GUARD IN THE SAME SHAPE: a condition on the call, not a
       // return from the callback. onUpdate has nothing else to do, so this is
       // the whole of its body either way.
       if (!searchSV.value) trackFinger(e.x, e.velocityX);
     })
-    .onFinalize((e) => {
+    .onFinalize(() => {
       'worklet';
-      // [TABBAR] DIAGNOSTIC ONLY, AND THIS IS THE LINE THAT SEPARATES THE THREE
-      // POSSIBILITIES. `state` is why the gesture ended and `oldState` is what it
-      // ended from; both are on the event (gestureHandlerCommon.d.ts:14, :52)
-      // and both cross as raw numbers. Reading them cannot throw. Against the
-      // key at `dbg` (0 UNDETERMINED, 1 FAILED, 2 BEGAN, 3 CANCELLED, 4 ACTIVE,
-      // 5 END):
-      //
-      //   5<-2   END from BEGAN      the threshold was never met. A tap, or a
-      //                              drag whose translation never reached
-      //                              activeOffsetX.
-      //   3<-anything  CANCELLED     something else took the touch. The cause is
-      //                              arbitration, not this gesture's config.
-      //   1<-anything  FAILED        the recogniser failed itself.
-      //   5<-4   END from ACTIVE     a real drag that ran and finished.
-      //
-      // The id pairs it with its onBegin, which is what tells three onBegins in
-      // a row apart from one gesture beginning three times.
-      runOnJS(dbg)('onFinalize   #' + dbgGestureId.value
-        + ' state=' + e.state + '<-' + e.oldState
-        + ' dragging=' + dragging.value + ' updates=' + dbgUpdates.value
-        + ' lastCommitted=' + lastCommitted.value);
       // The touch is over however it ended, so a pending request is moot: cancel
       // it and do the release here and now instead.
       runOnJS(cancelPressRelease)();
@@ -2788,10 +2667,6 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
                   if (!landed && i !== activeIndex) settlePill(activeIndex);
                 }}
                 onPressIn={() => {
-                  // [TABBAR] DIAGNOSTIC ONLY.
-                  dbg('onPressIn    i=' + i + ' searchMode=' + searchMode
-                    + ' searchSV=' + searchSV.value + ' activeIndex=' + activeIndex
-                    + ' slots=' + slotsSV.value.length);
                   // A stale request from the previous gesture must not collapse
                   // this one: a fast re-press can land inside the window.
                   cancelPressRelease();
@@ -3517,17 +3392,25 @@ const st = StyleSheet.create({
     height: CAPSULE_H,
   },
   capsuleGlass: { ...StyleSheet.absoluteFillObject, borderRadius: CAPSULE_R },
-  // flex: 1, SO THE THREE SLOTS ARE IDENTICAL and the pill is one shape wherever
-  // it stands. The word no longer sets the width; the track divided by three
+  // flex: 1, SO THE FOUR SLOTS ARE IDENTICAL and the pill is one shape wherever
+  // it stands. The word no longer sets the width; the track divided by four
   // does.
   //
   // AND THE HORIZONTAL PADDING IS GONE WITH IT. Its only job was to give a
   // content-sized item its width, and flex owns that now. Keeping it would have
   // been a 32pt inset on the label for no reason and one real cost: it caps the
-  // text at slot - 32, which is 74.33 on a 375pt screen but only 56.00 on a 320,
-  // where "my flights" at 66.00 would then truncate. Without it the label has
-  // the whole slot and clears even there. The touch target does not shrink —
-  // the Pressable IS the slot now, which is wider than the padded box ever was.
+  // text at slot - 32, and the slot is (windowW - DOCK_INSET * 2) / 4, so that
+  // ceiling is 60.50 at 402, 53.75 at 375 and 40.00 at 320. "My Flights" is ten
+  // characters of LABEL_ADV, 60.00, so the padded box clears the 402 by half a
+  // point and TRUNCATES ON EVERY SCREEN BELOW IT. Without it the label has the
+  // whole slot — 92.50, 85.75 and 72.00 — and clears all three. The touch
+  // target does not shrink — the Pressable IS the slot now, which is wider than
+  // the padded box ever was.
+  //
+  // THE FIGURES HERE WERE THREE-SLOT ONES, and all three parts of them moved.
+  // 74.33 and 56.00 were slot - 32 over THREE tabs at a 28pt dock inset, and
+  // "my flights" at 66.00 was ten characters at an 11pt type. The bar has four
+  // tabs, DOCK_INSET is 16, and LABEL_FS is 10.
   //
   // alignItems centre still stacks the icon over the word and centres both in
   // the slot; paddingVertical still sets the item's height. See ITEM_PAD_V.
