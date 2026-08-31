@@ -2709,15 +2709,39 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
                   if (searchMode) {
                     if (i === 0) {
                       homeAmt.value = withSpring(1, PRESS_SPRING);
-                      // AND THE PILL COMES WITH IT. Pressing Home here ends
-                      // search mode and sends the pill back across the bar on
-                      // release, so this press causes a TRAVEL exactly as any
-                      // other cross-bar press does — and it was the only one
-                      // whose pill made that journey at its resting size,
-                      // because this branch used to raise homeAmt alone. Same
-                      // delay and same hold as every travelling press.
+                      // AND THE PILL DOES NOT COME WITH IT, WHICH IS THE ONE
+                      // THING THIS BRANCH MAY NOT DO.
+                      //
+                      // It used to raise pressAmt here as well, so that the pill
+                      // made its journey back across the bar grown, the way every
+                      // other travelling press makes it. THE GEOMETRY OF SEARCH
+                      // MODE FORBIDS IT. The pill is not standing on a slot of
+                      // its own here — it lies on the OVAL's last pillW points and
+                      // shares its right edge exactly, in the same material with
+                      // the same hairline. Growing it by PRESS_GROW puts 10pt of
+                      // pill past the oval's end and 10 above and below it, and
+                      // what that reads as on screen is the OVAL bulging when
+                      // Home is pressed. Two objects answering one finger, which
+                      // is the whole thing homeAmt exists to prevent.
+                      //
+                      // IT ALSO GREW THE SEARCH TAB'S GLYPH. WaveIcon and WaveChar
+                      // scale on pressAmt * t, and t is 1 at the slot the pill is
+                      // standing on — so a press on Home swelled the Search icon
+                      // and its label three slots away.
+                      //
+                      // THE TRAVEL IS UNAFFECTED, and that is why this can simply
+                      // go. The journey is capX and capR, sprung by the placement
+                      // effect when activeIndex changes; pressAmt is a SCALE and
+                      // nothing else. The pill still leaves the Search slot and
+                      // settles on Home's, at its resting size — which is what it
+                      // did before that line was added.
+                      //
+                      // releaseAt IS STILL ARMED, deliberately. It only decides
+                      // when pressAmt is sprung back to 0, and springing 0 to 0 is
+                      // a no-op; leaving it set keeps this press on the same
+                      // schedule as every other rather than making the release
+                      // path read a stale timestamp.
                       releaseAt.current = Date.now() + PRESS_HOLD_MS + PRESS_TRAVEL_SETTLE_MS;
-                      pressAmt.value = withDelay(PRESS_TRAVEL_LEAD, withSpring(1, PRESS_SPRING));
                     } else if (i === SEARCH_INDEX) {
                       pressAmt.value = withSpring(1, PRESS_SPRING);
                       // Nowhere to travel: the pill is already on this slot, so
