@@ -24,10 +24,10 @@
 // THE BRIDGE IS ONE-WAY FOR NOW. The page posts errors out; nothing is sent in.
 // The camera fly, the city heading and the route arc are deliberately NOT ported
 // yet.
-import { useMemo } from 'react';
+import { useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { allAirports } from '../lib/airports';
+import { allAirports, airportByCode } from '../lib/airports';
 
 // ── THE INK ─────────────────────────────────────────────────────────────────
 //
@@ -107,6 +107,39 @@ const ROAD_MIN_ZOOM = 9;
 const START_LON = 72;
 const START_LAT = 24;
 const START_ZOOM = 2.2;
+
+// ── THE TWO CAMERA MOTIONS ──────────────────────────────────────────────────
+//
+// SINGLE AIRPORT: pull out to the whole globe, turn until the target faces the
+// viewer, come down onto it. ONE flyTo AND NOT THREE CHAINED ANIMATIONS, and
+// that is a correctness requirement rather than a style preference — see the
+// note at onGrab for why chaining would survive an interruption.
+//
+// flyTo ALREADY FLIES THAT SHAPE. Its Van Wijk path arcs out and back in on its
+// own; what it does not do by default is arc out far enough to show the whole
+// planet. minZoom is the apex of the flight, and passing it makes MapLibre
+// derive the path curvature from the apex instead of from the default curve —
+// verified in handleFlyTo, where scaleOfMinZoom overwrites rho. 0 is the whole
+// globe, and MapLibre clamps the apex to be no closer than the start or end
+// zoom, so a short hop does not perversely fly outward.
+const AIRPORT_ZOOM = 9;
+const GLOBE_APEX_ZOOM = 0;
+const AIRPORT_FLY_MS = 3000;
+
+// ROUTE: follow the great circle from origin to destination.
+//
+// NOT flyTo, BECAUSE flyTo DOES NOT GO THAT WAY. Its path is a straight line in
+// projected Mercator space, which on a globe is not the route an aircraft takes
+// — the whole point of the motion is that the camera travels the arc. So this
+// one is driven frame by frame from a spherical interpolation.
+//
+// THE DURATION AND THE PULL-BACK BOTH SCALE WITH THE ANGLE, so Delhi to Mumbai
+// is a short low skim and Delhi to New York is a long high one, from the same
+// code and without a special case.
+const ROUTE_END_ZOOM = 5;
+const ROUTE_PULLBACK = 3;
+const ROUTE_MS_MIN = 2500;
+const ROUTE_MS_MAX = 6000;
 
 type Feat = {
   type: 'Feature';
@@ -330,11 +363,44 @@ function post(o) {
   try { window.ReactNativeWebView.postMessage(JSON.stringify(o)); } catch (e) {}
 }
 function err(stage, message) { post({ type: 'error', stage: stage, message: message }); }
+// THE FULL ErrorEvent, NOT JUST ITS MESSAGE.
+//
+// "Script error." IS WHAT A BROWSER SAYS WHEN IT IS WITHHOLDING THE DETAIL. An
+// error thrown by a script from another origin is reported with the message,
+// filename, line and column all stripped, because letting a page read them would
+// leak the contents of a cross-origin resource. Six of those told us only that
+// something threw somewhere in MapLibre.
+//
+// crossorigin="anonymous" ON THE SCRIPT TAG IS THE OPT-OUT. It makes the fetch a
+// CORS request, and once the server agrees — unpkg and jsdelivr both send
+// Access-Control-Allow-Origin: * — the browser stops treating the script as
+// opaque and fills these fields in.
 window.addEventListener('error', function (e) {
-  err(STAGE, 'uncaught: ' + (e && e.message ? e.message : 'unknown'));
+  if (!e) { err(STAGE, 'uncaught: unknown'); return; }
+  var parts = [];
+  parts.push(e.message || 'no message');
+  if (e.filename) parts.push('at ' + e.filename + ':' + e.lineno + ':' + e.colno);
+  if (e.error && e.error.stack) parts.push('stack: ' + String(e.error.stack).slice(0, 600));
+  else if (e.error) parts.push('error: ' + String(e.error));
+  // STILL OPAQUE IS ITSELF A FINDING. If the message is bare "Script error." even
+  // with crossorigin set, the throw did not come from the tagged script — a Web
+  // Worker built from a blob is the usual candidate — and that narrows it.
+  if (!e.filename && (e.message === 'Script error.' || e.message === 'Script error')) {
+    parts.push('(still opaque with crossorigin set - not from the tagged script)');
+  }
+  err(STAGE, 'uncaught: ' + parts.join(' | '));
 });
+// THE SAME TREATMENT FOR REJECTIONS. A failed tile fetch is a rejected promise
+// before it is anything else, and String(reason) throws away the stack that says
+// which stage of the pipeline dropped it.
 window.addEventListener('unhandledrejection', function (e) {
-  err(STAGE, 'unhandled rejection: ' + (e && e.reason ? String(e.reason) : 'unknown'));
+  var r = e ? e.reason : null;
+  if (!r) { err(STAGE, 'unhandled rejection: unknown'); return; }
+  var msg = r.message ? r.message : String(r);
+  if (r.status) msg = msg + ' [http ' + r.status + ']';
+  if (r.url) msg = msg + ' [url ' + r.url + ']';
+  if (r.stack) msg = msg + ' | stack: ' + String(r.stack).slice(0, 600);
+  err(STAGE, 'unhandled rejection: ' + msg);
 });
 
 // ON FAILURE ONLY. These are requests MapLibre would make anyway, so running
@@ -370,6 +436,10 @@ function loadFrom(i) {
   var s = document.createElement('script');
   s.src = CDNS[i][1];
   s.async = false;
+  // SAFE BECAUSE BOTH HOSTS AGREE. crossorigin on a script whose server does NOT
+  // send Access-Control-Allow-Origin makes it fail to load outright rather than
+  // load opaquely, so this was checked first: unpkg and jsdelivr both send *.
+  s.crossOrigin = 'anonymous';
   s.onerror = function () {
     err('script', 'fetch failed from ' + CDNS[i][0] + ' (' + CDNS[i][1] + ')');
     loadFrom(i + 1);
@@ -440,6 +510,142 @@ function start() {
     post({ type: 'style' });
   });
 
+  // ── CAMERA MOTIONS ─────────────────────────────────────────────────────────
+  //
+  // ONE TOKEN, AND IT BELONGS TO THE CAMERA ALONE. Every frame-driven motion
+  // checks its own token before doing anything, so cancelling is a single flag
+  // rather than a search for what might be running.
+  //
+  // THE ARC WILL NOT SHARE IT. When the route line is added it gets a SECOND,
+  // separate token that onGrab never touches, because the line must finish
+  // drawing whether or not the camera was grabbed. Coupling them would be one
+  // line of code and the wrong behaviour, so the separation is written down here
+  // before there is anything to separate.
+  var camToken = null;
+
+  function cancelCamera() {
+    if (!camToken) return;
+    camToken.alive = false;
+    if (camToken.raf) cancelAnimationFrame(camToken.raf);
+    camToken = null;
+  }
+
+  // ── INTERRUPTION ───────────────────────────────────────────────────────────
+  //
+  // A TOUCH STOPS THE CAMERA DEAD. No easing out, no finishing, no reframing.
+  //
+  // THIS HANDLER DOES NOT CALL map.stop(), AND THAT IS DELIBERATE. stop() runs
+  // _stop() with allowGestures undefined, which then calls handlers.stop(false)
+  // -> handler.reset() on every handler. Fired from a capture-phase touchstart
+  // that is EARLIER than MapLibre's own processing, that would wipe the
+  // TouchPanHandler's touch bookkeeping and break the very gesture the user just
+  // started. MapLibre stops its own flyTo without help: TouchPanHandler sets
+  // _active on touchstart before any movement, so HandlerManager sees an active
+  // handler and calls _stop(true) itself, which spares the gestures.
+  //
+  // SO WHAT IS LEFT TO CANCEL IS ONLY THE ROUTE LOOP, which MapLibre knows
+  // nothing about because it is jumpTo called from requestAnimationFrame.
+  // Without this the loop would keep writing the centre every frame and fight
+  // the finger for the map.
+  function onGrab() { cancelCamera(); }
+  var el = map.getCanvasContainer();
+  el.addEventListener('touchstart', onGrab, { capture: true, passive: true });
+  el.addEventListener('mousedown', onGrab, { capture: true, passive: true });
+
+  // ── MOTION 1: OUT, AROUND, DOWN ────────────────────────────────────────────
+  //
+  // NOTE ON REDUCED MOTION: essential is deliberately not set, so a device with
+  // the OS "reduce motion" setting on gets an instant jump instead of a three
+  // second flight. That is the accessible behaviour and it is a real decision,
+  // not an omission.
+  function flyAirport(lon, lat) {
+    cancelCamera();
+    map.flyTo({
+      center: [lon, lat],
+      zoom: ${AIRPORT_ZOOM},
+      minZoom: ${GLOBE_APEX_ZOOM},
+      duration: ${AIRPORT_FLY_MS}
+    });
+  }
+
+  // ── MOTION 2: ALONG THE GREAT CIRCLE ───────────────────────────────────────
+  //
+  // SLERP ON UNIT VECTORS, which is the great circle by construction: the
+  // interpolant stays on the sphere and moves at a constant angular rate, so the
+  // path IS the shortest route and needs no special case for crossing the
+  // antimeridian or passing near a pole.
+  function toVec(lon, lat) {
+    var a = lon * Math.PI / 180, b = lat * Math.PI / 180, c = Math.cos(b);
+    return [c * Math.cos(a), c * Math.sin(a), Math.sin(b)];
+  }
+  function toLngLat(v) {
+    return [
+      Math.atan2(v[1], v[0]) * 180 / Math.PI,
+      Math.atan2(v[2], Math.sqrt(v[0] * v[0] + v[1] * v[1])) * 180 / Math.PI
+    ];
+  }
+
+  function flyRoute(lon1, lat1, lon2, lat2) {
+    cancelCamera();
+    var a = toVec(lon1, lat1), b = toVec(lon2, lat2);
+    var d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    d = d > 1 ? 1 : (d < -1 ? -1 : d);
+    var om = Math.acos(d);
+    var frac = om / Math.PI;
+    var dur = ${ROUTE_MS_MIN} + frac * (${ROUTE_MS_MAX} - ${ROUTE_MS_MIN});
+    var apex = ${ROUTE_END_ZOOM} - frac * ${ROUTE_PULLBACK};
+    if (apex < 0) apex = 0;
+    var sinOm = Math.sin(om);
+    map.jumpTo({ center: [lon1, lat1], zoom: ${ROUTE_END_ZOOM} });
+    var t0 = performance.now();
+    var tok = { alive: true, raf: 0 };
+    camToken = tok;
+    function step(now) {
+      // THE TOKEN IS CHECKED FIRST, EVERY FRAME. A cancelled flight must not
+      // write the camera even once more, which is what "stops dead" means.
+      if (!tok.alive) return;
+      var t = (now - t0) / dur;
+      if (t > 1) t = 1;
+      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      var p;
+      if (sinOm < 1e-8) {
+        p = a;
+      } else {
+        var s1 = Math.sin((1 - e) * om) / sinOm, s2 = Math.sin(e * om) / sinOm;
+        p = [a[0] * s1 + b[0] * s2, a[1] * s1 + b[1] * s2, a[2] * s1 + b[2] * s2];
+      }
+      // Out and back within the one motion: sin(pi*e) is 0 at both ends and 1 in
+      // the middle, so the camera rises off the origin and settles onto the
+      // destination without a seam.
+      map.jumpTo({
+        center: toLngLat(p),
+        zoom: ${ROUTE_END_ZOOM} + (apex - ${ROUTE_END_ZOOM}) * Math.sin(Math.PI * e)
+      });
+      if (t < 1) {
+        tok.raf = requestAnimationFrame(step);
+      } else {
+        tok.alive = false;
+        if (camToken === tok) camToken = null;
+      }
+    }
+    tok.raf = requestAnimationFrame(step);
+  }
+
+  // TAPPING A DOT IS MOTION 1. The grab handler above has already cancelled
+  // whatever was running by the time this fires, so a tap during a flight
+  // redirects it rather than queueing behind it.
+  map.on('click', 'airports', function (e) {
+    if (!e.features || !e.features.length) return;
+    var f = e.features[0];
+    var c = f.geometry.coordinates;
+    flyAirport(c[0], c[1]);
+    post({ type: 'airport', iata: f.properties.iata });
+  });
+
+  // THE ONLY WAY IN FROM REACT NATIVE. injectJavaScript calls these; the page
+  // holds no other public surface.
+  window.__cam = { airport: flyAirport, route: flyRoute };
+
   var idled = false;
   map.on('idle', function () {
     if (idled) return;
@@ -454,7 +660,54 @@ loadFrom(0);
 </body>
 </html>`;
 
-export default function GlobeMap() {
+// ── WHAT THE SCREEN CAN ASK THE MAP TO DO ───────────────────────────────────
+//
+// TWO VERBS AND NOTHING ELSE. Both take IATA codes rather than coordinates,
+// because every caller already has a code and none of them should have to know
+// that a camera wants degrees. The lookup happens here, through the same
+// lib/airports the search uses, so the map cannot fly to a different Delhi from
+// the one the results list found.
+//
+// THE HEADING IS NOT BUILT YET but needs nothing new: tapping a code in it is
+// flyToAirport, which is the same call a dot tap and a search make.
+export type GlobeMapHandle = {
+  flyToAirport: (iata: string) => void;
+  flyRoute: (from: string, to: string) => void;
+};
+
+// NO PROPS YET. Record<string, never> was the obvious spelling and is wrong:
+// its index signature swallows `ref` and makes the component unusable with one.
+type GlobeMapProps = object;
+
+const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
+  function GlobeMap(_props, ref) {
+    const webRef = useRef<WebView>(null);
+
+    // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
+    // primitive, so every call ends in `true` — the standard idiom, and without
+    // it the console fills with warnings about the return value.
+    //
+    // GUARDED ON __cam BECAUSE THE PAGE MAY NOT BE READY. A call that lands
+    // before style.load has run finds nothing and does nothing, which is the
+    // right outcome: there is no camera yet to move.
+    const call = useCallback((js: string) => {
+      webRef.current?.injectJavaScript(`try{${js}}catch(e){}; true;`);
+    }, []);
+
+    useImperativeHandle(ref, () => ({
+      flyToAirport(iata: string) {
+        const a = airportByCode(iata);
+        if (a === null) return;
+        call(`window.__cam&&window.__cam.airport(${a.lon},${a.lat})`);
+      },
+      flyRoute(from: string, to: string) {
+        const a = airportByCode(from);
+        const b = airportByCode(to);
+        if (a === null || b === null) return;
+        call(`window.__cam&&window.__cam.route(${a.lon},${a.lat},${b.lon},${b.lat})`);
+      },
+    }), [call]);
+
   // THE HTML IS CONSTANT, and useMemo says so to the WebView. `source` compared
   // by identity is what decides whether the page reloads, and a page reload is a
   // camera reset plus a fresh round of tile fetches.
@@ -466,6 +719,7 @@ export default function GlobeMap() {
   return (
     <View style={StyleSheet.absoluteFill}>
       <WebView
+        ref={webRef}
         // THE ORIGIN MATTERS. An inline html string loads as about:blank on
         // Android, and a null origin makes some hosts refuse the CORS preflight
         // for the style JSON and the tiles. baseUrl puts the document on the tile
@@ -505,11 +759,14 @@ export default function GlobeMap() {
           if (m.type === 'cdn') console.log(`[MAP] library from ${m.host} (v${m.version})`);
           if (m.type === 'style') console.log('[MAP] style parsed, globe attached');
           if (m.type === 'ready') console.log('[MAP] tiles in, first idle');
+          if (m.type === 'airport') console.log(`[MAP] dot tapped: ${m.iata}`);
         }}
       />
     </View>
   );
-}
+});
+
+export default GlobeMap;
 
 const st = StyleSheet.create({
   web: { flex: 1, backgroundColor: OCEAN },

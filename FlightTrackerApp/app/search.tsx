@@ -94,7 +94,7 @@ import {
 // THE MAP BEHIND EVERYTHING. Geometry and place names, absoluteFill under the
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
-import GlobeMap from '../components/GlobeMap';
+import GlobeMap, { type GlobeMapHandle } from '../components/GlobeMap';
 // THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
 // sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
 import { useAccount } from '../lib/account';
@@ -1577,6 +1577,20 @@ export default function Search() {
     return Number.isNaN(t) ? null : t;
   };
 
+  // ── THE MAP CAMERA ────────────────────────────────────────────────────────
+  //
+  // KEYED ON THE PAIR OF CODES AND NOT ON routeResult, whose identity changes
+  // whenever the board is refetched or a filter is applied. Depending on the
+  // object would fly the camera back to the route every time the results list
+  // was touched, undoing any pan the user had made since it arrived.
+  const mapRef = useRef<GlobeMapHandle>(null);
+  const flownFrom = routeResult === null ? null : routeResult.origin;
+  const flownTo = routeResult === null ? null : routeResult.destination;
+  useEffect(() => {
+    if (flownFrom === null || flownTo === null) return;
+    mapRef.current?.flyRoute(flownFrom, flownTo);
+  }, [flownFrom, flownTo]);
+
   // The heading's words. Read back from the dataset rather than carried in
   // state, so a re-run from the date control or the picker cannot leave a stale
   // name above a fresh list. Falls back to the bare code, which is all the
@@ -2562,9 +2576,11 @@ export default function Search() {
 
           NOTHING ON THE SCREEN LOST A TOUCH. Every control is a child of one of
           those two, and box-none leaves children alone. */}
-      {/* IT TAKES NO PROPS YET. The route arc, the camera fly and the place
-          heading are not ported; when they are, this is where they arrive. */}
-      <GlobeMap />
+      {/* THE CAMERA IS DRIVEN THROUGH A REF, NOT A PROP. A prop would make the
+          flight a function of render — it would re-fire on any re-render that
+          happened to carry the same route, and it could not express "fly now"
+          distinctly from "a route exists". The effect below decides WHEN. */}
+      <GlobeMap ref={mapRef} />
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
