@@ -18,7 +18,7 @@ export default function Flights() {
   return (
     <View style={[st.root, { paddingTop: insets.top + 12 }]}>
       <Text style={st.brand}>{'>_'}</Text>
-      <Text style={st.title}>{'my flights'}</Text>
+      <Text style={st.title}>{'My Flights'}</Text>
       <Text style={st.empty}>{'nothing here yet'}</Text>
     </View>
   );
