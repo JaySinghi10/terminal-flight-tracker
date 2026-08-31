@@ -15,6 +15,11 @@ import { SavedProvider } from "../lib/saved";
 // INSIDE SavedProvider, and the nesting order carries no meaning: neither
 // reads the other, so this is only a place to stand.
 import { QueryProvider } from "../lib/query";
+// AND THE TWO BANNERS. Inside SavedProvider because undo reaches the store, and
+// wrapping Tabs because the screen that RAISES a toast is not always the screen
+// that would have drawn it: the search screen saves, unsaves and refreshes, and
+// a banner mounted on home reports none of it. See lib/toast.tsx.
+import { ToastProvider } from "../lib/toast";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -66,10 +71,12 @@ export default function Layout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SavedProvider>
         <QueryProvider>
-          <Tabs
-            tabBar={props => <GlassTabBar {...props} />}
-            screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
-          />
+          <ToastProvider>
+            <Tabs
+              tabBar={props => <GlassTabBar {...props} />}
+              screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
+            />
+          </ToastProvider>
         </QueryProvider>
       </SavedProvider>
     </GestureHandlerRootView>

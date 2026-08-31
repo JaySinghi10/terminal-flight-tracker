@@ -14,6 +14,12 @@
 // painted OVER, and two of its three readers are the card layer — the static
 // fill under the flight card and the animated one a dragging row paints itself
 // with. See its own note below.
+import { StyleSheet } from 'react-native';
+
+// The family names _layout registers, declared here for the same reason every
+// other module in lib/ declares its own. Only the stylesheet at the foot of this
+// file reads it.
+const SANS_SEMI = 'Inter_600SemiBold';
 
 // ── CARDS ────────────────────────────────────────────────────────────────────
 //
@@ -58,3 +64,23 @@ export const CARD_PAD = 14;
 // rows now use, which spells it inside a worklet where a StyleSheet entry
 // cannot be read.
 export const PAGE_BG = '#050505';
+
+// THE TWO ENTRIES BOTH SCREENS READ, and the only reason this file now declares
+// a stylesheet at all.
+//
+// detailsTitle heads home's watchlist and the search screen's chat response;
+// headingRow is the row home puts its watchlist heading in and the search screen
+// puts its route heading in. Two entries, two screens each, and neither screen
+// may import from the other — so they live down here with the vocabulary they
+// are made of rather than being copied twice.
+//
+// THE CALL SITES READ THEM AS `c.*`, which is the one edit the move forced: they
+// were `s.detailsTitle` and `sf.headingRow` in app/index.tsx and are no longer
+// entries of any screen's own sheet.
+export const c = StyleSheet.create({
+  detailsTitle: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
+    marginBottom: 10, letterSpacing: 1, textTransform: "uppercase",
+  },
+  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+});
