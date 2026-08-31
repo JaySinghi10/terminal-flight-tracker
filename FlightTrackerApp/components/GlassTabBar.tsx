@@ -630,14 +630,17 @@ const PRESS_TRAVEL_LEAD = 120;
 //
 //   scaleY = (62 + 6) / 62 = 1.096774
 //
-// THE HORIZONTAL ONE CANNOT BE A CONSTANT, and that is not a wrinkle here but
-// the same fact DOCK_INSET_MIN exists for: the bar's width comes from the
-// window. It is computed per render at the call site, where useWindowDimensions
-// can see it. Above a 331.99pt window the inset is solved to hold the bar at
-// BAR_INNER_W, so the factor is 321.99 / 315.99 = 1.018988 on every iPhone that
-// ships — 402 and 375 give the identical number, which is the design working
-// rather than a coincidence. Below that the floor engages and the bar narrows
-// with the screen, so the factor rises: 310 / 304 = 1.019737 at 320.
+// THE HORIZONTAL ONE CANNOT BE A CONSTANT: the bar's width comes from the
+// window, so the factor does too. It is computed per render at the call site,
+// where useWindowDimensions can see it — barScaleX, which is
+// (barW + BAR_GROW * 2) / barW with barW at windowW - DOCK_INSET * 2:
+//
+//   402   376 / 370 = 1.016216
+//   375   349 / 343 = 1.017493
+//   320   294 / 288 = 1.020833
+//
+// THREE DIFFERENT NUMBERS, and the narrower the screen the more the same 3pt
+// costs it, because 3 is absolute and the bar is not.
 const BAR_GROW = 3;
 const BAR_SCALE_Y = (BAR_H + BAR_GROW * 2) / BAR_H;           // 1.096774
 
@@ -1384,7 +1387,11 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   const dragAmt = useSharedValue(0);
   // SEARCH MODE, ON THE UI THREAD, for the same reason activeSV exists: the
   // pan's callbacks are worklets and cannot read React state. Written by an
-  // effect below, read by the touch guard that replaced .enabled().
+  // effect below, and read in exactly two places: the conditions on the
+  // trackFinger calls in onStart and onUpdate. Nothing else branches on it,
+  // which is the whole of the rule stated at the gesture. THE TOUCH GUARD IT
+  // USED TO FEED IS GONE — that was onTouchesDown plus manager.fail(), the
+  // second of the four drag bugs.
   const searchSV = useSharedValue(false);
 
   // THE SHELL'S OWN BOX, measured, because the border is an SVG stroke again and
@@ -2234,7 +2241,7 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // cancels the React Native responder, so a DRAG on the collapsed bar swallows
   // the press underneath it — Home's exit or the pill's open-field tap would
   // not fire for that one gesture. A TAP never crosses activeOffsetX and is
-  // untouched, and both guards return immediately so nothing moves. Widening
+  // untouched, and both guards skip trackFinger so nothing moves. Widening
   // activeOffsetX in search mode would close it, and is exactly the kind of
   // mode-dependent config this note exists to forbid.
   const pan = Gesture.Pan()
