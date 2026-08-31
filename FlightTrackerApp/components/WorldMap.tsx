@@ -58,6 +58,7 @@ import { feature } from 'topojson-client';
 // components/ and lib/ declares its own. Inter, not JetBrains Mono: these are
 // place names, not machine data.
 const SANS = 'Inter_400Regular';
+const SANS_SEMI = 'Inter_600SemiBold';
 
 // COUNTRIES AT ONE OF TWO RESOLUTIONS, and this constant is the whole switch. A
 // conditional require rather than two imports: both are in the bundle either way
@@ -92,12 +93,25 @@ const MAX_SPAN_KM = 5000;
 const LAT_LIMIT = 72;
 const LON_LIMIT = 180;
 
-// HOW MUCH MORE THAN THE SCREEN IS KEPT, as a fraction of the window either
-// side. It is not an optimisation dial: a feature whose bbox misses the viewport
-// by a point still has EDGES crossing it, and a margin is what stops a coastline
-// vanishing when its centroid leaves. 0.25 is generous at a cost of a handful of
-// extra features.
-const CULL_MARGIN = 0.25;
+// HOW MUCH MORE THAN THE SCREEN IS BUILT, as a fraction of the half-window on
+// each side. THIS IS THE DRAG BUDGET, and it was the bug.
+//
+// Nothing is projected during a gesture — that is the whole architecture — so
+// the finger reveals geometry that was built for the camera it started from.
+// At 0.25 the surplus was a quarter of half the screen, 50px across and 109
+// down, and any ordinary drag ran past it into blank space before the settle
+// could re-project. The margin IS how far a finger may travel before the map
+// runs out, and nothing else sets that distance.
+//
+// 1.0 GIVES A FULL HALF-SCREEN IN EVERY DIRECTION: 201px across and 437px down
+// at 402x874. A drag longer than that still reaches the edge — no finite margin
+// can prevent it — but 437px down is more than half the screen, and the settle
+// is one frame behind the lift.
+//
+// WHAT IT COSTS IS AREA, and area is quadratic: 1.0 builds 2x2 = four times the
+// viewport's own extent, nine times at 1.25. That is why it could not simply be
+// raised — see the states gate below, which is what paid for it.
+const CULL_MARGIN = 1.0;
 
 // ── THE INK ──────────────────────────────────────────────────────────────────
 //
@@ -105,17 +119,90 @@ const CULL_MARGIN = 0.25;
 // above a state line at a glance, and on a #050505 ground the only levers a
 // hairline has are alpha and width. NO GREEN — that is the app's live-and-
 // actionable colour and nothing here is either yet.
+// ── LAND, AND WHY IT IS A SEPARATE FILE ──────────────────────────────────────
+//
+// Everything used to be an outline on black, which reads as a wire diagram
+// rather than as a map: there was no way to tell sea from land except by knowing
+// the shapes already.
+//
+// land-110m IS COASTLINE WITH NO INTERNAL BORDERS — one feature, 5,123 points,
+// 53.9KB. Filling the 177 COUNTRY shapes instead would have stacked 177
+// translucent surfaces with a seam on every shared border, and any alpha below 1
+// would have doubled along every one of them. One closed surface has no seams to
+// have.
+//
+// THE OCEAN IS NOT PAINTED. It is the page: this component sits on
+// app/search.tsx's own #050505 root, so the sea is simply what is already there
+// and the fill below is the only colour the map adds.
+//
+// #121212 IS THIRTEEN LEVELS ABOVE THE PAGE, a contrast ratio of 1.088:1. The
+// first attempt was #0c0c0c at 1.042:1, which is below the threshold of
+// visibility on anything but an OLED panel in a dark room — a separation that
+// only some viewers can see is not a separation. This is still deliberately
+// faint: it is a SEPARATION rather than a colour, and the brief was that this
+// must still read as Terminal. No blue, no green, no map palette; land is the
+// same neutral as everything else, lifted just enough to become a surface.
+const LAND_FILL = '#121212';
+
 const COUNTRY_STROKE = 'rgba(255,255,255,0.18)';
 const COUNTRY_WIDTH = 1;
 const STATE_STROKE = 'rgba(255,255,255,0.07)';
 const STATE_WIDTH = 0.75;
-const COUNTRY_LABEL_INK = 'rgba(226,226,226,0.5)';
-const COUNTRY_LABEL_FS = 11;
-const STATE_LABEL_INK = 'rgba(226,226,226,0.3)';
-const STATE_LABEL_FS = 8.5;
-// Inter is proportional, so this is an estimate and is used for one decision
-// only: whether a state is wide enough to hold its own name.
-const LABEL_ADV_EM = 0.52;
+
+// ── WHEN THE STATES APPEAR ───────────────────────────────────────────────────
+//
+// THE STATED REASON DOES NOT HOLD, and the measurement is worth keeping rather
+// than quietly substituting another one. State outlines do NOT stop being
+// legible anywhere in this camera's range: the median state's smaller dimension
+// is 37px at 5,000km, 62px at 3,000km and 187px at 1,000km, and even the
+// smallest decile is 11px at the widest camera. On size alone there is no
+// threshold to find.
+//
+// THE REASON THAT DOES HOLD IS COVERAGE. This file has states for NINE
+// countries. At 5,000km the frame holds 72 of them and six have any internal
+// detail at all, so the layer draws provinces across India, China and Russia and
+// leaves everything between them blank — which reads as data missing rather than
+// as a layer. It is only coherent once the frame is mostly a country that HAS
+// states, and that is what the threshold is for.
+//
+// AND IT IS WHAT PAID FOR THE MARGIN ABOVE. States are 80% of the build: with
+// them gone the widest camera went from 22.5ms to 5.9ms, which is what let
+// CULL_MARGIN go from 0.25 to 1.0 and still come in under budget.
+//
+// A BAND RATHER THAN A LINE, so the layer arrives rather than appearing.
+const STATES_FULL_KM = 1800;
+const STATES_GONE_KM = 2200;
+
+// ── THE TWO CLASSES OF NAME ──────────────────────────────────────────────────
+//
+// THEY WERE TOO ALIKE: 11 and 8.5, one regular weight, two alphas a fifth apart.
+// At a glance that is one list of names in two sizes rather than two kinds of
+// thing.
+//
+// A COUNTRY IS THE SUBJECT. Semibold, 13, and close to full ink — it should be
+// the first thing read on the map and the last thing to go.
+//
+// A STATE IS AN ANNOTATION ON ONE. Regular, 8, a third of the ink, UPPERCASE
+// with a point and a fifth of tracking. The case change is what does most of the
+// work: it separates the two classes by SHAPE rather than by degree, so a state
+// name never reads as a small country name — and tracking is what stops small
+// caps closing up into a block. This is the same device app/index.tsx uses for
+// its section headings, at the same 1-ish tracking.
+//
+// INTER FOR BOTH. These are place names, not machine data; nothing here is a
+// code, a clock or a registration.
+const COUNTRY_LABEL_FAMILY = SANS_SEMI;
+const COUNTRY_LABEL_FS = 13;
+const COUNTRY_LABEL_INK = 'rgba(226,226,226,0.72)';
+const STATE_LABEL_FAMILY = SANS;
+const STATE_LABEL_FS = 8;
+const STATE_LABEL_INK = 'rgba(226,226,226,0.34)';
+const STATE_LABEL_LS = 1.2;
+// UPPERCASE INTER, so caps rather than the 0.52 a mixed-case average gives.
+// Proportional, so this is an estimate, and it is used for one decision only:
+// whether a state is wide enough to hold its own name. The tracking is added per
+// character because it is paid per character.
+const LABEL_ADV_CAPS = 0.6;
 
 // ── MERCATOR, BY HAND ────────────────────────────────────────────────────────
 //
@@ -150,6 +237,10 @@ const tReq1 = performance.now();
 const STATES_TOPO: any = require('../assets/map/states-50m.json');
 const tReqStates = performance.now() - tReq1;
 
+const tReq2 = performance.now();
+const LAND_TOPO: any = require('world-atlas/land-110m.json');
+const tReqLand = performance.now() - tReq2;
+
 // THE UNIT MERCATOR PLANE, AND IT IS WHAT MAKES THE LABELS FREE.
 //
 // The camera's projection is an AFFINE map of this one: with the same raw
@@ -168,16 +259,22 @@ const tReqStates = performance.now() - tReq1;
 const UNIT = geoMercator().scale(1).translate([0, 0]);
 const UNIT_PATH = geoPath(UNIT);
 
+// THE GEOGRAPHIC BBOX, AND IT IS ALL THE VISIBILITY FILTER READS. Split out
+// because the land layer carries nothing else: a landmass has no name and takes
+// no label, so it has no use for the centroid or the width below.
+type Box = { w: number; s: number; e: number; n: number; wraps: boolean };
+
 // A FEATURE PLUS EVERYTHING ABOUT IT THAT DOES NOT DEPEND ON THE CAMERA.
 // geoBounds and the two unit-plane measurements all walk every coordinate, so
 // all three are paid once here rather than per camera.
-type Cell = {
+type Cell = Box & {
   f: any; name: string;
-  // Geographic bbox, for the visibility filter.
-  w: number; s: number; e: number; n: number; wraps: boolean;
   // Unit-mercator centroid, and the unit-mercator width of the bbox.
   mcx: number; mcy: number; mbw: number;
 };
+
+// A LANDMASS. The fill is opaque and unlabelled, so the bbox is the whole of it.
+type LandCell = Box & { f: any };
 
 function prepare(topo: any, objectName: string): Cell[] {
   const fc: any = feature(topo, topo.objects[objectName]);
@@ -201,22 +298,64 @@ function prepare(topo: any, objectName: string): Cell[] {
   return out;
 }
 
+// ONE FEATURE PER LANDMASS, SO THE LAND CAN BE CULLED LIKE EVERYTHING ELSE.
+//
+// land-110m ships as ONE feature whose geometry is a MultiPolygon of every
+// landmass on earth, and one feature has one bbox: the whole world. Nothing
+// could ever be rejected, so every camera change projected all 125 landmasses
+// and let d3's clip throw away the ones off screen — exactly the bug the country
+// layer had before its bbox filter, surviving here only because this layer
+// arrived later and inherited none of the fix.
+//
+// SPLITTING IT CHANGES NO PIXEL. The landmasses are separated by ocean and do
+// not overlap, so filling them as 125 paths paints precisely what filling them
+// as one path painted. The fill is opaque, so there is no alpha to double even
+// if two did touch. What changes is only how many are handed to the projection.
+function prepareLand(topo: any, objectName: string): LandCell[] {
+  const fc: any = feature(topo, topo.objects[objectName]);
+  const out: LandCell[] = [];
+  for (const f of fc.features) {
+    const polys = f.geometry.type === 'MultiPolygon'
+      ? f.geometry.coordinates
+      : [f.geometry.coordinates];
+    for (const coordinates of polys) {
+      const g: any = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates } };
+      const b = geoBounds(g);
+      out.push({
+        f: g,
+        w: b[0][0], s: b[0][1], e: b[1][0], n: b[1][1],
+        wraps: b[0][0] > b[1][0],
+      });
+    }
+  }
+  return out;
+}
+
 const tPrep0 = performance.now();
 const COUNTRY_CELLS = prepare(COUNTRIES_TOPO, 'countries');
 const STATE_CELLS = prepare(STATES_TOPO, 'states');
+const LAND_CELLS = prepareLand(LAND_TOPO, 'land');
 const tPrep = performance.now() - tPrep0;
 
 console.log(
   `[MAP] decode countries(${COUNTRY_RES}) ${tReqCountries.toFixed(1)}ms`
-  + ` states ${tReqStates.toFixed(1)}ms`
+  + ` states ${tReqStates.toFixed(1)}ms land ${tReqLand.toFixed(1)}ms`
   + ` | feature+geoBounds ${tPrep.toFixed(1)}ms`
-  + ` | ${COUNTRY_CELLS.length} countries, ${STATE_CELLS.length} states`,
+  + ` | ${COUNTRY_CELLS.length} countries, ${STATE_CELLS.length} states`
+  + `, ${LAND_CELLS.length} landmasses`,
 );
 
+type Label = {
+  x: number; y: number; text: string;
+  fs: number; ink: string; family: string; ls: number; op: number;
+};
+
 type Built = {
+  land: string[];
   countries: string[];
   states: string[];
-  labels: { x: number; y: number; name: string; fs: number; ink: string }[];
+  stateOpacity: number;
+  labels: Label[];
   stats: string;
 };
 
@@ -262,6 +401,14 @@ export default function WorldMap() {
   // result arriving — returns this same object untouched.
   const built = useMemo<Built>(() => {
     const t0 = performance.now();
+    // THE SPAN THIS CAMERA ACTUALLY SHOWS, at its own latitude, and the states'
+    // opacity from it. At 0 they are not built at all, which is where the widest
+    // camera's saving comes from — the gate is a cost decision as much as a
+    // drawing one.
+    const spanKm = (width * EARTH_R_KM * Math.cos(camera.lat * DEG)) / camera.k;
+    const stateOpacity = spanKm <= STATES_FULL_KM ? 1
+      : spanKm >= STATES_GONE_KM ? 0
+        : (STATES_GONE_KM - spanKm) / (STATES_GONE_KM - STATES_FULL_KM);
     const projection = geoMercator()
       .center([camera.lon, camera.lat])
       .scale(camera.k)
@@ -279,8 +426,21 @@ export default function WorldMap() {
     const s = invMercY(myC - halfMy * (1 + CULL_MARGIN));
     const n = invMercY(myC + halfMy * (1 + CULL_MARGIN));
 
-    const visible = (c: Cell) =>
+    const visible = (c: Box) =>
       c.n >= s && c.s <= n && (c.wraps || (c.e >= w && c.w <= e));
+
+    // THE FILL FIRST, and only the landmasses that can be seen — see the note at
+    // prepareLand for why this is one path per landmass rather than one path.
+    const tLand0 = performance.now();
+    const land: string[] = [];
+    let landKept = 0;
+    for (const c of LAND_CELLS) {
+      if (!visible(c)) continue;
+      landKept++;
+      const d = path(c.f);
+      if (d) land.push(d);
+    }
+    const tLand = performance.now() - tLand0;
 
     const countries: string[] = [];
     let countryKept = 0;
@@ -293,11 +453,13 @@ export default function WorldMap() {
 
     const states: string[] = [];
     let stateKept = 0;
-    for (const c of STATE_CELLS) {
-      if (!visible(c)) continue;
-      stateKept++;
-      const d = path(c.f);
-      if (d) states.push(d);
+    if (stateOpacity > 0) {
+      for (const c of STATE_CELLS) {
+        if (!visible(c)) continue;
+        stateKept++;
+        const d = path(c.f);
+        if (d) states.push(d);
+      }
     }
 
     // ── LABELS ───────────────────────────────────────────────────────────────
@@ -322,7 +484,7 @@ export default function WorldMap() {
     // ONE POINT PROJECTED PER FEATURE, and no geometry walked. `origin` is the
     // camera centre in the unit plane, and everything below is the affine
     // identity from the note at UNIT: screen = k * (unit - origin) + centre.
-    const labels: Built['labels'] = [];
+    const labels: Label[] = [];
     const onScreen = (x: number, y: number) => x >= 0 && x <= width && y >= 0 && y <= height;
     const origin = UNIT([camera.lon, camera.lat]) as [number, number];
     const toScreen = (mcx: number, mcy: number): [number, number] => [
@@ -333,25 +495,42 @@ export default function WorldMap() {
       if (!visible(c)) continue;
       const [x, y] = toScreen(c.mcx, c.mcy);
       if (!Number.isFinite(x) || !onScreen(x, y)) continue;
-      labels.push({ x, y, name: c.name, fs: COUNTRY_LABEL_FS, ink: COUNTRY_LABEL_INK });
+      labels.push({
+        x, y, text: c.name,
+        fs: COUNTRY_LABEL_FS, ink: COUNTRY_LABEL_INK,
+        family: COUNTRY_LABEL_FAMILY, ls: 0, op: 1,
+      });
     }
-    for (const c of STATE_CELLS) {
-      if (!visible(c)) continue;
-      const [x, y] = toScreen(c.mcx, c.mcy);
-      if (!Number.isFinite(x) || !onScreen(x, y)) continue;
-      // The bbox's projected width is k times its unit-plane width, by the same
-      // identity. No second walk of the geometry.
-      if (camera.k * c.mbw < c.name.length * STATE_LABEL_FS * LABEL_ADV_EM) continue;
-      labels.push({ x, y, name: c.name, fs: STATE_LABEL_FS, ink: STATE_LABEL_INK });
+    if (stateOpacity > 0) {
+      for (const c of STATE_CELLS) {
+        if (!visible(c)) continue;
+        const [x, y] = toScreen(c.mcx, c.mcy);
+        if (!Number.isFinite(x) || !onScreen(x, y)) continue;
+        // The bbox's projected width is k times its unit-plane width, by the
+        // same identity. No second walk of the geometry. The estimate is of the
+        // UPPERCASE name plus its tracking, because that is what will be drawn.
+        const est = c.name.length * (STATE_LABEL_FS * LABEL_ADV_CAPS + STATE_LABEL_LS);
+        if (camera.k * c.mbw < est) continue;
+        labels.push({
+          x, y, text: c.name.toUpperCase(),
+          fs: STATE_LABEL_FS, ink: STATE_LABEL_INK,
+          family: STATE_LABEL_FAMILY, ls: STATE_LABEL_LS, op: stateOpacity,
+        });
+      }
     }
 
     const ms = performance.now() - t0;
-    const span = (width * EARTH_R_KM * Math.cos(camera.lat * DEG)) / camera.k;
+    const span = spanKm;
     return {
+      land,
       countries,
       states,
+      stateOpacity,
       labels,
-      stats: `[MAP] build ${ms.toFixed(1)}ms | span ${span.toFixed(0)}km`
+      stats: `[MAP] build ${ms.toFixed(1)}ms (land ${tLand.toFixed(1)}ms)`
+        + ` | span ${span.toFixed(0)}km`
+        + ` | stateOpacity ${stateOpacity.toFixed(2)}`
+        + ` | land ${landKept}/${LAND_CELLS.length} kept, ${land.length} drawn`
         + ` | countries ${countryKept}/${COUNTRY_CELLS.length} kept, ${countries.length} drawn`
         + ` | states ${stateKept}/${STATE_CELLS.length} kept, ${states.length} drawn`
         + ` | labels ${labels.length}`,
@@ -456,11 +635,25 @@ export default function WorldMap() {
       <View style={StyleSheet.absoluteFill}>
         <Reanimated.View style={[StyleSheet.absoluteFill, mapStyle]}>
           <Svg width={width} height={height}>
-            {/* STATES FIRST, so the country lines paint over them where the two
+            {/* LAND FIRST, AND IT IS THE ONLY FILL ON THE MAP. Everything below
+                is a stroke drawn over it. The ocean is not painted at all — it
+                is app/search.tsx's own root showing through, which is why the
+                two cannot drift apart. */}
+            {built.land.map((d, i) => (
+              <Path key={`L${i}`} d={d} fill={LAND_FILL} stroke="none" />
+            ))}
+            {/* STATES NEXT, so the country lines paint over them where the two
                 coincide: a national border is also a state border, and the
                 heavier line should win that pixel. */}
             {built.states.map((d, i) => (
-              <Path key={`s${i}`} d={d} fill="none" stroke={STATE_STROKE} strokeWidth={STATE_WIDTH} />
+              <Path
+                key={`s${i}`}
+                d={d}
+                fill="none"
+                stroke={STATE_STROKE}
+                strokeWidth={STATE_WIDTH}
+                strokeOpacity={built.stateOpacity}
+              />
             ))}
             {built.countries.map((d, i) => (
               <Path key={`c${i}`} d={d} fill="none" stroke={COUNTRY_STROKE} strokeWidth={COUNTRY_WIDTH} />
@@ -472,10 +665,12 @@ export default function WorldMap() {
                 y={l.y}
                 fill={l.ink}
                 fontSize={l.fs}
-                fontFamily={SANS}
+                fontFamily={l.family}
+                letterSpacing={l.ls}
+                opacity={l.op}
                 textAnchor="middle"
               >
-                {l.name}
+                {l.text}
               </SvgText>
             ))}
           </Svg>
