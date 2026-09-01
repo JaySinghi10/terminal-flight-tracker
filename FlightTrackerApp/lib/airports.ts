@@ -1385,10 +1385,38 @@ let HAYSTACK: { a: Airport; s: string }[] = [];
 // that can answer "is this a place?" and one that has to guess.
 let PLACES: Set<string> | null = null;
 
+// ── CITY_AIRPORTS, INVERTED ─────────────────────────────────────────────────
+//
+// CODE -> THE GROUP THAT CONTAINS IT. CITY_AIRPORTS is keyed on the METRO name,
+// and the only way back into it was an airport's own `city` field — which agrees
+// with the metro for JFK and LGA ("New York") and does not for EWR ("Newark").
+// Fourteen of the eighty-seven curated codes are in that position: Newark,
+// Luton, Beauvais, Bergamo, Oakland, San Jose, Campinas and seven more are all
+// genuinely in their own town, so tapping one found no group and offered no
+// alternatives while its siblings offered it.
+//
+// IATA IS THE ONLY KEY THAT IS RELIABLY REVERSIBLE. A city string is a name that
+// may or may not match; a code is the identity the group was written in terms
+// of. Inverting once at build time turns the failing direction into a lookup.
+//
+// THE DATA IS NOT TOUCHED. Newark is in Newark and the panel still says so; what
+// was wrong was the grouping, not the row.
+let GROUP_OF: Map<string, string[]> | null = null;
+
 function build() {
   if (INDEX !== null) return;
   INDEX = new Map();
   PLACES = new Set(Object.keys(CITY_AIRPORTS));
+  // FIRST KEY WINS, and it does not matter which. Several keys are aliases for
+  // one group — "new york", "nyc" and "new york city" all list JFK, EWR, LGA —
+  // and their contents are identical, so any of them is the same answer.
+  GROUP_OF = new Map();
+  for (const key of Object.keys(CITY_AIRPORTS)) {
+    const codes = CITY_AIRPORTS[key];
+    for (const code of codes) {
+      if (!GROUP_OF.has(code)) GROUP_OF.set(code, codes);
+    }
+  }
   HAYSTACK = AIRPORT_ROWS.map(r => {
     const a: Airport = { iata: r[0], name: r[1], city: r[2], country: r[3], tz: r[4], lat: r[5], lon: r[6] };
     INDEX!.set(a.iata, a);
@@ -1467,18 +1495,40 @@ export function allAirports(): Airport[] {
 // would expect: "new york" is JFK, EWR, LGA rather than whatever order the rows
 // happen to sit in. Everything else falls back to every row whose city matches,
 // which is the common case and is usually exactly one.
-export function cityAirports(city: string): Airport[] {
+// IT TAKES THE ROW, NOT THE NAME. The city string was the wrong key — it is a
+// name that may or may not match the metro the group is filed under, and for
+// fourteen airports it does not. The row carries the IATA code, which is what
+// CITY_AIRPORTS is actually written in terms of. Every caller already has the
+// row; none of them had only the name.
+//
+// THREE WAYS IN, TRIED IN ORDER, AND EVERY ONE OF THEM RETURNS A LIST THAT
+// CONTAINS THE AIRPORT ITSELF. That last property is not incidental: the panel
+// marks the current airport green within this list, so a list that omitted it
+// would render a set of alternatives with nothing selected.
+//
+//   1  the reverse index, by code      EWR -> JFK, EWR, LGA
+//   2  the curated list, by city name  covers a row whose city IS a metro key
+//      but which is not itself curated — and only when that list includes it,
+//      or the airport would be missing from its own panel
+//   3  every row with the same city    the common case: one airport, one city
+export function cityAirports(airport: Airport): Airport[] {
   build();
-  const q = normalizeTerm(city);
-  const curated = CITY_AIRPORTS[q];
-  if (curated !== undefined) {
+  const rows = (codes: string[]): Airport[] => {
     const out: Airport[] = [];
-    for (const code of curated) {
+    for (const code of codes) {
       const a = INDEX!.get(code);
       if (a !== undefined) out.push(a);
     }
     return out;
-  }
+  };
+
+  const group = GROUP_OF!.get(airport.iata);
+  if (group !== undefined) return rows(group);
+
+  const q = normalizeTerm(airport.city);
+  const curated = CITY_AIRPORTS[q];
+  if (curated !== undefined && curated.includes(airport.iata)) return rows(curated);
+
   return HAYSTACK.filter(h => normalizeTerm(h.a.city) === q).map(h => h.a);
 }
 

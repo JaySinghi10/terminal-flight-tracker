@@ -2037,7 +2037,7 @@ export default function Search() {
   // which fed the sequencer's dependency array, which therefore re-ran on every
   // render and restarted the animation it was running. See the note there.
   const panelSiblings = useMemo(
-    () => (panelAirport === null ? [] : cityAirports(panelAirport.city)),
+    () => (panelAirport === null ? [] : cityAirports(panelAirport)),
     [panelAirport],
   );
 
@@ -2083,10 +2083,18 @@ export default function Search() {
 
   const panelSteps = useMemo<PanelStep[]>(() => {
     if (panelAirport === null) return [];
+    // THE COUNTRY IS STILL STEP 0, but it is no longer part of the machine block
+    // — the render puts it ABOVE the rule, with the city, because it is the rest
+    // of the place name rather than a fact about the airport. Its position in
+    // this list is only its position in the TYPING ORDER: city, country, then
+    // the data, then the codes.
     const out: PanelStep[] = [
       { kind: 'text', key: 'country', text: panelAirport.country, dim: false },
-      { kind: 'text', key: 'iata', text: panelAirport.iata, dim: false },
     ];
+    // THE STANDALONE IATA LINE IS GONE. It said the same three letters as the
+    // green code in the tappable list below, and said them without being
+    // tappable — two readouts of one fact, one of which was dead. The list keeps
+    // its codes; this row was the duplicate.
     if (panelClock !== '') {
       out.push({ kind: 'text', key: 'clock', text: `${panelClock} local`, dim: false });
     }
@@ -2119,6 +2127,17 @@ export default function Search() {
   // one motion rather than two racing each other.
   const [stepAt, setStepAt] = useState(0);
   const [stepTyped, setStepTyped] = useState(0);
+
+  // HOW MUCH OF THE COUNTRY HAS LANDED. Derived here rather than inline in the
+  // JSX because the render needs it twice — once to decide whether the line
+  // exists at all, and once to draw it — and an empty string must not become an
+  // empty <Text>, which would reserve a line's height and make the panel jump
+  // when the first character arrived.
+  const countryShown = useMemo(() => {
+    const first = panelSteps[0];
+    if (first === undefined || first.kind !== 'text') return '';
+    return stepAt > 0 ? first.text : first.text.slice(0, stepTyped);
+  }, [panelSteps, stepAt, stepTyped]);
 
   // ── THE STEPS REACHED THROUGH A REF, NOT A DEPENDENCY ─────────────────────
   //
@@ -3857,32 +3876,42 @@ export default function Search() {
             {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
           </Text>
 
-          {/* THE BODY, ONE STEP AT A TIME. Steps before stepAt are finished and
-              render whole; the step AT stepAt is mid-arrival and renders sliced;
-              anything after has not started and renders nothing at all — not an
-              empty line, which would reserve height and make the panel jump as
-              each one filled.
+          {/* THE COUNTRY, ABOVE THE RULE AND WITH THE CITY. It is the rest of
+              the place name — "NEW DELHI" and "India" are one answer to where
+              this is — and grouping it with the coordinates and the clock read
+              as a clump of unrelated facts. The rule now separates the NAME from
+              the DATA rather than the heading from everything else.
 
-              THE RULE APPEARS WITH THE FIRST STEP, so it is the seam the body
-              prints below rather than a mark floating under a name. */}
-          {typingDone && <View style={ap.rule} />}
+              STILL TYPED SECOND, immediately after the city: its position in
+              panelSteps is its position in the sequence, and only the render
+              decides which side of the rule it lands on. */}
+          {countryShown !== '' && (
+            <Text style={ap.country} numberOfLines={1}>{countryShown}</Text>
+          )}
+
+          {/* THE RULE WAITS FOR THE COUNTRY TO LAND, not for the city. Drawn any
+              earlier it would sit between a name and the second half of that
+              name. */}
+          {stepAt >= 1 && <View style={ap.rule} />}
+
+          {/* THE MACHINE BLOCK, ONE STEP AT A TIME. Steps before stepAt are
+              finished and render whole; the step AT stepAt is mid-arrival and
+              renders sliced; anything after has not started and renders nothing
+              at all — not an empty line, which would reserve height and make the
+              panel jump as each one filled. */}
           {panelSteps.map((s, i) => {
-            if (i > stepAt) return null;
-            const done = i < stepAt;
+            // 0 is the country, drawn above the rule.
+            if (i === 0 || i > stepAt) return null;
             if (s.kind === 'code') {
               // A CODE ARRIVES WHOLE. Rendered inside the row below rather than
               // here, so the codes wrap as a group; this branch only decides
               // whether it has arrived yet.
               return null;
             }
-            const shown = done ? s.text : s.text.slice(0, stepTyped);
+            const shown = i < stepAt ? s.text : s.text.slice(0, stepTyped);
             if (shown === '') return null;
             return (
-              <Text
-                key={s.key}
-                style={s.key === 'country' ? ap.country : (s.dim ? ap.monoDim : ap.mono)}
-                numberOfLines={s.key === 'country' ? 1 : undefined}
-              >
+              <Text key={s.key} style={s.dim ? ap.monoDim : ap.mono}>
                 {shown}
               </Text>
             );

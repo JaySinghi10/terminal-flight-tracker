@@ -89,6 +89,31 @@ const OFM_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
 // makes every label silently vanish rather than fall back.
 const FONT = ['Noto Sans Regular'];
 
+// ── WHAT A LABEL SAYS, AND IN WHICH LANGUAGE ────────────────────────────────
+//
+// name:en FIRST. OpenMapTiles carries the local name in `name` and an English
+// one in `name:en` where it exists, and the map was reading neither — it asked
+// for `name:latin`, which is the local name transliterated into Latin script.
+// That is why Spain read Espana and Germany Deutschland: both were already Latin
+// script, so the transliteration returned them unchanged. The map was in the
+// local language and looked like a rendering bug.
+//
+// THREE STEPS, NOT TWO, and the middle one earns its place. Falling straight
+// from name:en to name would put Cyrillic, Greek, Han or Devanagari on a map
+// whose only fontstack is Noto Sans Regular — glyphs it cannot draw. name:latin
+// is the transliteration, so an unnamed-in-English place still renders as
+// letters this font has. `name` is the last resort and is right there: better a
+// local name than an empty label.
+//
+// ONE EXPRESSION FOR ALL THREE LAYERS. Countries, cities and road names had the
+// same spelling three times, which is three places for them to drift apart.
+const LABEL_NAME = [
+  'coalesce',
+  ['get', 'name:en'],
+  ['get', 'name:latin'],
+  ['get', 'name'],
+];
+
 // ── WHEN THE AIRPORTS APPEAR ────────────────────────────────────────────────
 //
 // z4.5 TO z6, AND THE NUMBER IS CARRIED OVER RATHER THAN GUESSED. The SVG map
@@ -236,20 +261,34 @@ const AIRPORT_FLY_MS = 3000;
 
 // ── WHEN THE PULL-BACK IS EARNED ────────────────────────────────────────────
 //
-// 1,500km, AND THE NUMBER COMES FROM WHAT THE MOTION IS FOR. Rising to the whole
+// 3,000km, AND THE NUMBER COMES FROM WHAT THE MOTION IS FOR. Rising to the whole
 // globe and turning it says "the world is bigger than this screen and we are
-// crossing it". Delhi to Mumbai is 1,150km — a domestic hop where that sentence
-// is false, and the animation reads as three seconds of theatre for a move you
-// could have made by dragging. Delhi to Dubai is 2,200km and genuinely is a
-// crossing.
+// crossing it". That sentence has to be TRUE, or the animation is three seconds
+// of theatre for a move the user could have made by dragging.
 //
-// 1,500 SITS IN THE GAP between those two cases rather than on top of either, so
-// neither is decided by a rounding error. Below it the camera simply goes, at
-// half the duration: a short move should not take as long as a long one.
+// WHAT 3,000 PUTS ON EACH SIDE. Delhi to Mumbai is 1,150km, Delhi to Dubai
+// 2,200km, Delhi to Bangkok 2,900km — a region, its neighbours, and the near
+// abroad, all of which the camera now simply travels to. Delhi to Singapore is
+// 3,900km and Delhi to London 6,700km, which are crossings and get the globe.
+// The line falls in the gap between Bangkok and Singapore rather than on top of
+// either, so no realistic pair is decided by a rounding error.
 //
-// THE ROUTE ARC IS NOT SUBJECT TO THIS. Travelling the great circle IS the
-// motion there, whatever the distance — see flyRoute, which is untouched.
-const AIRPORT_PULLBACK_KM = 1500;
+// IT WAS 1,500 AND THAT WAS TOO EAGER: it put Dubai and Bangkok on the far side
+// of a threshold they do not belong on, and the pull-back fired for moves that
+// read as regional.
+//
+// NAMED FOR ITS ONE CALLER. It was AIRPORT_PULLBACK_KM, from a time when
+// flyAirport shared the gate; flyAirport stopped pulling back at any distance
+// and the name kept pointing at the motion that no longer reads it. Two other
+// motions look similar and are not gated by this:
+//
+//   flyAirport  never pulls back at any distance, because a user who tapped a
+//               dot has already been shown where it is.
+//   flyRoute    pulls back CONTINUOUSLY rather than at a threshold — its apex is
+//               ROUTE_END_ZOOM minus the route's angular fraction of a
+//               half-turn, so a long route rises further than a short one with
+//               no step anywhere. There is no gate in it to move.
+const HOME_PULLBACK_KM = 3000;
 const AIRPORT_NEAR_MS = 1400;
 // The ceiling on a direct airport flight. Delhi to New York is 11,700km, which
 // would otherwise run to 2.6s; this holds the longest move to roughly what the
@@ -431,7 +470,7 @@ const STYLE = {
       'source-layer': 'transportation_name',
       minzoom: ROAD_LABEL_MIN_ZOOM,
       layout: {
-        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-field': LABEL_NAME,
         'text-font': FONT,
         'text-size': ['interpolate', ['linear'], ['zoom'], 14, 9, 18, 11],
         'symbol-placement': 'line',
@@ -454,7 +493,7 @@ const STYLE = {
       'source-layer': 'place',
       filter: ['==', ['get', 'class'], 'country'],
       layout: {
-        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-field': LABEL_NAME,
         'text-font': FONT,
         'text-size': ['interpolate', ['linear'], ['zoom'], 1, 10, 6, 13],
         'text-max-width': 7,
@@ -474,7 +513,7 @@ const STYLE = {
       minzoom: 4,
       filter: ['in', ['get', 'class'], ['literal', ['city', 'town']]],
       layout: {
-        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-field': LABEL_NAME,
         'text-font': FONT,
         'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 12],
         'text-max-width': 8,
@@ -1066,7 +1105,7 @@ function start() {
     // arcs out on its own.
     var c = map.getCenter();
     var km = kmBetween(c.lng, c.lat, h.lon, h.lat);
-    var far = km > ${AIRPORT_PULLBACK_KM};
+    var far = km > ${HOME_PULLBACK_KM};
     post({ type: 'flyHome', km: Math.round(km), far: far });
     var opts = { center: [h.lon, h.lat], zoom: z, duration: far ? dur : ${AIRPORT_NEAR_MS} };
     if (far) opts.minZoom = ${GLOBE_APEX_ZOOM};
