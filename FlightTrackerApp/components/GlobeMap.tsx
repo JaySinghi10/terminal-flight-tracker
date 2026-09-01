@@ -318,6 +318,41 @@ const PIN_RING = '#050505';
 // globe, and MapLibre clamps the apex to be no closer than the start or end
 // zoom, so a short hop does not perversely fly outward.
 const AIRPORT_ZOOM = 9;
+
+// ── WHERE A TAPPED CITY LANDS ────────────────────────────────────────────────
+//
+// 7, WHICH IS TWO STEPS WIDER THAN AN AIRPORT'S 9, and the two steps are the
+// difference between looking AT a place and standing on it. An airport is a
+// point you are going to; a city is a place you are considering, and a camera
+// that fills the screen with one suburb has answered a question nobody asked.
+//
+// IN KILOMETRES, WHICH IS THE ONLY HONEST UNIT HERE. MapLibre's zoom is
+// 512-pixel tiles, so the ground each screen pixel covers is
+// 40075017 * cos(lat) / (512 * 2^zoom) metres. On a 390pt-wide phone that makes
+// z7 about:
+//
+//   238 km across at the equator
+//   224 km at 20 degrees   (Mumbai, Chennai, Hanoi)
+//   169 km at 45 degrees   (Milan, Portland, Sapporo)
+//   148 km at 51.5 degrees (London)
+//
+// WHICH IS THE FIGURE THAT MATTERS: at 150-240 km the tapped city sits in the
+// middle with its neighbours around it. London brings Reading, Luton and
+// Southend; Mumbai brings Pune and Nashik. z8 would halve that and lose them,
+// z6 would double it and the city stops being the subject.
+//
+// LATITUDE MOVES IT AND NOTHING CAN BE DONE ABOUT THAT. Mercator's scale is
+// cos(lat), so a northern city gets a tighter view at the same zoom. Correcting
+// for it would mean a different zoom per city and a camera that never settles
+// at a consistent height, which is a worse kind of inconsistency than the one
+// it fixes.
+const CITY_ZOOM = 7;
+
+// 24, TWO MORE THAN THE AIRPORT DOT'S 22, and the two points are because the
+// target is a WORD rather than a dot. A label is anchored at its centre and its
+// glyphs run out either side, so a finger aiming at a name lands off-centre far
+// more often than one aiming at a 4px circle. See the hit layer.
+const CITY_HIT_R = 24;
 const GLOBE_APEX_ZOOM = 0;
 const AIRPORT_FLY_MS = 3000;
 
@@ -610,6 +645,46 @@ const STYLE = {
         'text-color': LABEL_CITY,
         'text-halo-color': LABEL_HALO,
         'text-halo-width': 1,
+      },
+    },
+    // ── THE CITY LABELS' TAP TARGET, INVISIBLE AND A CONSTANT SIZE ───────────
+    //
+    // THE AIRPORT DOT'S TRICK, APPLIED TO A WORD. circle-radius is already in
+    // SCREEN pixels, so a plain number is a target that stays the same size at
+    // every zoom -- which is the whole point, because a city label at z4 is 9pt
+    // of text and would otherwise be unhittable at exactly the zooms this
+    // feature exists for.
+    //
+    // A CIRCLE LAYER ON A VECTOR SOURCE, which is the part worth stating: the
+    // place layer's features are POINTS, so a circle sits exactly where the
+    // label is anchored. Nothing is duplicated and nothing has to be kept in
+    // step -- the same source-layer, the same filter and the same minzoom as
+    // the labels, so a label that is drawn is a label that can be tapped and
+    // one that is not, cannot.
+    //
+    // circle-opacity 0 STILL QUERIES, and this was read rather than assumed
+    // when the airport target was built: maplibre-gl's CircleStyleLayer
+    // queryIntersectsFeature never looks at circle-opacity, and isHidden checks
+    // only minzoom, maxzoom and visibility. An invisible circle is a live hit
+    // target.
+    //
+    // IT IS THE ANCHOR AND NOT THE TEXT BOX, and that is a real limitation
+    // rather than an oversight. MapLibre exposes no query against a symbol's
+    // laid-out glyph box, so the target is a disc around the label's centre:
+    // tapping the middle of a name always works, and tapping the first letter
+    // of a long one can miss. 24px covers a name of about ten characters at
+    // this size.
+    {
+      id: 'city-hit',
+      type: 'circle',
+      source: 'ofm',
+      'source-layer': 'place',
+      minzoom: 4,
+      filter: ['in', ['get', 'class'], ['literal', ['city', 'town']]],
+      paint: {
+        'circle-radius': CITY_HIT_R,
+        'circle-color': LABEL_CITY,
+        'circle-opacity': 0,
       },
     },
     // -- SAVED FLIGHTS, ONE LAYER AT TWO WEIGHTS -----------------------------
@@ -1189,18 +1264,30 @@ function start() {
   // an ocean should take longer than crossing a city, or the distance stops
   // being legible. Clamped so the shortest hop is not instant and the longest
   // does not outstay the pull-back it replaced.
-  function flyAirport(lon, lat) {
+  // ONE FLIGHT, TWO CALLERS, AND THE ONLY DIFFERENCE IS HOW HIGH IT STOPS. The
+  // duration rule -- near time plus a tenth of a millisecond per kilometre,
+  // capped -- is the same for both, because how long a journey should take is a
+  // fact about the distance and not about what is at the end of it. Spelling it
+  // twice is how a city would come to travel at a different speed from an
+  // airport for no reason anyone could name.
+  function flyPlace(lon, lat, zoom, what) {
     cancelCamera();
     var c = map.getCenter();
     var km = kmBetween(c.lng, c.lat, lon, lat);
     var dur = ${AIRPORT_NEAR_MS} + km * 0.1;
     if (dur > ${AIRPORT_FAR_MS}) dur = ${AIRPORT_FAR_MS};
-    post({ type: 'flyAirport', km: Math.round(km), ms: Math.round(dur) });
+    post({ type: 'flyPlace', what: what, km: Math.round(km), ms: Math.round(dur), zoom: zoom });
     // NO minZoom, EVER, AND THAT IS THE WHOLE MECHANISM. With it MapLibre
     // derives the flight curvature from the apex and arcs out to the globe;
     // without it the default curve keeps the camera low and simply travels.
-    map.flyTo({ center: [lon, lat], zoom: ${AIRPORT_ZOOM}, duration: dur });
+    // Both callers want the direct move: the user can already see where they
+    // tapped, so pulling back to the globe to show them would be showing them
+    // something they are looking at.
+    map.flyTo({ center: [lon, lat], zoom: zoom, duration: dur });
   }
+
+  function flyAirport(lon, lat) { flyPlace(lon, lat, ${AIRPORT_ZOOM}, 'airport'); }
+  function flyCity(lon, lat) { flyPlace(lon, lat, ${CITY_ZOOM}, 'city'); }
 
   // ── MOTION 2: ALONG THE GREAT CIRCLE ───────────────────────────────────────
   //
@@ -1283,32 +1370,84 @@ function start() {
   // touch point is chosen. That is the dot the user was aiming at, by
   // definition, and it is stable: the same tap always resolves to the same
   // airport.
-  map.on('click', function (e) {
-    var hits = map.queryRenderedFeatures(e.point, { layers: ['airport-hit'] });
-    if (!hits || hits.length === 0) {
-      post({ type: 'mapTap' });
-      return;
-    }
+  // NEAREST WINS, AND IT IS THE SAME RULE FOR BOTH KINDS OF TARGET.
+  //
+  // queryRenderedFeatures RETURNS EVERYTHING THE TOUCH OVERLAPS, sorted top
+  // down rather than by distance -- maplibre-gl's query ends in
+  // matching.sort(topDownFeatureComparator), so features[0] is whichever layer
+  // draws last, not whichever is closest. Taking it would mean that with two
+  // labels overlapping the finger, the one that happened to be drawn later
+  // wins. Measuring is the whole of the fix.
+  //
+  // SQUARED DISTANCE, never square-rooted, because only the ordering is used.
+  function nearestHit(point, hits) {
     var best = null;
     var bestD = Infinity;
     for (var i = 0; i < hits.length; i++) {
-      var c = hits[i].geometry.coordinates;
-      var p = map.project(c);
-      var dx = p.x - e.point.x, dy = p.y - e.point.y;
+      var p = map.project(hits[i].geometry.coordinates);
+      var dx = p.x - point.x, dy = p.y - point.y;
       var d = dx * dx + dy * dy;
       if (d < bestD) { bestD = d; best = hits[i]; }
     }
-    if (best === null) { post({ type: 'mapTap' }); return; }
-    // THE GRAB HANDLER HAS ALREADY CANCELLED whatever was running by the time
-    // this fires, so a tap during a flight redirects it rather than queueing.
-    var bc = best.geometry.coordinates;
-    flyAirport(bc[0], bc[1]);
-    post({
-      type: 'airport',
-      iata: best.properties.iata,
-      candidates: hits.length,
-      px: Math.round(Math.sqrt(bestD))
-    });
+    return best === null ? null : { f: best, px: Math.round(Math.sqrt(bestD)) };
+  }
+
+  // A CITY LABEL'S NAME, read the same way the label layer renders it, so what
+  // is sent is what was on screen. LABEL_NAME coalesces the same three fields.
+  function cityName(f) {
+    var pr = f.properties || {};
+    return String(pr['name:en'] || pr['name:latin'] || pr.name || '');
+  }
+
+  map.on('click', function (e) {
+    // AIRPORTS FIRST, AND THAT ORDER IS THE POINT. Both targets exist above
+    // z4.5 and they overlap constantly -- an airport dot sits a few pixels from
+    // the city label that names the place it serves. The airport is the more
+    // specific answer and the one this app is about, so it wins whenever it is
+    // hit at all; the city is what is left when nothing more precise was under
+    // the finger. Below z4.5 no airport target is drawn and the city is the only
+    // thing there is, which is exactly the zoom this feature is for.
+    var air = map.queryRenderedFeatures(e.point, { layers: ['airport-hit'] });
+    var hitA = (air && air.length > 0) ? nearestHit(e.point, air) : null;
+    if (hitA !== null) {
+      // THE GRAB HANDLER HAS ALREADY CANCELLED whatever was running by the time
+      // this fires, so a tap during a flight redirects it rather than queueing.
+      var bc = hitA.f.geometry.coordinates;
+      flyAirport(bc[0], bc[1]);
+      post({
+        type: 'airport',
+        iata: hitA.f.properties.iata,
+        candidates: air.length,
+        px: hitA.px
+      });
+      return;
+    }
+
+    var cit = map.queryRenderedFeatures(e.point, { layers: ['city-hit'] });
+    var hitC = (cit && cit.length > 0) ? nearestHit(e.point, cit) : null;
+    if (hitC !== null) {
+      var cc = hitC.f.geometry.coordinates;
+      // THE CAMERA MOVES HERE AND THE PANEL IS DECIDED THERE. The page knows
+      // where the city is; only React Native knows whether an airport answers
+      // to that name, because the dataset and its resolver are on that side.
+      // So the flight starts immediately and the message is a question.
+      flyCity(cc[0], cc[1]);
+      // THE COORDINATES GO TOO, and they are not decoration. A name alone
+      // cannot tell Cambridge in England from the Cambridge that lends its name
+      // to an aerodrome in Tasmania; where the label actually is, can. See
+      // handleCity.
+      post({
+        type: 'city',
+        name: cityName(hitC.f),
+        lon: cc[0],
+        lat: cc[1],
+        candidates: cit.length,
+        px: hitC.px
+      });
+      return;
+    }
+
+    post({ type: 'mapTap' });
   });
 
   // ── HOME ───────────────────────────────────────────────────────────────────
@@ -1829,6 +1968,10 @@ type GlobeMapProps = {
   // A DOT WAS TAPPED, and this is the airport it resolved to — the nearest to
   // the touch point, not merely one of the overlapping candidates.
   onAirport?: (iata: string) => void;
+  // A CITY LABEL WAS TAPPED, and the page has already flown there. The NAME is
+  // all that crosses, because deciding whether an airport answers to it needs
+  // the dataset's resolver, which lives on this side. See handleCity.
+  onCity?: (name: string, lon: number, lat: number) => void;
   // THE MAP WAS TAPPED AND NOTHING WAS THERE. Distinct from onAirport rather
   // than inferred from its absence, because "nothing was hit" is the event that
   // dismisses the panel and it has to be observable.
@@ -1836,7 +1979,7 @@ type GlobeMapProps = {
 };
 
 const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
-  function GlobeMap({ onReady, onAirport, onMapTap }, ref) {
+  function GlobeMap({ onReady, onAirport, onCity, onMapTap }, ref) {
     const webRef = useRef<WebView>(null);
 
     // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
@@ -1977,8 +2120,14 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
             console.log(`[MAP] dot tapped: ${m.iata} (nearest of ${m.candidates}, ${m.px}px from touch)`);
             onAirport?.(String(m.iata));
           }
+          if (m.type === 'city') {
+            console.log(`[MAP] city tapped: ${m.name} (nearest of ${m.candidates}, ${m.px}px from touch)`);
+            onCity?.(String(m.name), Number(m.lon), Number(m.lat));
+          }
           if (m.type === 'mapTap') onMapTap?.();
-          if (m.type === 'flyAirport') console.log(`[MAP] flyAirport ${m.km}km direct, ${m.ms}ms`);
+          if (m.type === 'flyPlace') {
+            console.log(`[MAP] fly to ${m.what}: ${m.km}km direct, ${m.ms}ms, zoom ${m.zoom}`);
+          }
           if (m.type === 'flyHome') {
             console.log(`[MAP] flyHome ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
           }

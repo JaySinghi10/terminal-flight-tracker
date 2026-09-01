@@ -1643,16 +1643,22 @@ export function resolveAirportName(term: string): { airport: Airport; options: A
 // NULL ONLY IF THE DATASET IS EMPTY, which it cannot be -- it is baked in. The
 // signature says null anyway so the caller cannot forget that "nearest" is
 // undefined over an empty set.
-export function nearestAirport(lon: number, lat: number): Airport | null {
+// GREAT-CIRCLE KILOMETRES. Exported because two callers now need it and a
+// second copy of a haversine is how two answers to one distance appear.
+export function kmBetween(lon1: number, lat1: number, lon2: number, lat2: number): number {
   const R = 6371, D = Math.PI / 180;
+  const dLat = (lat2 - lat1) * D;
+  const dLon = (lon2 - lon1) * D;
+  const h = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * D) * Math.cos(lat2 * D) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+export function nearestAirport(lon: number, lat: number): Airport | null {
   let best: Airport | null = null;
   let bestKm = Infinity;
   for (const a of allAirports()) {
-    const dLat = (a.lat - lat) * D;
-    const dLon = (a.lon - lon) * D;
-    const h = Math.sin(dLat / 2) ** 2
-      + Math.cos(lat * D) * Math.cos(a.lat * D) * Math.sin(dLon / 2) ** 2;
-    const km = 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    const km = kmBetween(lon, lat, a.lon, a.lat);
     if (km < bestKm) { bestKm = km; best = a; }
   }
   return best;

@@ -118,6 +118,7 @@ import {
   airportByCode,
   cityAirports,
   nearestAirport,
+  kmBetween,
   resolveAirportName,
   isKnownPlace,
   normalizeTerm,
@@ -585,6 +586,10 @@ const NL_ARM_AT = 0.7;
 // A rank above this came from the substring tier and is a coincidence as often
 // as a match. See resolveAirportName.
 const NL_TRUST_RANK = 2;
+
+// How far an airport may be from the city label that resolved to it before the
+// match is treated as a coincidence of spelling. See handleCity.
+const CITY_AIRPORT_MAX_KM = 150;
 
 const NL_BAND_OF: Record<string, RouteBand> = {
   morning: '05:00-12:00', afternoon: '12:00-18:00',
@@ -2505,6 +2510,51 @@ export default function Search() {
     await runRouteLookup(origin.iata, dest.iata, routeDate);
   };
 
+  // ── A CITY LABEL WAS TAPPED ───────────────────────────────────────────────
+  //
+  // THE CAMERA HAS ALREADY GONE. The page flew the moment the tap landed, so
+  // this decides one thing only: whether there is an airport to describe.
+  //
+  // RESOLVED HERE BECAUSE THE DATASET IS HERE. The page holds 1,223 airports as
+  // baked coordinates with no name index; resolveAirportName is the same
+  // function the command line and the route parser use, so a city label and a
+  // typed city name cannot resolve to different airports.
+  //
+  // TWO CHECKS, AND EACH CATCHES WHAT THE OTHER CANNOT.
+  //
+  // THE RANK catches a loose NAME match. NL_TRUST_RANK is the same bar a
+  // model's reading has to clear, for the same reason: rank 0 is a curated
+  // city, and past 2 the match is fuzzy.
+  //
+  // THE DISTANCE catches a TIGHT match on the wrong continent, which the rank
+  // cannot see and which is not hypothetical -- resolveAirportName('Cambridge')
+  // returns HBA at rank 1, the aerodrome outside Hobart, some 17,000km from the
+  // Cambridge most people would be tapping. A name is not a place. Where the
+  // label actually sits is, and the page sends it.
+  //
+  // 150km IS DELIBERATELY LOOSE. An airport serving a city is normally well
+  // inside it -- Heathrow is 23km from central London, Malpensa 45 from Milan,
+  // Narita 60 from Tokyo -- so this is not trying to be a service-area rule. It
+  // is there to reject answers that are wrong by an order of magnitude, and
+  // anything tighter would start refusing real airports to catch nothing.
+  //
+  // NO AIRPORT MEANS NO PANEL, and any panel already open is closed. The camera
+  // has moved somewhere the old panel does not describe, which is the same rule
+  // every other camera move on this screen follows.
+  const handleCity = useCallback((name: string, lon: number, lat: number) => {
+    const hit = resolveAirportName(name);
+    if (hit === null
+      || hit.rank > NL_TRUST_RANK
+      || kmBetween(lon, lat, hit.airport.lon, hit.airport.lat) > CITY_AIRPORT_MAX_KM) {
+      leaveAirport();
+      return;
+    }
+    // showAirport, NOT openAirport: the panel only. openAirport would fly to
+    // the AIRPORT, and the page has already flown to the CITY -- two flights
+    // for one tap, the second undoing the first.
+    showAirport(hit.airport.iata);
+  }, [leaveAirport, showAirport]);
+
   const openAirport = useCallback((iata: string) => {
     // A NEW AIRPORT TYPES ITSELF IN AGAIN. Switching while one panel is finished
     // must not inherit its skip, or the second would appear all at once.
@@ -3557,6 +3607,7 @@ export default function Search() {
         ref={mapRef}
         onReady={setMapLoad}
         onAirport={showAirport}
+        onCity={handleCity}
         onMapTap={handleMapTap}
       />
       {/* ── ANCHORED FILTER PANEL ──
