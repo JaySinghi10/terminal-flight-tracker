@@ -1295,10 +1295,20 @@ export function FlightCard({
 
   // ── THE ROUTE CARD UNDER A FINGER ─────────────────────────────────────────
   //
-  // 0 AT REST, 1 HELD DOWN. The dim was doing this alone and it was not enough:
-  // TouchableOpacity fades the instant a finger lands and then holds that fade
-  // for the whole 500ms of the long press, so the card looked the same at 20ms
-  // as at 480ms and nothing said the hold was going anywhere.
+  // -1 LIFTED, 0 AT REST, 1 HELD DOWN. One value on one axis -- positive is
+  // into the page -- so the whole press reads as one movement rather than as
+  // two animations taking turns.
+  //
+  // THE DIM WAS DOING THIS ALONE AND IT WAS NOT ENOUGH: TouchableOpacity fades
+  // the instant a finger lands and then holds that fade for the whole 500ms of
+  // the long press, so the card looked the same at 20ms as at 480ms and nothing
+  // said the hold was going anywhere.
+  //
+  // AND RETURNING TO REST WAS NOT A LIFT. The first version of this ran 0.97
+  // back to 1.0 when the menu opened, which is a release: the card stopped
+  // being pressed and nothing more. Going ABOVE rest is what makes it an
+  // ascent -- the card comes off the page toward the menu instead of merely
+  // stopping where it started.
   //
   // A SCALE IS THE ONLY NEW PART, and it is built from what this file already
   // uses: an Animated.Value, EASE_OUT and EASE_IN, and the panel timings from
@@ -1308,11 +1318,23 @@ export function FlightCard({
   const routePress = useRef(new Animated.Value(0)).current;
   const routePressStyle = {
     transform: [{
-      // 0.97 rather than anything deeper. The card is nearly the full width of
-      // the screen, so three per cent is about five points of travel at its
-      // edges -- clearly felt, and far short of the shrink that would read as
-      // the card being dragged away rather than pushed.
-      scale: routePress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.97] }),
+      // 0.97 DOWN, 1.02 UP, AND THE ASYMMETRY IS DELIBERATE. The card is
+      // nearly the full width of the screen, so three per cent down is about
+      // five points of travel at its edges -- clearly felt, and far short of
+      // the shrink that would read as the card being dragged away rather than
+      // pushed. The lift is smaller because it is going the other way, toward
+      // the viewer, where the same proportion reads as a larger movement; two
+      // per cent is enough to be seen leaving the page and not enough to look
+      // like a bounce.
+      //
+      // CLAMPED. The value is only ever driven to exactly -1, 0 or 1, so no
+      // extrapolation happens today; the clamp is what stops a later stop being
+      // added to this ramp and silently scaling the card past either end.
+      scale: routePress.interpolate({
+        inputRange: [-1, 0, 1],
+        outputRange: [1.02, 1, 0.97],
+        extrapolate: 'clamp',
+      }),
     }],
   };
   const routePressTo = (to: number, duration: number, easing: typeof EASE_OUT) =>
@@ -1320,8 +1342,13 @@ export function FlightCard({
 
   // DOWN FAST, so the card is already moving before the finger has settled.
   const onRoutePressIn = () => routePressTo(1, 110, EASE_OUT);
-  // AND BACK ON RELEASE. This also fires after a completed long press, on the
-  // same value the lift below already sent it to, so the two cannot fight.
+  // AND BACK TO REST ON RELEASE, from whichever side the card is on.
+  //
+  // AFTER A COMPLETED HOLD THIS IS THE SETTLE, not a cancellation: the lift has
+  // already taken the card to 1.02 and the finger is still down, so the card
+  // stays up for as long as it is held and comes to rest when it is let go. The
+  // menu is unaffected either way -- it is a Modal with its own scrim and has
+  // stopped depending on the card by the time this runs.
   const onRoutePressOut = () => routePressTo(0, 160, EASE_IN);
 
   // THE OVERLAY'S TIMINGS, NOT THE SHEET'S. PANEL_IN_MS and OVERLAY_RISE are
@@ -1348,12 +1375,16 @@ export function FlightCard({
   const openMapMenu = () => {
     if (flightRecord === null) return;
     EXPAND_HAPTIC();
-    // THE LIFT, ON THE MENU'S OWN TIMING. The card comes back up over exactly
-    // the PANEL_IN_MS the menu takes to rise, so the two read as one movement:
-    // the thing you were pressing hands what it was holding to the thing that
-    // arrives. Releasing it instantly instead would have the card snap back
-    // before the menu had started.
-    routePressTo(0, PANEL_IN_MS, EASE_OUT);
+    // THE LIFT, PAST REST, ON THE MENU'S OWN TIMING. -1 rather than 0: the card
+    // rises ABOVE the page as the menu arrives, so the hold ends in an ascent
+    // rather than in the absence of a press.
+    //
+    // PANEL_IN_MS, UNCHANGED. The card travels for exactly as long as the menu
+    // takes to rise, so the two read as one movement -- the thing you were
+    // pressing hands what it was holding to the thing that arrives. Releasing
+    // it instantly instead would have the card move before the menu had
+    // started.
+    routePressTo(-1, PANEL_IN_MS, EASE_OUT);
     setMapMenuOpen(true);
   };
 
