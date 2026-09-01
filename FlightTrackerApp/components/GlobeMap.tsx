@@ -28,6 +28,10 @@ import { useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'r
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { allAirports, airportByCode } from '../lib/airports';
+import {
+  timezoneHome, HOME_ZOOM_POSITION, HOME_ZOOM_FALLBACK, HOME_ZOOM_MAX,
+  type HomeView,
+} from '../lib/home';
 
 // ── THE INK ─────────────────────────────────────────────────────────────────
 //
@@ -104,9 +108,57 @@ const AIRPORT_FULL_ZOOM = 6;
 // continent. Nothing else from `transportation` is drawn at any zoom.
 const ROAD_MIN_ZOOM = 9;
 
-const START_LON = 72;
-const START_LAT = 24;
-const START_ZOOM = 2.2;
+// ── WHERE IT OPENS ──────────────────────────────────────────────────────────
+//
+// BAKED INTO THE PAGE, NOT JUMPED TO AFTERWARDS. timezoneHome() is synchronous
+// precisely so the opening camera can be part of the HTML the WebView loads,
+// which means the map's very first painted frame is already over the user's
+// country. Resolving it afterwards would open somewhere arbitrary and visibly
+// correct itself.
+//
+// THE 402x874 VIEWPORT IS ASSUMED HERE and nowhere else. The page is a module
+// constant, so it cannot read useWindowDimensions; the error is a fraction of a
+// zoom level on an unusual screen, and applyHome re-fits properly against the
+// real viewport as soon as the style loads.
+const OPENING = timezoneHome();
+const OPENING_ZOOM = openingZoom(OPENING);
+
+function openingZoom(h: HomeView): number {
+  if (h.kind === 'position') return HOME_ZOOM_POSITION;
+  if (h.kind === 'fallback') return HOME_ZOOM_FALLBACK;
+  const [w, s, e, n] = h.bbox;
+  // The zoom at which a span of degrees exactly fills the viewport. World width
+  // at zoom z is 512 * 2^z px covering 360 degrees, so the fit is a log2.
+  const dLon = Math.max(e - w, 1e-6);
+  const zLon = Math.log2((402 * 360) / (512 * dLon));
+  const my = (d: number) => Math.log(Math.tan(Math.PI / 4 + (d * Math.PI / 180) / 2));
+  const dMy = Math.max(Math.abs(my(n) - my(s)), 1e-6);
+  const zLat = Math.log2((874 * 2 * Math.PI) / (512 * dMy));
+  const z = Math.min(zLon, zLat);
+  if (!Number.isFinite(z)) return HOME_ZOOM_FALLBACK;
+  return Math.max(0, Math.min(z, HOME_ZOOM_MAX));
+}
+
+const START_LON = OPENING.lon;
+const START_LAT = OPENING.lat;
+const START_ZOOM = OPENING_ZOOM;
+
+// ── THE PIN ─────────────────────────────────────────────────────────────────
+//
+// IT IS NOT AN AIRPORT AND MUST NOT LOOK LIKE ONE. The airports are flat green
+// discs, and green in this app means live and actionable. The user's position is
+// neither — it is a fact about the view — so it differs in COLOUR and in
+// STRUCTURE, not just in size:
+//
+//   a wide, barely-there white halo   the accuracy idiom every map user knows
+//   a small white disc inside it      the point itself
+//   a dark ring around the disc       so it holds against pale land and labels
+//
+// Two marks rather than one is what makes it read as a position rather than as
+// a large airport. Nothing else on this map has a halo.
+const PIN_INK = '#e2e2e2';
+const PIN_HALO = 'rgba(255,255,255,0.07)';
+const PIN_RING = '#050505';
 
 // ── THE TWO CAMERA MOTIONS ──────────────────────────────────────────────────
 //
@@ -140,6 +192,10 @@ const ROUTE_END_ZOOM = 5;
 const ROUTE_PULLBACK = 3;
 const ROUTE_MS_MIN = 2500;
 const ROUTE_MS_MAX = 6000;
+
+// GOING HOME IS SHORTER THAN FLYING TO AN AIRPORT, because it is a return rather
+// than an arrival: the user pressed it to get back, not to be shown something.
+const HOME_FLY_MS = 1600;
 
 type Feat = {
   type: 'Feature';
@@ -182,6 +238,11 @@ const STYLE = {
   sources: {
     ofm: { type: 'vector', url: OFM_TILES },
     airports: { type: 'geojson', data: '__AIRPORTS__' },
+    // EMPTY UNTIL THERE IS A POSITION. Declaring it in the style rather than
+    // adding the source later means the layers exist from the first frame and
+    // the pin appears by setting data, with no addLayer at runtime and no
+    // question about paint order.
+    pin: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   },
   // ── THE SKY CONTRIBUTES NOTHING, ON PURPOSE ───────────────────────────────
   //
@@ -300,7 +361,7 @@ const STYLE = {
         'text-halo-width': 1,
       },
     },
-    // THE AIRPORTS, ON TOP OF EVERYTHING. The only green on the map.
+    // THE AIRPORTS, ON TOP OF THE GEOGRAPHY. The only green on the map.
     {
       id: 'airports',
       type: 'circle',
@@ -311,6 +372,29 @@ const STYLE = {
         'circle-color': AIRPORT_INK,
         'circle-opacity': ['interpolate', ['linear'], ['zoom'],
           AIRPORT_MIN_ZOOM, 0, AIRPORT_FULL_ZOOM, 1],
+      },
+    },
+    // THE PIN, ABOVE EVEN THE AIRPORTS, and drawn at EVERY zoom — unlike the
+    // airports, which fade in at z4.5. Where the user is standing is worth
+    // marking on the globe itself, and it is one feature rather than 1,223.
+    {
+      id: 'pin-halo',
+      type: 'circle',
+      source: 'pin',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 9, 8, 16],
+        'circle-color': PIN_HALO,
+      },
+    },
+    {
+      id: 'pin-dot',
+      type: 'circle',
+      source: 'pin',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 3, 8, 4.5],
+        'circle-color': PIN_INK,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': PIN_RING,
       },
     },
   ],
@@ -642,9 +726,61 @@ function start() {
     post({ type: 'airport', iata: f.properties.iata });
   });
 
+  // ── HOME ───────────────────────────────────────────────────────────────────
+  //
+  // THE PAGE REMEMBERS IT so the button is one call with no arguments. React
+  // Native sets home once, when it has resolved it; after that "go home" needs
+  // no knowledge of where home is, and the two cannot drift apart.
+  //
+  // A BOX IS FITTED AND A POINT IS ZOOMED, which is the whole reason HomeView is
+  // a union. fitBounds solves for the camera that contains a region; a position
+  // has no extent to solve for and gets the country zoom directly.
+  var homeView = null;
+
+  function applyHome(h, animate) {
+    homeView = h;
+    // THE PIN IS THE POSITION AND NOTHING ELSE. A country derived from a
+    // timezone is not a place the user is standing, so it gets no mark.
+    map.getSource('pin').setData({
+      type: 'FeatureCollection',
+      features: h.kind === 'position'
+        ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [h.lon, h.lat] } }]
+        : []
+    });
+    var dur = animate ? ${HOME_FLY_MS} : 0;
+    if (h.kind === 'zone') {
+      map.fitBounds([[h.bbox[0], h.bbox[1]], [h.bbox[2], h.bbox[3]]], {
+        padding: 48,
+        maxZoom: ${HOME_ZOOM_MAX},
+        duration: dur,
+        linear: false
+      });
+      return;
+    }
+    var z = h.kind === 'position' ? ${HOME_ZOOM_POSITION} : ${HOME_ZOOM_FALLBACK};
+    if (dur === 0) {
+      map.jumpTo({ center: [h.lon, h.lat], zoom: z });
+    } else {
+      map.flyTo({ center: [h.lon, h.lat], zoom: z, minZoom: ${GLOBE_APEX_ZOOM}, duration: dur });
+    }
+  }
+
+  // THE BUTTON'S CALL. cancelCamera first so pressing home during a route
+  // flight stops that flight rather than racing it — the rAF loop would
+  // otherwise keep writing the centre underneath the new motion.
+  function goHome() {
+    cancelCamera();
+    if (homeView) applyHome(homeView, true);
+  }
+
   // THE ONLY WAY IN FROM REACT NATIVE. injectJavaScript calls these; the page
   // holds no other public surface.
-  window.__cam = { airport: flyAirport, route: flyRoute };
+  window.__cam = {
+    airport: flyAirport,
+    route: flyRoute,
+    setHome: function (h) { applyHome(h, false); },
+    home: goHome
+  };
 
   var idled = false;
   map.on('idle', function () {
@@ -673,14 +809,21 @@ loadFrom(0);
 export type GlobeMapHandle = {
   flyToAirport: (iata: string) => void;
   flyRoute: (from: string, to: string) => void;
+  // Set once, when the screen has resolved where home is. Jumps rather than
+  // flies: this is the opening view, not a journey to it.
+  setHome: (h: HomeView) => void;
+  // The button. Takes nothing, because the page already knows.
+  goHome: () => void;
 };
 
-// NO PROPS YET. Record<string, never> was the obvious spelling and is wrong:
-// its index signature swallows `ref` and makes the component unusable with one.
-type GlobeMapProps = object;
+// FIRED WHEN THE STYLE HAS PARSED, which is BEFORE the first tiles arrive. That
+// is the moment home can be applied without anything visibly moving: the camera
+// is set while the map is still blank, so the user's first painted frame is
+// already the right one.
+type GlobeMapProps = { onReady?: () => void };
 
 const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
-  function GlobeMap(_props, ref) {
+  function GlobeMap({ onReady }, ref) {
     const webRef = useRef<WebView>(null);
 
     // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
@@ -705,6 +848,12 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
         const b = airportByCode(to);
         if (a === null || b === null) return;
         call(`window.__cam&&window.__cam.route(${a.lon},${a.lat},${b.lon},${b.lat})`);
+      },
+      setHome(h: HomeView) {
+        call(`window.__cam&&window.__cam.setHome(${JSON.stringify(h)})`);
+      },
+      goHome() {
+        call('window.__cam&&window.__cam.home()');
       },
     }), [call]);
 
@@ -757,7 +906,12 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           if (m.type === 'error') console.warn(`[MAP] ${m.stage}: ${m.message}`);
           if (m.type === 'probe') console.warn(`[MAP] probe ${m.what}: ${m.status}`);
           if (m.type === 'cdn') console.log(`[MAP] library from ${m.host} (v${m.version})`);
-          if (m.type === 'style') console.log('[MAP] style parsed, globe attached');
+          if (m.type === 'style') {
+            console.log('[MAP] style parsed, globe attached');
+            // BEFORE THE FIRST TILE. Applying home here means the camera is set
+            // while the map is still blank, so nothing is seen to move.
+            onReady?.();
+          }
           if (m.type === 'ready') console.log('[MAP] tiles in, first idle');
           if (m.type === 'airport') console.log(`[MAP] dot tapped: ${m.iata}`);
         }}

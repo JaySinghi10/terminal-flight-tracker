@@ -33,8 +33,12 @@
 //      and clears itself when the account actually changes.
 //   4  detailsTitle and headingRow read as `c.*`. They are two entries both
 //      screens need, and they are in lib/cards.ts now.
-import { useState, useRef, useEffect } from "react";
-import Svg, { Path } from 'react-native-svg';
+import { useState, useRef, useEffect, useCallback } from "react";
+// COMING BACK TO THIS TAB IS A FOCUS EVENT, NOT A MOUNT. The tabs navigator keeps
+// this screen mounted when it loses focus, so nothing else can see the return.
+import { useFocusEffect } from "expo-router";
+import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
 import {
   View,
   Text,
@@ -95,6 +99,13 @@ import {
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
 import GlobeMap, { type GlobeMapHandle } from '../components/GlobeMap';
+// WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
+// and always available; location only ever improves on it. See lib/home.ts.
+import {
+  timezoneHome, loadHome, saveHome, clearHome, hasAskedLocation, markAskedLocation,
+  type HomeView,
+} from '../lib/home';
+import * as Location from 'expo-location';
 // THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
 // sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
 import { useAccount } from '../lib/account';
@@ -1166,6 +1177,10 @@ export default function Search() {
   // The screen mounts long after hydration, with an account already in hand;
   // clearing on that first pass would wipe a query the user had just typed to get
   // here.
+  //
+  // THE MAP WATCHES THE SAME SIGNAL SEPARATELY, further down, where its own state
+  // is declared. One effect could have done both, but it would have had to reach
+  // forward four hundred lines for refs it does not otherwise touch.
   const lastEmail = useRef(email);
   useEffect(() => {
     if (lastEmail.current === email) return;
@@ -1590,6 +1605,138 @@ export default function Search() {
     if (flownFrom === null || flownTo === null) return;
     mapRef.current?.flyRoute(flownFrom, flownTo);
   }, [flownFrom, flownTo]);
+
+  // ── THE HOME VIEW ─────────────────────────────────────────────────────────
+  //
+  // RESOLVED ONCE PER MOUNT, NOT PER FOCUS. The tabs navigator keeps this screen
+  // mounted when it loses focus, so "opening the search tab" a second time is
+  // not a remount — which is exactly what point 3 asks for. Coming back finds
+  // the camera where it was left, and nothing is recomputed or re-asked.
+  //
+  // THE ORDER IS: STORED, THEN PERMISSION, THEN TIMEZONE.
+  //   1  a stored home is authoritative and costs one disk read
+  //   2  otherwise ask for location, exactly once, ever
+  //   3  otherwise the timezone, which is free and always answers
+  //
+  // THE MAP HAS ALREADY OPENED ON THE TIMEZONE by the time any of this resolves,
+  // because that answer is synchronous and baked into the page. What happens
+  // here can only improve it.
+  const [home, setHome] = useState<HomeView | null>(null);
+  const homeSentRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const stored = await loadHome();
+      if (!alive) return;
+      if (stored !== null) { setHome(stored); return; }
+
+      // ASKED ON OPEN, NOT ON A BUTTON, and asked at most once in the app's
+      // lifetime. A refusal is recorded before the result is even read, so a
+      // crash between the two cannot turn into a second prompt.
+      let resolved: HomeView = timezoneHome();
+      if (!(await hasAskedLocation())) {
+        await markAskedLocation();
+        try {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            // Balanced accuracy: this frames a country, and asking the device
+            // for metres would cost battery and time for digits nobody sees.
+            const pos = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            resolved = {
+              kind: 'position',
+              lon: pos.coords.longitude,
+              lat: pos.coords.latitude,
+            };
+          }
+        } catch {
+          // REFUSED, UNAVAILABLE, OR TIMED OUT ARE ONE CASE HERE, and none of
+          // them is an error the user should see. The timezone answer already
+          // in `resolved` is the fallback for all three.
+        }
+      }
+      if (!alive) return;
+      setHome(resolved);
+      void saveHome(resolved);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // SENT WHEN BOTH SIDES ARE READY, whichever arrives last — the map's style may
+  // parse before or after the disk read returns, and this must not depend on
+  // which. The ref makes it exactly once.
+  const [mapReady, setMapReady] = useState(false);
+  useEffect(() => {
+    if (!mapReady || home === null || homeSentRef.current) return;
+    homeSentRef.current = true;
+    mapRef.current?.setHome(home);
+  }, [mapReady, home]);
+
+  // ── COMING BACK TO THE TAB RETURNS TO HOME ────────────────────────────────
+  //
+  // A FOCUS EFFECT AND NOT A MOUNT EFFECT, because this screen does not unmount
+  // when the tab loses focus — that is the whole reason a tab navigator was
+  // chosen, and it is why leaving and returning used to find the camera exactly
+  // where it was abandoned. Mount fires once in the app's life; focus fires
+  // every time the user comes back, which is the actual event.
+  //
+  // NOT ON THE FIRST FOCUS. The camera already opens on home, so flying from
+  // home to home would be a 1.6 second animation that starts and ends in the
+  // same place — a glitch rather than a motion. The ref is checked and set on
+  // the first pass and never consulted again.
+  //
+  // THE SAME MOTION THE BUTTON USES, deliberately: returning to the tab and
+  // pressing home are the same intent, and two spellings of it would eventually
+  // become two behaviours.
+  const firstFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocusRef.current) {
+        firstFocusRef.current = false;
+        return;
+      }
+      // A no-op until the page has been told where home is, which is what we
+      // want: there is nothing to return to yet.
+      mapRef.current?.goHome();
+    }, []),
+  );
+
+  // ── LOGGING OUT FORGETS WHERE THE USER IS ─────────────────────────────────
+  //
+  // A PRIVACY FIX, NOT A TIDY-UP. A stored `position` home is the user's actual
+  // coordinates with a pin drawn on them, so without this, signing out and
+  // handing someone the phone still shows where they live.
+  //
+  // THE SAME SIGNAL THE RESULTS WATCH, for the same reason given up there: the
+  // logout handler lives in home's profile modal, home cannot reach this screen,
+  // and `email` off the saved store is the one thing logout actually changes.
+  // A separate effect rather than an extra job inside that one, so each sits
+  // beside the state it owns.
+  //
+  // ON ANY ACCOUNT CHANGE, NOT ONLY ON LOGOUT. A different person signing in must
+  // not inherit the previous one's location either, and "the account changed" is
+  // the only signal covering both. Clearing when a returning user signs back in
+  // costs them one permission prompt; the alternative costs someone else their
+  // privacy.
+  const lastHomeEmail = useRef(email);
+  useEffect(() => {
+    if (lastHomeEmail.current === email) return;
+    lastHomeEmail.current = email;
+    // THE DISK FIRST, then the pin and the camera together. setHome with a fresh
+    // timezone view empties the pin source and reframes in the one call — see
+    // applyHome — so there is no frame in which the pin is still drawn over a
+    // camera that has already moved.
+    void clearHome();
+    const fresh = timezoneHome();
+    setHome(fresh);
+    // Already sent, so the ready effect above does not later overwrite this with
+    // the home it was holding.
+    homeSentRef.current = true;
+    mapRef.current?.setHome(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
 
   // The heading's words. Read back from the dataset rather than carried in
   // state, so a re-run from the date control or the picker cannot leave a stale
@@ -2579,8 +2726,78 @@ export default function Search() {
       {/* THE CAMERA IS DRIVEN THROUGH A REF, NOT A PROP. A prop would make the
           flight a function of render — it would re-fire on any re-render that
           happened to carry the same route, and it could not express "fly now"
-          distinctly from "a route exists". The effect below decides WHEN. */}
-      <GlobeMap ref={mapRef} />
+          distinctly from "a route exists". The effect above decides WHEN. */}
+      <GlobeMap ref={mapRef} onReady={() => setMapReady(true)} />
+      {/* ── HOME ──
+          TOP RIGHT, AND IT IS THE ONE CORNER NOTHING ELSE WANTS. The content
+          below is left-aligned inside 20px of padding, the floating tab bar owns
+          the bottom, and the left side is reserved for the place heading that
+          comes next. Sitting it here means it never overlaps a control and never
+          fights the bar.
+
+          A GLASS CIRCLE IN THE BAR'S MATERIAL BUT SMALLER THAN ITS CIRCLE. The
+          recipe is the bar's — blur, then a fill over it, then a hairline over
+          that — so the two are the same family; the size is 40 against the bar's
+          56 so they are not the same OBJECT. See HOME_BTN_SIZE for why that gap
+          is deliberate.
+
+          RENDERED ONLY ONCE HOME IS KNOWN. A button that returns you nowhere is
+          worse than no button, and until the disk read or the timezone resolves
+          there is nothing to return to. */}
+      {home !== null && (
+        <Pressable
+          style={[hm.btn, { top: insets.top + 12 }]}
+          onPress={() => mapRef.current?.goHome()}
+          hitSlop={10}
+        >
+          {/* THE MATERIAL, IN THE ORDER THE TAB BAR BUILDS IT. The blur samples
+              what is behind the surface; the fill is a SIBLING AFTER it, so it
+              tints the blur rather than being something the blur samples. Get
+              that order wrong and the fill goes into the sample and the whole
+              thing turns grey.
+
+              THE HAIRLINE IS ITS OWN VIEW AND NEVER A borderColor ON THE BLUR.
+              A border on a rounded BlurView leaves artefacts at the corners
+              where the border and the blur's own clip disagree; a sibling with
+              its own borderRadius has no such seam.
+
+              overflow hidden ON THE PRESSABLE is what clips the blur to the
+              circle — a BlurView does not round itself. */}
+          <BlurView
+            intensity={HOME_BTN_BLUR}
+            tint="systemChromeMaterialDark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={[StyleSheet.absoluteFill, hm.fill]} pointerEvents="none" />
+          <View style={[StyleSheet.absoluteFill, hm.edge]} pointerEvents="none" />
+          {/* THE GLYPH IS THE MAP'S PIN, RESTATED AT BUTTON SIZE. The pin out
+              there is a translucent halo with a solid dot in it; here the halo
+              is a stroked RING rather than a filled disc, because a 7% fill at
+              this size is nothing at all. Both say the same thing — this point,
+              marked — which is what makes the control and the thing it returns
+              you to read as one idea rather than two.
+
+              NOT A HOUSE. A house would mean the Home TAB, which is a different
+              destination reached by a different control at the other end of
+              this screen. */}
+          {/* THE STROKE IS SET IN VIEWBOX UNITS, so it has to be widened as the
+              glyph shrinks: 1.8 in a 24 box drawn at 18 renders 1.35 real pixels,
+              which is what the ring was at the larger size. Leaving it at 1.5
+              would have thinned the ring to 1.1 and made it the faintest mark on
+              the screen. */}
+          <Svg width={HOME_BTN_GLYPH} height={HOME_BTN_GLYPH} viewBox="0 0 24 24">
+            <SvgCircle
+              cx={12} cy={12} r={7.5}
+              fill="none"
+              stroke={HOME_BTN_INK_RING}
+              strokeWidth={1.8}
+            />
+            <SvgCircle cx={12} cy={12} r={3.2} fill={HOME_BTN_INK_DOT} />
+          </Svg>
+        </Pressable>
+      )}
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
@@ -3121,6 +3338,67 @@ export default function Search() {
     </View>
   );
 }
+
+// ── THE HOME CONTROL ────────────────────────────────────────────────────────
+//
+// Kept out of `s` because it belongs to the map layer rather than to the
+// screen's content: `s` is padded and laid out for the results, and this floats
+// over everything.
+//
+// 40 RATHER THAN THE BAR'S 56, AND THE GAP IS THE POINT.
+//
+// The tab bar's Home circle is SEARCH_CIRCLE = CAPSULE_H = 56. Matching it
+// exactly made the two read as DUPLICATES: same size, same material, same shape,
+// on screen at once, and only position and a small glyph to say that one
+// navigates to another tab while this one moves the camera on the screen you are
+// already on. Two identical-looking controls with different scopes is the
+// confusion worth spending a number to avoid.
+//
+// THE MATERIAL STILL MATCHES, so they remain the same family; only the SIZE says
+// "smaller scope". That is the one signal changed, and it is the cheapest one
+// that separates them.
+const HOME_BTN_SIZE = 40;
+// 18 RATHER THAN A STRICT 22 * 40/56 = 15.7. Proportional is the right instinct
+// and slightly wrong here: below about 16 the 1px ring stroke gets fragile, and a
+// smaller surface needs a proportionally LARGER glyph to stay legible. 18 leaves
+// 11 of clear glass on every side.
+const HOME_BTN_GLYPH = 18;
+// INTENSITY 32 RATHER THAN THE BAR'S 18. The bar sits over the page, which is
+// already near-black; this sits over the MAP, which carries land, coastlines and
+// labels. A weaker blur would let all of that read through the glyph.
+const HOME_BTN_BLUR = 32;
+// NEAR-OPAQUE, AND BLACK. The bar's fill is 0.12 because it only has to tint a
+// blur of the page; this one has to stop a map showing through a 22px glyph, so
+// it is doing the work the bar's fill never had to. Black cannot lighten
+// anything — the only white on the surface is the hairline, drawn over the blur.
+const HOME_BTN_FILL = 'rgba(5,5,5,0.82)';
+// The same hairline every other surface in this app draws.
+const HOME_BTN_EDGE = 'rgba(255,255,255,0.08)';
+// The map's pin is #e2e2e2; these are that ink at the two weights the glyph
+// needs, so the button and the mark it returns you to are the same colour.
+const HOME_BTN_INK_RING = 'rgba(226,226,226,0.5)';
+const HOME_BTN_INK_DOT = 'rgba(226,226,226,0.85)';
+
+const hm = StyleSheet.create({
+  btn: {
+    position: 'absolute',
+    right: 20,
+    width: HOME_BTN_SIZE,
+    height: HOME_BTN_SIZE,
+    borderRadius: HOME_BTN_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // WHAT CLIPS THE BLUR TO THE CIRCLE. A BlurView does not round itself, so
+    // without this the glass is a square behind a round hairline.
+    overflow: 'hidden',
+  },
+  fill: { backgroundColor: HOME_BTN_FILL },
+  edge: {
+    borderWidth: 1,
+    borderColor: HOME_BTN_EDGE,
+    borderRadius: HOME_BTN_SIZE / 2,
+  },
+});
 
 // index.tsx's own entries, read above as `s.*` exactly as they were, plus the
 // page's own two. Home keeps a root and a scroll of its own: they are each
