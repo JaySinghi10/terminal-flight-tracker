@@ -1955,17 +1955,32 @@ export default function Search() {
   const [typed, setTyped] = useState(0);
   const panelCity = panelAirport === null ? '' : panelAirport.city.toUpperCase();
 
+  // ── KEYED ON THE SELECTION, NOT ON ANYTHING DERIVED FROM IT ───────────────
+  //
+  // panelIata IS THE ONLY DEPENDENCY, and it is a string that changes exactly
+  // when the user picks a different airport. The name is looked up inside the
+  // effect rather than passed in, so no derived value can appear in this array
+  // and no recomputation anywhere else in the panel can restart the typing.
+  //
+  // THE OLD DEPENDENCY WAS panelCity, which was defensible — a string compares
+  // by value, so a re-render alone could not restart it. But it tied this
+  // animation to a value computed from the airport rather than to the choice
+  // itself, and the sequencer below made exactly that mistake with an array and
+  // looped. One rule for both is safer than two rules that happen to agree.
   useEffect(() => {
-    if (panelCity === '') { setTyped(0); return; }
     setTyped(0);
+    if (panelIata === null) return;
+    const a = airportByCode(panelIata);
+    if (a === null) return;
+    const len = a.city.length;
     let n = 0;
     const id = setInterval(() => {
       n += 1;
       setTyped(n);
-      if (n >= panelCity.length) clearInterval(id);
+      if (n >= len) clearInterval(id);
     }, CITY_TYPE_MS);
     return () => clearInterval(id);
-  }, [panelCity]);
+  }, [panelIata]);
 
   const typingDone = panelCity !== '' && typed >= panelCity.length;
 
@@ -2015,7 +2030,16 @@ export default function Search() {
   // back to every row with the same city name. One entry means the row is a
   // label rather than a choice, and it still shows: the code belongs on the
   // panel whether or not there is an alternative to it.
-  const panelSiblings = panelAirport === null ? [] : cityAirports(panelAirport.city);
+  // MEMOISED, AND THAT IS A BUG FIX RATHER THAN AN OPTIMISATION. cityAirports
+  // builds a FRESH ARRAY on both of its branches — the curated path pushes into
+  // a new [], the fallback path filters and maps — so calling it bare in the
+  // render body produced a new reference on every render. That fed panelSteps,
+  // which fed the sequencer's dependency array, which therefore re-ran on every
+  // render and restarted the animation it was running. See the note there.
+  const panelSiblings = useMemo(
+    () => (panelAirport === null ? [] : cityAirports(panelAirport.city)),
+    [panelAirport],
+  );
 
   // ── AN ESTIMATED FLIGHT TIME, AND IT READS AS AN ESTIMATE ─────────────────
   //
@@ -2096,15 +2120,49 @@ export default function Search() {
   const [stepAt, setStepAt] = useState(0);
   const [stepTyped, setStepTyped] = useState(0);
 
+  // ── THE STEPS REACHED THROUGH A REF, NOT A DEPENDENCY ─────────────────────
+  //
+  // THIS IS WHAT THE RESTART LOOP WAS. The sequencer depended on panelSteps, an
+  // array rebuilt whenever any of its inputs changed identity — and panelSiblings
+  // changed identity on every render, so the dependency was never equal twice.
+  // The effect therefore tore itself down and set itself up again on every
+  // render, and because it SETS STATE, each run caused the next render:
+  //
+  //   tick -> setStepTyped(1) -> render -> new panelSteps -> effect re-runs
+  //   -> ch reset to 0 -> tick -> setStepTyped(1)
+  //
+  // and the reason it settled into a FLICKER rather than a freeze is React's
+  // bail-out: setStepTyped(1) when the value is already 1 does not re-render, so
+  // the chain got one tick further to ch=2, which DID re-render, which restarted
+  // it back to 1. Two characters, the second blinking, nothing after it — which
+  // is exactly what was reported.
+  //
+  // THE TIMER CLEANUP WAS NEVER THE PROBLEM. `timer` is reassigned inside tick
+  // and the cleanup closes over the same binding, so it always cleared the
+  // pending one and `cancelled` stopped any callback already in flight. There
+  // was only ever one timer alive. The fault was the effect running at all.
+  //
+  // A REF UPDATED IN ITS OWN EFFECT, DECLARED FIRST, so the sequencer always
+  // reads the current steps without being subscribed to them. Effects run in
+  // declaration order within a commit, so this is current before the one below
+  // uses it. Assigning during render would be quicker to write and impure.
+  const panelStepsRef = useRef<PanelStep[]>(panelSteps);
+  useEffect(() => { panelStepsRef.current = panelSteps; }, [panelSteps]);
+
+  // panelIata AND typingDone ARE THE WHOLE DEPENDENCY LIST. The first changes
+  // when the user picks another airport; the second flips once, when the city
+  // name lands. Neither can be moved by a clock tick, a saved-flight change or
+  // any other render.
   useEffect(() => {
-    if (!typingDone) { setStepAt(0); setStepTyped(0); return; }
+    if (panelIata === null || !typingDone) { setStepAt(0); setStepTyped(0); return; }
     let step = 0;
     let ch = 0;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const tick = () => {
-      if (cancelled || step >= panelSteps.length) return;
-      const s = panelSteps[step];
+      const steps = panelStepsRef.current;
+      if (cancelled || step >= steps.length) return;
+      const s = steps[step];
       // A CODE IS ONE TICK. A text line is one tick per character.
       const len = s.kind === 'code' ? 1 : s.text.length;
       if (ch < len) {
@@ -2117,11 +2175,11 @@ export default function Search() {
       ch = 0;
       setStepAt(step);
       setStepTyped(0);
-      if (step < panelSteps.length) timer = setTimeout(tick, PANEL_LINE_GAP_MS);
+      if (step < steps.length) timer = setTimeout(tick, PANEL_LINE_GAP_MS);
     };
     timer = setTimeout(tick, PANEL_LINE_GAP_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [typingDone, panelSteps]);
+  }, [panelIata, typingDone]);
 
   // ── AIRPORTS THIS USER HAS FLOWN THROUGH ──────────────────────────────────
   //
