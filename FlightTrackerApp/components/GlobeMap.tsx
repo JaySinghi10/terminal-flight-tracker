@@ -50,6 +50,21 @@ const LABEL_COUNTRY = 'rgba(226,226,226,0.72)';
 const LABEL_CITY = 'rgba(226,226,226,0.42)';
 const LABEL_HALO = '#050505';
 const AIRPORT_INK = '#4ade80';
+// -- THE FLIGHT OVERLAY'S INKS ------------------------------------------------
+//
+// GREEN IS RESERVED FOR WHAT IS HAPPENING NOW. The airports are already green
+// because they are the map's one live class of thing; a flight in the air joins
+// them and a flight that has not left yet does not. Colour carries the
+// distinction so weight does not have to shout it.
+const ARC_LIVE = '#4ade80';
+// DELIBERATELY BELOW A COUNTRY BORDER'S 0.20. A planned flight is the faintest
+// mark on the map -- quieter than the coastline it crosses -- because it is a
+// note about the future rather than a thing that exists.
+const ARC_PLANNED = 'rgba(255,255,255,0.16)';
+// BLACK, NOT A DARK COLOUR. Night is the absence of light, so the bands are the
+// page's own background laid over the geography at a low alpha; anything with a
+// hue would tint the land rather than darken it.
+const NIGHT_INK = '#050505';
 
 // PINNED, AND DELIBERATELY 5.x RATHER THAN 6.x.
 //
@@ -360,16 +375,16 @@ const STYLE = {
     // the pin appears by setting data, with no addLayer at runtime and no
     // question about paint order.
     pin: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-    // THE AIRPORTS THIS USER HAS ACTUALLY FLOWN THROUGH. Empty until React
-    // Native reads the saved flights and sends them; declared here for the same
-    // reason the pin is — the layer exists from the first frame, paint order is
-    // fixed, and marking one is a setData rather than an addLayer at runtime.
+    // -- THE FLIGHT OVERLAY'S THREE SOURCES ---------------------------------
     //
-    // A SECOND SOURCE RATHER THAN A FLAG ON THE FIRST. The airports source is
-    // 1,223 features baked into the page as a constant; adding a `visited`
-    // property would mean rebuilding and re-sending all of it every time a
-    // flight is saved. This one carries only the handful that have been visited.
-    visited: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+    // ALL THREE ARE FILLED BY THE PAGE, NOT BY REACT NATIVE. React Native sends
+    // a flight list when it changes and a timestamp once a minute; the page
+    // turns those into geometry. Declared empty here for the same reason the
+    // pin is -- the layers exist from the first frame, so paint order is
+    // settled once and an update is a setData rather than an addLayer.
+    arcs: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+    planes: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+    night: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   },
   // ── THE SKY CONTRIBUTES NOTHING, ON PURPOSE ───────────────────────────────
   //
@@ -456,6 +471,32 @@ const STYLE = {
         'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.5, 5, 0.9, 10, 1.2],
       },
     },
+    // -- THE TERMINATOR, AS THREE NESTED BANDS -------------------------------
+    //
+    // ABOVE THE GEOGRAPHY AND BELOW EVERY LABEL. Night darkens the land and the
+    // sea; it must not darken a place name, because a name is not lit by the
+    // sun and dimming it would read as the map losing confidence rather than as
+    // the world turning.
+    //
+    // THREE LAYERS, NOT ONE POLYGON WITH THREE RINGS. A fill layer composites
+    // its own overlapping parts once, so three nested rings inside a single
+    // layer would come out as a flat 0.10 with two hard creases in it. Separate
+    // layers each composite against what is already on the canvas, and that is
+    // what makes the alphas accumulate to 0.10 / 0.20 / 0.30.
+    //
+    // A FILL HAS NO BLUR IN MAPLIBRE, which is the whole reason for the stack.
+    // One polygon would put a drawn line across the planet -- precisely what a
+    // terminator is not.
+    //
+    // fill-antialias: false FOR THE SAME REASON. Antialiasing a fill draws an
+    // outline pass around it, which on a shape this size is a faint hairline
+    // tracing the terminator -- the exact edge the three bands exist to avoid.
+    { id: 'night-0', type: 'fill', source: 'night', filter: ['==', ['get', 'band'], 0],
+      paint: { 'fill-color': NIGHT_INK, 'fill-opacity': 0.1, 'fill-antialias': false } },
+    { id: 'night-1', type: 'fill', source: 'night', filter: ['==', ['get', 'band'], 1],
+      paint: { 'fill-color': NIGHT_INK, 'fill-opacity': 0.1, 'fill-antialias': false } },
+    { id: 'night-2', type: 'fill', source: 'night', filter: ['==', ['get', 'band'], 2],
+      paint: { 'fill-color': NIGHT_INK, 'fill-opacity': 0.1, 'fill-antialias': false } },
     // ROAD NAMES, AND ONLY WHEN CLOSE. symbol-placement line makes the name
     // follow the road rather than sit beside a point on it, which is the only
     // way a street name reads as belonging to that street.
@@ -524,56 +565,33 @@ const STYLE = {
         'text-halo-width': 1,
       },
     },
-    // ── VISITED: A RING, NOT A BIGGER DOT ────────────────────────────────────
+    // -- SAVED FLIGHTS, ONE LAYER AT TWO WEIGHTS -----------------------------
     //
-    // SIZE MEANS IMPORTANCE AND MUST KEEP MEANING IT. Every airport on this map
-    // is the same 2.2-to-4.5px dot because they are all the same KIND of thing;
-    // growing the ones this user has flown through would say Heathrow matters
-    // more than Gatwick to the map, which is not what is being recorded. History
-    // is a different axis from importance and needs a different mark.
+    // ONE LAYER RATHER THAN TWO, with the difference expressed as a data-driven
+    // paint on a live property. Two layers would fix the paint order between
+    // them for all time -- planned always over live, or the reverse -- when
+    // what should decide which arc wins a shared pixel is nothing at all, since
+    // they are the same class of object. One layer lets them interleave.
     //
-    // SO: THE SAME GREEN, DRAWN AS AN ORBIT. A hairline ring three pixels clear
-    // of the dot, at 45% of the dot's own alpha. The dot underneath is
-    // untouched — same position, same size, same colour — and the ring reads as
-    // an annotation on it rather than as a change to it. At a glance the visited
-    // airports are the ones with something around them; at rest it is quiet
-    // enough not to turn a well-travelled map into a field of targets.
-    //
-    // UNDER THE DOTS, so the solid centre always wins its own pixels and the
-    // ring cannot make the dot look hollow.
+    // UNDER THE AIRPORT DOTS, so an arc terminates behind its endpoint rather
+    // than crossing it. Above the labels, because the flight overlay is one
+    // block of foreground and splitting it around the place names would read as
+    // two unrelated things.
     {
-      id: 'airport-visited',
-      type: 'circle',
-      source: 'visited',
-      minzoom: AIRPORT_MIN_ZOOM,
+      id: 'arcs',
+      type: 'line',
+      source: 'arcs',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5.2, 10, 7.5],
-        // A circle layer always fills; the fill is made invisible and the mark
-        // is entirely the stroke, which is what makes this a ring.
-        //
-        // THE STROKE SURVIVES A ZERO FILL, AND THIS WAS READ RATHER THAN
-        // ASSUMED — the whole layer depends on it, and if a zero fill opacity
-        // suppressed the stroke the rings would be invisible with no error.
-        // maplibre-gl 5.24.0's circle fragment shader ends:
-        //
-        //   fragColor = v_visibility * opacity_t
-        //             * mix(color*opacity, stroke_color*stroke_opacity, color_t)
-        //
-        // and mix(a,b,t) is a*(1-t) + b*t. In the stroke band color_t goes to 1,
-        // so the fragment IS stroke_color*stroke_opacity and the fill's opacity
-        // is weighted to nothing. The two terms never multiply.
-        //
-        // The shader forces color_t to 0 only when stroke_width < 0.01, and the
-        // trailing discard fires only when all four channels are under 0.5/255 —
-        // true of the transparent interior, false of a green stroke at 0.45. So
-        // the middle is thrown away and the ring is kept, which is the intent.
-        'circle-opacity': 0,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': AIRPORT_INK,
-        // Fades in on the same ramp as the dots, so a ring never arrives before
-        // the thing it is annotating.
-        'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'],
-          AIRPORT_MIN_ZOOM, 0, AIRPORT_FULL_ZOOM, 0.45],
+        'line-color': ['case', ['==', ['get', 'live'], 1], ARC_LIVE, ARC_PLANNED],
+        // LIVE IS WIDER AS WELL AS GREENER. At z1 a hairline is near the limit
+        // of what a phone screen resolves, so hue alone would not separate the
+        // two when zoomed out -- the weight carries the distinction before the
+        // colour is even readable.
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          1, ['case', ['==', ['get', 'live'], 1], 1.0, 0.6],
+          6, ['case', ['==', ['get', 'live'], 1], 1.8, 1.0]],
+        'line-opacity': ['case', ['==', ['get', 'live'], 1], 0.85, 1],
       },
     },
     // THE AIRPORTS, ON TOP OF THE GEOGRAPHY. The only green on the map.
@@ -632,6 +650,31 @@ const STYLE = {
         'circle-opacity': 0,
       },
     },
+    // -- THE AIRCRAFT --------------------------------------------------------
+    //
+    // circle-blur: 0.6 IS THE HONESTY. The position is interpolated linearly
+    // along a great circle between two scheduled times -- it is not a fix, and
+    // a crisp dot would claim that it was. A soft edge says "about here" in the
+    // mark itself, so the drawing and the data agree without needing a caption.
+    //
+    // NO HEADING AND NO SILHOUETTE. A triangle or an aeroplane glyph has to
+    // point somewhere, and pointing along the great circle would assert a track
+    // this knows nothing about. A circle has no orientation to be wrong.
+    //
+    // ABOVE THE AIRPORTS, BELOW THE PIN. The aircraft is the one moving thing
+    // on the map and must not be occluded by a static dot it happens to
+    // overfly; the user's own location still outranks it.
+    {
+      id: 'planes',
+      type: 'circle',
+      source: 'planes',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 3.5, 8, 5.5],
+        'circle-color': ARC_LIVE,
+        'circle-blur': 0.6,
+        'circle-opacity': 0.9,
+      },
+    },
     // THE PIN, ABOVE EVEN THE AIRPORTS, and drawn at EVERY zoom — unlike the
     // airports, which fade in at z4.5. Where the user is standing is worth
     // marking on the globe itself, and it is one feature rather than 1,223.
@@ -682,6 +725,23 @@ const HTML = `<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <style>
+  /* ── NOTHING IN HERE IS TEXT, SO NOTHING IN HERE IS SELECTABLE ──
+     A long press on the canvas was raising the WebView's own selection UI: the
+     blue wash and a copy-paste bar, over a map with nothing to copy. The map is
+     a canvas and its labels are painted pixels, so selection has nothing to
+     select and only gets in the way of holding a finger down.
+
+     THE UNIVERSAL SELECTOR IS DELIBERATE. The old rule set was scoped to html,
+     body and #map, and the canvas MapLibre creates at runtime is none of those;
+     a child element is what the long press actually lands on.
+
+     -webkit-touch-callout IS THE iOS HALF and user-select the Android half —
+     the two platforms raise this through different mechanisms and neither
+     property covers both. tap-highlight-color removes Android's grey flash on
+     touch, which is the same class of browser affordance on a surface that is
+     not a document. */
+  * { -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   html, body, #map { margin:0; padding:0; height:100%; width:100%;
                      background:${OCEAN}; overflow:hidden; }
   .maplibregl-map { position:relative; overflow:hidden; }
@@ -693,6 +753,18 @@ const HTML = `<!DOCTYPE html>
 <body>
 <div id="map"></div>
 <script>
+// AND THE SAME THING AGAIN IN JAVASCRIPT, because CSS is not always enough.
+// Android's WebView has been observed to begin a selection on a canvas whatever
+// user-select says, and the gesture that starts it is a long press — exactly the
+// gesture a map wants for itself. Cancelling the events is the belt to the CSS's
+// braces; both are cheap and neither is sufficient alone on both platforms.
+//
+// passive:false IS REQUIRED. A passive listener cannot preventDefault, and these
+// exist for nothing else.
+['selectstart', 'contextmenu', 'dragstart'].forEach(function (n) {
+  document.addEventListener(n, function (e) { e.preventDefault(); }, { passive: false });
+});
+
 // ── REPORTING ──────────────────────────────────────────────────────────────
 //
 // EVERY STAGE NAMES ITSELF. The previous version surfaced a CDN problem as a
@@ -1112,17 +1184,33 @@ function start() {
     map.flyTo(opts);
   }
 
-  // THE BUTTON'S CALL. cancelCamera first so pressing home during a route
+  // ── GOING HOME, AS A JOURNEY OR AS A FACT ─────────────────────────────────
+  //
+  // TWO CALLERS THAT MEAN DIFFERENT THINGS, so they get different motions.
+  //
+  //   PRESSING THE BUTTON IS ASKING TO TRAVEL. The user is somewhere, chose to
+  //   go home, and the flight is the answer to that choice — it shows them the
+  //   distance they just crossed.
+  //
+  //   COMING BACK TO THE TAB IS NOT. They left from one place, did something
+  //   else, and returned; playing a three second flight from wherever the camera
+  //   was abandoned is a journey nobody asked to watch, and it happens on every
+  //   single return. The camera should simply already BE home.
+  //
+  // cancelCamera FIRST IN BOTH CASES, so a press or a return during a route
   // flight stops that flight rather than racing it — the rAF loop would
   // otherwise keep writing the centre underneath the new motion.
-  function goHome() {
+  function goHome(animate) {
     cancelCamera();
     // WHETHER THE PAGE KNOWS WHERE HOME IS, reported rather than silently
     // skipped. homeView is null until React Native has called setHome, which it
     // only does once the style has parsed AND the home has resolved; if either
     // never happens this is a no-op and used to say nothing at all.
-    post({ type: 'homeGo', known: !!homeView });
-    if (homeView) applyHome(homeView, true);
+    post({ type: 'homeGo', known: !!homeView, animate: !!animate });
+    // applyHome's second argument is the same flag setHome already passes as
+    // false for the opening view — a jump there and a jump here are the same
+    // operation, so there is one code path and not two.
+    if (homeView) applyHome(homeView, !!animate);
   }
 
   // THE ONLY WAY IN FROM REACT NATIVE. injectJavaScript calls these; the page
@@ -1143,23 +1231,188 @@ function start() {
     });
   }
 
-  // THE VISITED SET, REPLACED WHOLE. React Native sends the features rather than
-  // a list of codes, because the page has no index from IATA to coordinates —
-  // its airport data is one baked GeoJSON blob, and searching 1,223 features per
-  // update to rebuild something React Native already knows would be work done
-  // twice in the slower place.
-  function setVisited(features) {
-    map.getSource('visited').setData({ type: 'FeatureCollection', features: features });
-    post({ type: 'visited', n: features.length });
+  // ── SAVED FLIGHTS, THE AIRCRAFT ON THEM, AND THE TERMINATOR ────────────────
+  //
+  // ALL THREE ARE COMPUTED IN HERE, NOT IN REACT NATIVE, and that is a decision
+  // about the bridge. React Native sends the flight list once when it changes,
+  // and after that sends nothing but a timestamp once a minute. If the arcs were
+  // built on the other side they would be re-sent every minute — twenty flights
+  // at 64 points each is about 30KB of JSON per tick, for geometry that has not
+  // moved. The page holds the list and recomputes what the clock actually
+  // changes: which arcs are live, where the aircraft are, and where night is.
+  var FLIGHTS = [];
+  var NOW = Date.now();
+  var RAD = Math.PI / 180;
+
+  function fc(features) { return { type: 'FeatureCollection', features: features }; }
+
+  // ── GREAT CIRCLES, SAMPLED ─────────────────────────────────────────────────
+  //
+  // SLERP ON UNIT VECTORS, the same construction the camera's route flight uses.
+  // A two-point LineString is NOT enough: MapLibre draws the segment between two
+  // vertices as a straight line in whatever projection is current, so a
+  // Delhi-to-New-York pair would render as a straight Mercator gash rather than
+  // the arc an aircraft flies. Sixty-four samples is smooth at every zoom this
+  // map allows and is computed once per flight, not per frame.
+  function arcPoints(a, b, n) {
+    var av = [Math.cos(a[1] * RAD) * Math.cos(a[0] * RAD),
+              Math.cos(a[1] * RAD) * Math.sin(a[0] * RAD),
+              Math.sin(a[1] * RAD)];
+    var bv = [Math.cos(b[1] * RAD) * Math.cos(b[0] * RAD),
+              Math.cos(b[1] * RAD) * Math.sin(b[0] * RAD),
+              Math.sin(b[1] * RAD)];
+    var d = av[0] * bv[0] + av[1] * bv[1] + av[2] * bv[2];
+    d = d > 1 ? 1 : (d < -1 ? -1 : d);
+    var om = Math.acos(d);
+    var so = Math.sin(om);
+    var out = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      var p;
+      if (so < 1e-8) { p = av; } else {
+        var s1 = Math.sin((1 - t) * om) / so, s2 = Math.sin(t * om) / so;
+        p = [av[0] * s1 + bv[0] * s2, av[1] * s1 + bv[1] * s2, av[2] * s1 + bv[2] * s2];
+      }
+      out.push([Math.atan2(p[1], p[0]) / RAD,
+                Math.atan2(p[2], Math.sqrt(p[0] * p[0] + p[1] * p[1])) / RAD]);
+    }
+    return out;
   }
+
+  // ── THE ANTIMERIDIAN ───────────────────────────────────────────────────────
+  //
+  // A LINE THAT CROSSES 180 HAS TO BE CUT. Longitudes wrap, so consecutive
+  // samples either side of the date line differ by nearly 360 — and a renderer
+  // told to join them draws a line the whole way back across the map. Splitting
+  // wherever a step exceeds half a turn leaves two segments that each behave.
+  function splitArc(pts) {
+    var segs = [], cur = [pts[0]];
+    for (var i = 1; i < pts.length; i++) {
+      if (Math.abs(pts[i][0] - pts[i - 1][0]) > 180) { segs.push(cur); cur = []; }
+      cur.push(pts[i]);
+    }
+    if (cur.length > 1) segs.push(cur);
+    return segs.filter(function (s) { return s.length > 1; });
+  }
+
+  // ── WHERE THE SUN IS ───────────────────────────────────────────────────────
+  //
+  // STANDARD LOW-PRECISION SOLAR POSITION, good to about a minute of arc, which
+  // is far finer than a terminator drawn as a soft band can show. No data source
+  // and no network: the date is the whole input.
+  function subsolar(ms) {
+    var n = ms / 86400000 + 2440587.5 - 2451545.0;      // days since J2000
+    var L = (280.460 + 0.9856474 * n) % 360;            // mean longitude
+    var g = ((357.528 + 0.9856003 * n) % 360) * RAD;    // mean anomaly
+    var lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * RAD;
+    var eps = (23.439 - 0.0000004 * n) * RAD;           // obliquity
+    var dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+    var ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
+    var gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+    var lon = ((ra / RAD - gmst * 15) % 360 + 540) % 360 - 180;
+    return { dec: dec, lon: lon };
+  }
+
+  // ── THE NIGHT SIDE, AS THREE NESTED BANDS ──────────────────────────────────
+  //
+  // THE TERMINATOR IS lat = atan(-cos(lon - subsolar) / tan(declination)), the
+  // great circle ninety degrees from the sun. The night polygon is that curve
+  // closed to whichever pole the sun is not over.
+  //
+  // THREE BANDS BECAUSE A FILL HAS A HARD EDGE. MapLibre gives no blur on a
+  // fill, so a single polygon would put a drawn line across the planet — exactly
+  // what a terminator is not. Three polygons, each pushed a few degrees further
+  // into night and each at a tenth of an alpha, accumulate to a soft ramp
+  // instead: 0.10 at the edge, 0.20 behind it, 0.30 deep in the dark.
+  //
+  // THE OFFSET IS A LATITUDE SHIFT AND THEREFORE AN APPROXIMATION. A true
+  // parallel circle at 96 or 102 degrees from the sun is not a constant latitude
+  // offset from the one at 90. For a soft edge nobody measures, the error is
+  // invisible; for anything claiming to be civil or nautical twilight it would
+  // not be, and this does not claim that.
+  //
+  // THE DECLINATION IS CLAMPED AWAY FROM ZERO. At an equinox tan(dec) goes to
+  // nothing and the formula sends every longitude to a pole — a degenerate
+  // polygon. Half a degree of floor keeps the shape valid for the few hours
+  // twice a year when it would otherwise collapse.
+  function nightBands(ms) {
+    var s = subsolar(ms);
+    var dec = s.dec;
+    if (Math.abs(dec) < 0.5 * RAD) dec = (dec < 0 ? -1 : 1) * 0.5 * RAD;
+    var pole = dec > 0 ? -90 : 90;
+    var dir = dec > 0 ? -1 : 1;
+    var out = [];
+    for (var band = 0; band < 3; band++) {
+      var off = band * 6 * dir;
+      var ring = [];
+      for (var lon = -180; lon <= 180; lon += 3) {
+        var lat = Math.atan(-Math.cos((lon - s.lon) * RAD) / Math.tan(dec)) / RAD + off;
+        if (lat > 89.5) lat = 89.5;
+        if (lat < -89.5) lat = -89.5;
+        ring.push([lon, lat]);
+      }
+      ring.push([180, pole], [-180, pole], ring[0]);
+      out.push({ type: 'Feature', properties: { band: band },
+                 geometry: { type: 'Polygon', coordinates: [ring] } });
+    }
+    return out;
+  }
+
+  // ── REBUILD, ON A FLIGHT LIST CHANGE OR A MINUTE TICK ──────────────────────
+  //
+  // LIVENESS IS READ FROM THE CLOCK, not sent as a flag. A flag would be true
+  // for as long as it took the next tick to arrive and would need re-sending on
+  // every one; the departure and arrival instants do not move, so the page can
+  // answer "is it in the air" itself and the arc, the aircraft and the tick all
+  // agree by construction rather than by being kept in step.
+  function rebuild() {
+    var arcs = [], planes = [];
+    for (var i = 0; i < FLIGHTS.length; i++) {
+      var f = FLIGHTS[i];
+      var live = NOW >= f.dep && NOW <= f.arr;
+      for (var s = 0; s < f.segs.length; s++) {
+        arcs.push({ type: 'Feature', properties: { live: live ? 1 : 0 },
+                    geometry: { type: 'LineString', coordinates: f.segs[s] } });
+      }
+      if (live) {
+        // LINEAR IN TIME, AND THAT IS THE HONEST CHOICE. A real flight climbs,
+        // cruises, descends, holds and is pushed about by wind, so its position
+        // is not a constant fraction of a great circle. Modelling a climb
+        // profile would move the dot somewhere equally wrong while implying the
+        // opposite. The mark is drawn soft-edged for the same reason — see the
+        // plane layer.
+        var t = (NOW - f.dep) / (f.arr - f.dep);
+        if (t < 0) t = 0; if (t > 1) t = 1;
+        var idx = Math.round(t * (f.pts.length - 1));
+        planes.push({ type: 'Feature', properties: {},
+                      geometry: { type: 'Point', coordinates: f.pts[idx] } });
+      }
+    }
+    map.getSource('arcs').setData(fc(arcs));
+    map.getSource('planes').setData(fc(planes));
+    map.getSource('night').setData(fc(nightBands(NOW)));
+    post({ type: 'overlay', arcs: FLIGHTS.length, planes: planes.length });
+  }
+
+  function setFlights(list) {
+    FLIGHTS = list.map(function (f) {
+      var pts = arcPoints(f.a, f.b, 64);
+      return { a: f.a, b: f.b, dep: f.dep, arr: f.arr, pts: pts, segs: splitArc(pts) };
+    });
+    rebuild();
+  }
+
+  function tick(ms) { NOW = ms; rebuild(); }
 
   window.__cam = {
     airport: flyAirport,
     route: flyRoute,
     setHome: function (h) { applyHome(h, false); },
-    home: goHome,
+    home: function () { goHome(true); },
+    homeNow: function () { goHome(false); },
     probe: probe,
-    visited: setVisited
+    flights: setFlights,
+    tick: tick
   };
 
   var idled = false;
@@ -1175,6 +1428,25 @@ loadFrom(0);
 </script>
 </body>
 </html>`;
+
+// -- A FLIGHT, AS THE MAP NEEDS IT --------------------------------------------
+//
+// COORDINATES, NOT CODES. The page has no index from IATA to a position -- its
+// airport data is one baked GeoJSON blob, and searching 1,223 features per
+// flight to rebuild something this side already knows would be work done twice
+// in the slower place. Resolution happens here, where airportByCode is the same
+// lookup the search and the panel use.
+//
+// TWO INSTANTS AND NOTHING ELSE. No status flag, no "is it airborne". Departure
+// and arrival do not move, so the page can answer that question itself against
+// whatever clock it was last given, and the arc, the aircraft and the tick then
+// agree by construction rather than by being kept in step.
+export type MapFlight = {
+  a: [number, number];
+  b: [number, number];
+  dep: number;
+  arr: number;
+};
 
 // ── WHAT THE SCREEN CAN ASK THE MAP TO DO ───────────────────────────────────
 //
@@ -1192,16 +1464,24 @@ export type GlobeMapHandle = {
   // Set once, when the screen has resolved where home is. Jumps rather than
   // flies: this is the opening view, not a journey to it.
   setHome: (h: HomeView) => void;
-  // The button. Takes nothing, because the page already knows.
+  // The button. Takes nothing, because the page already knows where home is.
   goHome: () => void;
+  // THE SAME PLACE WITHOUT THE JOURNEY, for returning to the tab: the camera is
+  // put home with no animation at all, so a user coming back finds it there
+  // rather than watching it arrive.
+  jumpHome: () => void;
+  // THE FLIGHTS DRAWN ON THE GLOBE. Replaced whole on every change, because the
+  // set is small and a diff would be more code than the work it saves.
+  setFlights: (flights: MapFlight[]) => void;
+  // THE CLOCK, ONCE A MINUTE. The page holds the flight list and recomputes what
+  // time actually changes -- which arcs are live, where the aircraft are, and
+  // where night is -- so a tick is one number across the bridge rather than
+  // several kilobytes of geometry that has not moved.
+  tick: (ms: number) => void;
   // DIAGNOSTIC. Asks the page to report what it is actually holding, which is
   // the one thing React cannot see: homeView and the pin source live in the
   // WebView and survive anything that happens on this side.
   probe: (tag: string) => void;
-  // THE AIRPORTS THIS USER HAS FLOWN THROUGH. Replaced whole on every change,
-  // because the set is small and a diff would be more code than the work it
-  // saves.
-  setVisited: (iatas: string[]) => void;
 };
 
 // FIRED WHEN THE STYLE HAS PARSED, which is BEFORE the first tiles arrive. That
@@ -1250,6 +1530,10 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
         console.log(`[HOME] 4. injecting setHome (${h.kind}), webview=${webRef.current !== null}`);
         call(`window.__cam&&window.__cam.setHome(${JSON.stringify(h)})`);
       },
+      jumpHome() {
+        console.log('[HOME] jump home (focus return, no animation)');
+        call('window.__cam&&window.__cam.homeNow()');
+      },
       goHome() {
         // THE LAST THING REACT NATIVE CAN SEE. Past this the call is a string in
         // another runtime, and if window.__cam is missing it evaluates to
@@ -1261,21 +1545,11 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
       probe(tag: string) {
         call(`window.__cam&&window.__cam.probe(${JSON.stringify(tag)})`);
       },
-      setVisited(iatas: string[]) {
-        // RESOLVED HERE, NOT IN THE PAGE. airportByCode is the same lookup the
-        // search and the panel use, so a visited ring cannot land on a different
-        // airport from the one the saved flight names. Unknown codes are dropped
-        // silently: a saved flight can carry an IATA this dataset does not have,
-        // and a missing ring is the right outcome for one.
-        const features = iatas
-          .map((c) => airportByCode(c))
-          .filter((a): a is NonNullable<typeof a> => a !== null)
-          .map((a) => ({
-            type: 'Feature',
-            properties: { iata: a.iata },
-            geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
-          }));
-        call(`window.__cam&&window.__cam.visited(${JSON.stringify(features)})`);
+      setFlights(flights: MapFlight[]) {
+        call(`window.__cam&&window.__cam.flights(${JSON.stringify(flights)})`);
+      },
+      tick(ms: number) {
+        call(`window.__cam&&window.__cam.tick(${ms})`);
       },
     }), [call]);
 
@@ -1309,6 +1583,25 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
         bounces={false}
         overScrollMode="never"
         setSupportMultipleWindows={false}
+        // ── THE NATIVE HALF OF THE SAME FIX ──
+        //
+        // menuItems={[]} IS THE CROSS-PLATFORM LEVER. react-native-webview
+        // documents an empty array as suppressing the selection menu outright,
+        // and it is the one selection prop marked for both ios and android;
+        // suppressMenuItems is iOS-only and would have left Android as it was.
+        //
+        // allowsLinkPreview AND dataDetectorTypes ARE iOS ONLY and close the two
+        // remaining long-press behaviours there: the link preview that a long
+        // press can raise, and the automatic linkifying of anything that looks
+        // like a phone number or address, which a map full of place names is
+        // well placed to trip.
+        //
+        // NONE OF THIS REACHES THE AIRPORT PANEL. That is React Native text
+        // outside the WebView entirely; these props end at the web view's
+        // boundary and cannot make it unselectable.
+        menuItems={[]}
+        allowsLinkPreview={false}
+        dataDetectorTypes="none"
         // The page is black from the first frame, so there is no white flash
         // between the WebView mounting and MapLibre painting.
         style={st.web}
@@ -1340,7 +1633,6 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
             onAirport?.(String(m.iata));
           }
           if (m.type === 'mapTap') onMapTap?.();
-          if (m.type === 'visited') console.log(`[MAP] visited airports: ${m.n}`);
           if (m.type === 'flyAirport') console.log(`[MAP] flyAirport ${m.km}km direct, ${m.ms}ms`);
           if (m.type === 'flyHome') {
             console.log(`[MAP] flyHome ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
@@ -1351,9 +1643,12 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           if (m.type === 'probe') {
             console.log(`[HOME][PAGE] probe(${m.tag}): holds ${m.home} at ${m.homeLon}, pin features = ${m.pins}`);
           }
+          if (m.type === 'overlay') {
+            console.log(`[MAP] overlay: ${m.arcs} flights, ${m.planes} in the air`);
+          }
           if (m.type === 'homeGo') {
             console.log(m.known
-              ? '[HOME] 7. page flying home'
+              ? `[HOME] 7. page going home (${m.animate ? 'flight' : 'jump'})`
               : '[HOME] 7. FAILED - page reached but it has no home stored');
           }
         }}

@@ -98,7 +98,7 @@ import {
 // THE MAP BEHIND EVERYTHING. Geometry and place names, absoluteFill under the
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
-import GlobeMap, { type GlobeMapHandle } from '../components/GlobeMap';
+import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../components/GlobeMap';
 // WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
@@ -1096,6 +1096,42 @@ function routeEndLabel(code: string, name: string, cap: number): string {
   return routeClip(short, cap);
 }
 
+// -- TEST DATA. REMOVE THIS BLOCK ---------------------------------------------
+//
+// TWO HARDCODED FLIGHTS SO THE OVERLAY CAN BE SEEN BEFORE IT IS WIRED TO THE
+// SAVED FLIGHTS. Delete TEST_FLIGHTS, the two effects that push it at the map,
+// and the MapFlight import, and the map goes back to drawing nothing.
+//
+// THE PAIR IS DELIBERATE. Bengaluru to Delhi is a short hop whose great circle
+// is barely distinguishable from a straight line; Indore to New York crosses
+// half the planet and bends hard over the pole, which is the case a two-point
+// LineString would get visibly wrong. One is in the air and one has not left,
+// so both weights of arc and the aircraft mark are all on screen at once.
+//
+// ANCHORED AT LOAD, NOT AT EVERY TICK. The times are computed once, relative to
+// the clock when the module is first evaluated, so BLR-DEL is always about half
+// flown when the app opens and IDR-JFK always leaves in a few hours -- but from
+// then on they age normally, which is what lets the minute tick actually move
+// the aircraft. Recomputing them per tick would pin the mark in place forever.
+const TEST_FLIGHTS: MapFlight[] = (() => {
+  const t0 = Date.now();
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const leg = (from: string, to: string, dep: number, arr: number): MapFlight[] => {
+    const a = airportByCode(from);
+    const b = airportByCode(to);
+    if (a === null || b === null) return [];
+    return [{ a: [a.lon, a.lat], b: [b.lon, b.lat], dep, arr }];
+  };
+  return [
+    // AIRBORNE, ROUGHLY HALFWAY. A 2h30 block time straddling the current
+    // instant, so the aircraft sits near the middle of the arc.
+    ...leg('BLR', 'DEL', t0 - 75 * MIN, t0 + 75 * MIN),
+    // UPCOMING. Departing in three hours, fifteen in the air after that.
+    ...leg('IDR', 'JFK', t0 + 3 * HOUR, t0 + 18 * HOUR),
+  ];
+})();
+
 export default function Search() {
   // THE QUERY IS THE BAR'S, and this screen only reads it. setQuery is here for
   // one purpose: clearResultView wipes the line when the account changes, exactly
@@ -1662,6 +1698,20 @@ export default function Search() {
   // camera has to be able to reach it.
   const [panelIata, setPanelIata] = useState<string | null>(null);
 
+  // ── A TAP DURING THE TYPE-ON FINISHES IT INSTEAD OF KILLING IT ────────────
+  //
+  // TAPPING TO SKIP AN ANIMATION IS AN ASK FOR ITS RESULT, NOT A DISMISSAL. The
+  // panel used to read any tap as "close", so a user who tapped because the
+  // typing was slower than their reading lost the thing they were reading. The
+  // first tap now lays it out in full; only a tap after that closes it.
+  //
+  // A FLAG RATHER THAN A DIRECT WRITE TO THE COUNTERS, because the two typing
+  // effects own those counters and their timers are still running. Setting the
+  // counters from outside would be overwritten by the next tick; setting this
+  // re-runs both effects, whose cleanups cancel the timers on the way out and
+  // whose bodies then jump straight to the finished state.
+  const [panelSkipped, setPanelSkipped] = useState(false);
+
   // ── THE PANEL DESCRIBES WHERE THE CAMERA IS, SO MOVING AWAY CLOSES IT ─────
   //
   // THE BUG THIS FIXES: tapping a dot opened the panel, pressing home flew the
@@ -1676,7 +1726,12 @@ export default function Search() {
   //
   // THE ONE EXCEPTION IS openAirport, which moves the camera BECAUSE an airport
   // was chosen. Clearing there would close the panel the tap just opened.
-  const leaveAirport = useCallback(() => setPanelIata(null), []);
+  // The skip goes with it: a closed panel is fully reset, so the next one types
+  // rather than inheriting a completion the user asked for on a different place.
+  const leaveAirport = useCallback(() => {
+    setPanelIata(null);
+    setPanelSkipped(false);
+  }, []);
 
   const flownFrom = routeResult === null ? null : routeResult.origin;
   const flownTo = routeResult === null ? null : routeResult.destination;
@@ -1931,6 +1986,25 @@ export default function Search() {
     mapRef.current?.setHome(home);
   }, [mapReady, home, leaveAirport]);
 
+  // -- TEST DATA. REMOVE THESE TWO EFFECTS -----------------------------------
+  //
+  // SENT ONCE, WHEN THE STYLE HAS PARSED. The list never changes, so there is
+  // nothing to key on but the map becoming ready.
+  useEffect(() => {
+    if (!mapReady) return;
+    mapRef.current?.setFlights(TEST_FLIGHTS);
+  }, [mapReady]);
+
+  // THE MINUTE TICK, FORWARDED. `now` already advances once a minute for the
+  // flight card; the map rides the same one rather than starting a second timer
+  // that would wake the device on its own schedule. A minute is the right grain
+  // for both an aircraft crossing an ocean and a terminator sweeping 0.25 of a
+  // degree, and it costs one number across the bridge.
+  useEffect(() => {
+    if (!mapReady) return;
+    mapRef.current?.tick(now);
+  }, [mapReady, now]);
+
   // ── THE AIRPORT PANEL ─────────────────────────────────────────────────────
   //
   // THE MAP POSTS A CODE, NOT A PLACE. The page knows only what is in its
@@ -1968,10 +2042,14 @@ export default function Search() {
   // itself, and the sequencer below made exactly that mistake with an array and
   // looped. One rule for both is safer than two rules that happen to agree.
   useEffect(() => {
-    setTyped(0);
-    if (panelIata === null) return;
+    if (panelIata === null) { setTyped(0); return; }
     const a = airportByCode(panelIata);
-    if (a === null) return;
+    if (a === null) { setTyped(0); return; }
+    // SKIPPED: land on the last character with no timer. setTyped(0) is NOT run
+    // first here — re-running this effect to finish it must not flash the name
+    // back to empty on the way.
+    if (panelSkipped) { setTyped(a.city.length); return; }
+    setTyped(0);
     const len = a.city.length;
     let n = 0;
     const id = setInterval(() => {
@@ -1980,7 +2058,7 @@ export default function Search() {
       if (n >= len) clearInterval(id);
     }, CITY_TYPE_MS);
     return () => clearInterval(id);
-  }, [panelIata]);
+  }, [panelIata, panelSkipped]);
 
   const typingDone = panelCity !== '' && typed >= panelCity.length;
 
@@ -2174,6 +2252,15 @@ export default function Search() {
   // any other render.
   useEffect(() => {
     if (panelIata === null || !typingDone) { setStepAt(0); setStepTyped(0); return; }
+    // SKIPPED: every step already past. stepAt at the list length means the
+    // render draws all of them whole — nothing equals stepAt, so nothing is
+    // sliced — and the codes row, which shows every code whose index is at or
+    // below stepAt, shows all of them.
+    if (panelSkipped) {
+      setStepAt(panelStepsRef.current.length);
+      setStepTyped(0);
+      return;
+    }
     let step = 0;
     let ch = 0;
     let cancelled = false;
@@ -2198,38 +2285,43 @@ export default function Search() {
     };
     timer = setTimeout(tick, PANEL_LINE_GAP_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [panelIata, typingDone]);
+  }, [panelIata, typingDone, panelSkipped]);
 
-  // ── AIRPORTS THIS USER HAS FLOWN THROUGH ──────────────────────────────────
+  // ── IS THE PANEL STILL ARRIVING? ──────────────────────────────────────────
   //
-  // BOTH ENDS OF EVERY SAVED FLIGHT, ARCHIVED INCLUDED. The provider keeps one
-  // list and archiving is a field on a record rather than a separate collection,
-  // so "including archived" needs no filter — it needs the absence of one. A
-  // flight taken last year is exactly as visited as one taken yesterday.
-  //
-  // SORTED, WHICH IS NOT COSMETIC. This memo feeds an effect that pushes into
-  // the WebView; a Set's iteration order follows insertion, so the same airports
-  // arriving in a different order would produce a different string and re-send
-  // identical data on every list change. Sorting makes the value stable.
-  const visitedCodes = useMemo(() => {
-    const set = new Set<string>();
-    for (const f of savedFlights) {
-      if (f.from?.iata) set.add(f.from.iata);
-      if (f.to?.iata) set.add(f.to.iata);
-    }
-    return Array.from(set).sort();
-  }, [savedFlights]);
+  // Both halves have to be finished: the city, and every step after it. stepAt
+  // reaching the list length is the sequencer's own end condition, so this asks
+  // the same question the animation answers rather than a second version of it.
+  const panelTyping =
+    panelIata !== null && !(typingDone && stepAt >= panelSteps.length);
 
-  // KEYED ON THE JOINED STRING, not the array, whose identity changes on every
-  // render of the provider. The map is only told when the SET actually differs.
-  const visitedKey = visitedCodes.join(',');
-  useEffect(() => {
-    if (!mapReady) return;
-    mapRef.current?.setVisited(visitedCodes);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visitedKey, mapReady]);
+  // A DOT TAP SHOWS THE AIRPORT AND DOES NOT FLY. The page has already started
+  // the camera itself — see the click handler in GlobeMap — so calling
+  // flyToAirport here would inject a second flight on top of the running one.
+  // openAirport, which DOES fly, stays for the sibling codes in the panel: those
+  // are taps in React Native and the page knows nothing about them.
+  const showAirport = useCallback((iata: string) => {
+    setPanelSkipped(false);
+    setPanelIata(iata);
+  }, []);
+
+  // ── ONE TAP FINISHES, THE NEXT DISMISSES ──────────────────────────────────
+  //
+  // THIS HANDLES BOTH SURFACES, and that falls out of the layering rather than
+  // needing a second handler. The panel wrapper is box-none and its text carries
+  // no press handler, so a tap on the panel passes through to the WebView, the
+  // map reports it as a tap that hit no airport, and it arrives here — which is
+  // exactly why a tap on the panel used to dismiss it.
+  const handleMapTap = useCallback(() => {
+    if (panelIata === null) return;
+    if (panelTyping) { setPanelSkipped(true); return; }
+    setPanelIata(null);
+  }, [panelIata, panelTyping]);
 
   const openAirport = useCallback((iata: string) => {
+    // A NEW AIRPORT TYPES ITSELF IN AGAIN. Switching while one panel is finished
+    // must not inherit its skip, or the second would appear all at once.
+    setPanelSkipped(false);
     setPanelIata(iata);
     mapRef.current?.flyToAirport(iata);
   }, []);
@@ -2257,12 +2349,18 @@ export default function Search() {
         firstFocusRef.current = false;
         return;
       }
-      // 4 of 5. Coming back to the tab flies home, so a panel left open from
+      // 4 of 5. Coming back puts the camera home, so a panel left open from
       // before the user navigated away is describing the wrong place.
       leaveAirport();
+      // JUMP, NOT FLY, AND THAT IS THE DIFFERENCE FROM THE BUTTON. Pressing home
+      // is asking to travel and the flight answers it; returning to the tab is
+      // not, and playing a three second pull-back-and-descend from wherever the
+      // camera was left makes the user watch a journey they did not ask for —
+      // every single time they come back. The camera should already BE home.
+      //
       // A no-op until the page has been told where home is, which is what we
       // want: there is nothing to return to yet.
-      mapRef.current?.goHome();
+      mapRef.current?.jumpHome();
     }, [leaveAirport]),
   );
 
@@ -3271,8 +3369,8 @@ export default function Search() {
       <GlobeMap
         ref={mapRef}
         onReady={() => setMapReady(true)}
-        onAirport={setPanelIata}
-        onMapTap={() => setPanelIata(null)}
+        onAirport={showAirport}
+        onMapTap={handleMapTap}
       />
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
