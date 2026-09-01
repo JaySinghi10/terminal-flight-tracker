@@ -416,6 +416,77 @@ export function flightDataFromApi(data: any, effective?: string): FlightData {
   };
 }
 
+// THE SAME CARD, BUILT FROM THE RECORD INSTEAD OF FROM THE WIRE.
+//
+// AN ADAPTER, NOT A SECOND IMPLEMENTATION, and the distinction is the whole
+// reason this is safe to add. Every RULE it needs is already exported and is
+// called here exactly as flightDataFromApi calls it: movementTimeCell decides
+// the actual/estimated/scheduled precedence, displayStatus and badgeLabel decide
+// the word, getStatusColor and getStatusBg decide the colours, airportFullLabel
+// decides the name and scheduledDuration decides the duration. What is written
+// below is field mapping and nothing else, so the two builders cannot come to
+// disagree about what a flight looks like -- only about where they read it from.
+//
+// WHY IT HAS TO EXIST: a flight opened from the MAP has no wire response behind
+// it. The route was saved, the record is on disk, and fetching it again to draw
+// a card would spend a provider call to be told what is already known.
+//
+// `effective` IS REQUIRED HERE where it is optional there, because a stored
+// record's own status word is frozen at whatever the last refresh returned --
+// for anything saved in advance that is "scheduled" forever. Only the clock can
+// say otherwise, and only the caller has one. See effectiveStatus in lib/saved.
+//
+// THE RAW STATUS IS ALWAYS null, and that is a real difference rather than an
+// oversight: SavedFlight does not store the provider's own word. The badge
+// therefore shows the mapped status, so a stored flight reads SCHEDULED where a
+// freshly fetched one might have read BOARDING. Storing the raw word would be a
+// schema change; showing a word the record does not have would be a lie.
+export function flightDataFromSaved(f: SavedFlight, effective: string): FlightData {
+  const status = displayStatus(effective, f.from.delay, null);
+  const depCell = movementTimeCell(
+    clock24(f.from.actualIso, f.from.actual),
+    clock24(f.from.estimatedIso, f.from.estimated),
+    clock24(f.from.scheduledIso, f.from.scheduled),
+    f.from.actualSource, true);
+  const arrCell = movementTimeCell(
+    clock24(f.to.actualIso, f.to.actual),
+    clock24(f.to.estimatedIso, f.to.estimated),
+    clock24(f.to.scheduledIso, f.to.scheduled),
+    f.to.actualSource, false);
+  return {
+    flight: f.flightNumber || "\u2014",
+    airline: f.airline || "\u2014",
+    status: badgeLabel(null, status),
+    statusColor: getStatusColor(status),
+    statusBg: getStatusBg(status),
+    from: f.from.iata || "\u2014",
+    fromFull: airportFullLabel(f.from.shortName, f.from.city, f.from.airport || "\u2014"),
+    fromCity: f.from.city || f.from.airport || "\u2014",
+    to: f.to.iata || "\u2014",
+    toFull: airportFullLabel(f.to.shortName, f.to.city, f.to.airport || "\u2014"),
+    toCity: f.to.city || f.to.airport || "\u2014",
+    dep: f.from.scheduled || "N/A",
+    arr: f.to.scheduled || "N/A",
+    depIso: f.from.scheduledIso,
+    arrIso: f.to.scheduledIso,
+    depTimeLabel: depCell.label,
+    depTimeValue: depCell.value,
+    arrTimeLabel: arrCell.label,
+    arrTimeValue: arrCell.value,
+    duration: scheduledDuration(
+      f.from.scheduledIso, f.from.timezone, f.to.scheduledIso, f.to.timezone),
+    terminal: f.from.terminal || "N/A",
+    gate: f.from.gate || "N/A",
+    checkinDesk: f.from.checkinDesk,
+    aircraft: f.aircraftModel,
+    registration: f.aircraftRegistration,
+    baggage: f.to.baggage || "N/A",
+    depDelay: f.from.delay,
+    arrDelay: f.to.delay,
+    date: f.flightDate || "N/A",
+  };
+}
+
 // IT DOES NOT BELONG HERE, and that is worth saying rather than hiding. This is a
 // general airport-name helper — lib/airports.ts is its home — and it is in a card
 // component only because the route row's city labels and this card's both call

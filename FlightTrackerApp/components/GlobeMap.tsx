@@ -353,6 +353,34 @@ const CITY_ZOOM = 7;
 // glyphs run out either side, so a finger aiming at a name lands off-centre far
 // more often than one aiming at a 4px circle. See the hit layer.
 const CITY_HIT_R = 24;
+
+// ── TAPPING A LINE ───────────────────────────────────────────────────────────
+//
+// 24 POINTS WIDE, WHICH IS THE SAME TARGET THE CITY LABELS GET. line-width is
+// in screen pixels exactly as circle-radius is, so a constant is a constant-size
+// target at every zoom -- and an arc needs it more than either point does: the
+// drawn line is 0.6 to 1.8px, which is at the limit of what can be seen and
+// far past the limit of what can be hit.
+//
+// A WIDTH, NOT A RADIUS, so the figure is the FULL thickness rather than a
+// half-width: 24 here is 12 either side of the line, against the city's 24 in
+// every direction. That is deliberate -- a line offers its whole length to aim
+// at, so it needs less slack across itself than a single point does.
+const ARC_HIT_W = 24;
+
+// WHERE A FRAMED ROUTE STOPS ZOOMING IN. Two airports in the same city would
+// otherwise fit a bounding box a few kilometres across and fill the screen with
+// one apron; this is the airport flight's own zoom, so framing can never end
+// closer than tapping a dot would.
+const ROUTE_FRAME_MAX_ZOOM = AIRPORT_ZOOM;
+
+// THE MARGIN AROUND A FRAMED ROUTE, in screen pixels, and it is not symmetric
+// because this screen is not. The top has the consent strip and the home
+// button; the bottom has the tab bar floating over it; the left carries the
+// panel that is about to open. An endpoint tucked under any of those is an
+// endpoint the user cannot see, which is the one thing framing exists to
+// prevent.
+const ROUTE_FRAME_PAD = { top: 110, right: 44, bottom: 150, left: 44 };
 const GLOBE_APEX_ZOOM = 0;
 const AIRPORT_FLY_MS = 3000;
 
@@ -730,6 +758,35 @@ const STYLE = {
           1, ['case', ['==', ['get', 'past'], 1], 0.6, 1.0],
           6, ['case', ['==', ['get', 'past'], 1], 1.0, 1.8]],
         'line-opacity': ['case', ['==', ['get', 'past'], 1], 1, 0.85],
+      },
+    },
+    // ── THE ARCS' TAP TARGET, INVISIBLE AND A CONSTANT WIDTH ────────────────
+    //
+    // THE SAME TRICK AS THE AIRPORT DOT AND THE CITY LABEL, in the one form a
+    // line can take it: a second line layer over the same source, drawn at a
+    // width nobody would choose to look at and an opacity that means nobody
+    // does. line-width is in screen pixels, so this is 24pt of target at z1 and
+    // 24pt at z9.
+    //
+    // THE SAME SOURCE AND NO FILTER, so every arc is hittable including the
+    // grey ones -- a flight that has landed is still a flight you might want to
+    // read. It carries no filter of its own for the same reason the city target
+    // shares the labels' filter: two conditions that must agree are one
+    // condition written twice.
+    //
+    // IT IS NOT HIDDEN BY THE PAST-ARC TOGGLE, and that is a hole worth naming.
+    // setShowPast filters the ARCS layer by id; this layer is a different id and
+    // keeps its features. A hidden past arc is therefore still tappable. See
+    // setShowPast, which now filters both.
+    {
+      id: 'arc-hit',
+      type: 'line',
+      source: 'arcs',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-width': ARC_HIT_W,
+        'line-color': ARC_LIVE,
+        'line-opacity': 0,
       },
     },
     // THE AIRPORTS, ON TOP OF THE GEOGRAPHY. The only green on the map.
@@ -1287,6 +1344,44 @@ function start() {
   }
 
   function flyAirport(lon, lat) { flyPlace(lon, lat, ${AIRPORT_ZOOM}, 'airport'); }
+
+  // ── MOTION 3: FRAME BOTH ENDS ──────────────────────────────────────────────
+  //
+  // fitBounds SOLVES FOR THE CAMERA rather than being told one, which is the
+  // whole point: "both endpoints visible" is a constraint, not a position, and
+  // the zoom that satisfies it depends on how far apart they are and how big
+  // the screen is. Neither is known here.
+  //
+  // linear: true IS THE DIRECT MOVE. maplibre's fitBounds hands off to flyTo
+  // when linear is false -- the parabola that arcs out to the globe and back --
+  // and to easeTo when it is true. The user tapped a line they can see; showing
+  // them the whole planet on the way to it would be answering a question they
+  // did not ask.
+  //
+  // THE LONGITUDES ARE MADE CONTIGUOUS FIRST. A bounding box from Tokyo to Los
+  // Angeles built from the raw pair spans from -118 to +139 -- 257 degrees the
+  // wrong way round the world -- and fitBounds would dutifully frame the Atlantic.
+  // Shifting one end by a turn makes the box the short way, and maplibre accepts
+  // longitudes outside the usual range and wraps them.
+  function frameRoute(ax, ay, bx, by) {
+    cancelCamera();
+    var lo = ax, hi = bx;
+    if (hi - lo > 180) hi -= 360;
+    if (lo - hi > 180) hi += 360;
+    var c = map.getCenter();
+    var km = kmBetween(c.lng, c.lat, (ax + bx) / 2, (ay + by) / 2);
+    var dur = ${AIRPORT_NEAR_MS} + km * 0.1;
+    if (dur > ${AIRPORT_FAR_MS}) dur = ${AIRPORT_FAR_MS};
+    post({ type: 'frameRoute', km: Math.round(km), ms: Math.round(dur) });
+    map.fitBounds(
+      [[Math.min(lo, hi), Math.min(ay, by)], [Math.max(lo, hi), Math.max(ay, by)]],
+      {
+        padding: ${JSON.stringify(ROUTE_FRAME_PAD)},
+        maxZoom: ${ROUTE_FRAME_MAX_ZOOM},
+        duration: dur,
+        linear: true
+      });
+  }
   function flyCity(lon, lat) { flyPlace(lon, lat, ${CITY_ZOOM}, 'city'); }
 
   // ── MOTION 2: ALONG THE GREAT CIRCLE ───────────────────────────────────────
@@ -1443,6 +1538,41 @@ function start() {
         lat: cc[1],
         candidates: cit.length,
         px: hitC.px
+      });
+      return;
+    }
+
+    // ARCS LAST, BECAUSE A POINT IS MORE SPECIFIC THAN A LINE. An arc passes
+    // through and near a great many dots and labels on its way across the
+    // world, and at every one of them the user almost certainly meant the
+    // place. The line is what is left when nothing more specific was there.
+    //
+    // NEAREST BY VERTEX, not by the feature's own order. A LineString has no
+    // single position to project, so the distance to an arc is the distance to
+    // its closest SAMPLE -- and at 64 samples an arc is dense enough that the
+    // nearest vertex is within a pixel or two of the nearest point on the line.
+    // Exact perpendicular distance to each segment would be more arithmetic for
+    // an answer that only has to order two overlapping lines.
+    var arc = map.queryRenderedFeatures(e.point, { layers: ['arc-hit'] });
+    var bestArc = null;
+    var bestArcD = Infinity;
+    for (var j = 0; j < arc.length; j++) {
+      var co = arc[j].geometry.coordinates;
+      for (var k = 0; k < co.length; k++) {
+        var q = map.project(co[k]);
+        var ex = q.x - e.point.x, ey = q.y - e.point.y;
+        var ed = ex * ex + ey * ey;
+        if (ed < bestArcD) { bestArcD = ed; bestArc = arc[j]; }
+      }
+    }
+    if (bestArc !== null) {
+      var pr = bestArc.properties;
+      frameRoute(pr.ax, pr.ay, pr.bx, pr.by);
+      post({
+        type: 'flight',
+        id: pr.id,
+        candidates: arc.length,
+        px: Math.round(Math.sqrt(bestArcD))
       });
       return;
     }
@@ -1748,8 +1878,21 @@ function start() {
       var past = f.arr !== null && NOW > f.arr;
       var live = f.dep !== null && f.arr !== null && NOW >= f.dep && NOW <= f.arr;
       for (var s = 0; s < f.segs.length; s++) {
-        arcs.push({ type: 'Feature', properties: { past: past ? 1 : 0 },
-                    geometry: { type: 'LineString', coordinates: f.segs[s] } });
+        // THE ID AND BOTH ENDPOINTS RIDE ON EVERY SEGMENT, and the endpoints are
+        // the reason. An arc that crosses the antimeridian is SPLIT into two
+        // LineStrings, so the segment a finger lands on may begin and end
+        // nowhere near the flight's actual airports -- framing the route from
+        // the tapped geometry would frame half of it. These are the route's own
+        // ends, repeated on each piece.
+        arcs.push({
+          type: 'Feature',
+          properties: {
+            past: past ? 1 : 0,
+            id: f.id,
+            ax: f.a[0], ay: f.a[1], bx: f.b[0], by: f.b[1]
+          },
+          geometry: { type: 'LineString', coordinates: f.segs[s] }
+        });
       }
       if (live) {
         // LINEAR IN TIME, AND THAT IS THE HONEST CHOICE. A real flight climbs,
@@ -1782,7 +1925,7 @@ function start() {
   function setFlights(list) {
     FLIGHTS = list.map(function (f) {
       var pts = arcPoints(f.a, f.b, 64);
-      return { a: f.a, b: f.b, dep: f.dep, arr: f.arr, pts: pts, segs: splitArc(pts) };
+      return { id: f.id, a: f.a, b: f.b, dep: f.dep, arr: f.arr, pts: pts, segs: splitArc(pts) };
     });
     rebuild();
   }
@@ -1801,7 +1944,13 @@ function start() {
   // MapLibre treats a null filter as "no filtering at all" and skips the
   // per-feature evaluation entirely.
   function setShowPast(on) {
-    map.setFilter('arcs', on ? null : ['!=', ['get', 'past'], 1]);
+    // BOTH LAYERS, OR THE TARGET OUTLIVES THE LINE. The visible arc and its hit
+    // target are two layers over one source; filtering only the first would
+    // leave an invisible 24pt strip that still opens a panel for a flight the
+    // user has just asked not to see.
+    var f = on ? null : ['!=', ['get', 'past'], 1];
+    map.setFilter('arcs', f);
+    map.setFilter('arc-hit', f);
     post({ type: 'showPast', on: !!on });
   }
 
@@ -1904,6 +2053,10 @@ loadFrom(0);
 // what it cannot claim is that anything is flying along it. The page reads a
 // null as "not live", which means the planned weight and no aircraft.
 export type MapFlight = {
+  // THE SAVED RECORD'S OWN id, carried through so a tap can name what was
+  // tapped. The page never resolves it -- it posts it back and the screen looks
+  // it up in the list it already holds.
+  id: string;
   a: [number, number];
   b: [number, number];
   dep: number | null;
@@ -1972,6 +2125,10 @@ type GlobeMapProps = {
   // all that crosses, because deciding whether an airport answers to it needs
   // the dataset's resolver, which lives on this side. See handleCity.
   onCity?: (name: string, lon: number, lat: number) => void;
+  // AN ARC WAS TAPPED, and the page has already framed it. The route's id is
+  // all that crosses: the record it names is on the other side, in the saved
+  // list, and the page has never seen it.
+  onFlight?: (id: string) => void;
   // THE MAP WAS TAPPED AND NOTHING WAS THERE. Distinct from onAirport rather
   // than inferred from its absence, because "nothing was hit" is the event that
   // dismisses the panel and it has to be observable.
@@ -1979,7 +2136,7 @@ type GlobeMapProps = {
 };
 
 const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
-  function GlobeMap({ onReady, onAirport, onCity, onMapTap }, ref) {
+  function GlobeMap({ onReady, onAirport, onCity, onFlight, onMapTap }, ref) {
     const webRef = useRef<WebView>(null);
 
     // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
@@ -2123,6 +2280,13 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           if (m.type === 'city') {
             console.log(`[MAP] city tapped: ${m.name} (nearest of ${m.candidates}, ${m.px}px from touch)`);
             onCity?.(String(m.name), Number(m.lon), Number(m.lat));
+          }
+          if (m.type === 'flight') {
+            console.log(`[MAP] arc tapped: ${m.id} (nearest of ${m.candidates}, ${m.px}px from touch)`);
+            onFlight?.(String(m.id));
+          }
+          if (m.type === 'frameRoute') {
+            console.log(`[MAP] frame route: ${m.km}km to the midpoint, ${m.ms}ms`);
           }
           if (m.type === 'mapTap') onMapTap?.();
           if (m.type === 'flyPlace') {
