@@ -21,13 +21,17 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 // still worth sharing. SHEET_RADIUS came out with the full field's corners: 16
 // is a SHEET's radius and the field is a capsule, so it takes half its own
 // height instead. lib/glass.tsx is untouched and still owns the 16 for sheets.
-import { SHEET_EDGE } from '../lib/glass';
+import { SHEET_EDGE, SHEET_BLUR } from '../lib/glass';
 // THE TYPED QUERY, WHICH IS THE ONE PIECE OF THIS BAR'S STATE THAT IS NOT
 // ABOUT THE BAR. Everything else here describes what the control is doing;
 // this is a string another screen will read. It is its OWN context and not
 // the saved one, because it changes on every keystroke and the saved one's
 // consumers must not. See lib/query.tsx.
 import { useQuery } from '../lib/query';
+// ONE BOOLEAN, AND THE BAR KNOWS NOTHING ELSE. It does not know a map exists,
+// that one is being dragged, or that the search screen is the thing raising the
+// flag -- only that the chrome has been asked to stand aside. See lib/chrome.
+import { useChrome } from '../lib/chrome';
 
 // Declared here rather than imported from a screen, for the same reason
 // profile.tsx declares its own: a component reaching into a route for a string
@@ -234,6 +238,8 @@ const DOCK_INSET = 16;
 // index.tsx deliberately does NOT clear it; profile.tsx imports neither.
 const TAB_BAR_MARGIN_V = 2;
 export const TAB_BAR_HEIGHT = BAR_H;
+
+
 export const TAB_BAR_MARGIN = TAB_BAR_MARGIN_V;
 
 const CAPSULE_R = CAPSULE_H / 2;
@@ -918,6 +924,42 @@ const SEARCH_CIRCLE = CAPSULE_H;
 // 2 is the pill's inset inside its own slot, which is a different measurement:
 // this is the distance between two separate surfaces, and at 2 they would read
 // as one surface with seams in it.
+// ── THE TWO GLYPHS INSIDE THE OVAL ───────────────────────────────────────────
+//
+// 44 OF TOUCH FOR 18 OF ICON, which is the whole reason the tap span and the
+// drawn size are two numbers. 18 is as large as a glyph can be inside a
+// CAPSULE_H oval without crowding its edges; 44 is what a finger needs, and it
+// is taken from the oval's own length rather than from a box drawn around the
+// icon -- there is no box.
+//
+// THE INK IS THE COLLAPSED FIELD'S OWN. These sit on the same glass as the
+// prompt and are the same kind of thing as it: chrome on a surface, not content
+// in it.
+// HOW FAR THE BAR SINKS WHILE THE MAP IS BEING MOVED.
+//
+// 22 IS A THIRD OF BAR_H, which is enough to read as "out of the way" and short
+// of the bar appearing to leave the screen -- it is going quiet, not away.
+//
+// A TRANSFORM AND NEVER A LAYOUT. BAR_H and TAB_BAR_HEIGHT are exported and
+// profile.tsx derives its footer clearance from them; nothing here may change
+// the bar's BOX. A translate moves paint and leaves every measurement, including
+// the ones the pan reads, exactly where they were.
+const RETRACT_DROP = 22;
+
+// 48, WITH THE PILL, AND THE TWO ARE NOW THE SAME NUMBER. This was 44 -- a
+// finger's minimum -- around a surface that was smaller than it, so the extra
+// was slack. The surface has grown past it three times, and a tap span smaller
+// than the thing it is the tap span FOR is a control with dead paint at its
+// edges. They move together from here: this is the pill's own size.
+const GLYPH_TAP = 50;
+const GLYPH_SIZE = 18;
+const GLYPH_INK = 'rgba(226,226,226,0.62)';
+
+// KEPT FOR THE OVAL'S HEIGHT ALONE. The Home circle it was named for is gone,
+// and so is the gap that stood between the two objects -- but SEARCH_CIRCLE is
+// CAPSULE_H and is what st.ovalTap and st.searchOval are still measured in, so
+// it stays as the field's height rather than being renamed in a file that has
+// broken twice.
 const SEARCH_OBJ_GAP = 8;
 
 // HOME'S PRESS GROWTH, AND IT IS 5 RATHER THAN THE PILL'S 10.
@@ -939,6 +981,14 @@ const SEARCH_OBJ_GAP = 8;
 // a centre that does not move.
 const SEARCH_PRESS_GROW = 5;
 const SEARCH_PRESS_SCALE = (SEARCH_CIRCLE + SEARCH_PRESS_GROW * 2) / SEARCH_CIRCLE;
+
+// ── THE PRESS, EXPORTED SO THE MAP'S OWN BUTTON CAN USE IT ───────────────────
+//
+// The pin on the search screen is a third control of the same kind as the two
+// glyphs in here, and it should grow by the same amount on the same spring. Two
+// values rather than a copy, so a change to the feel reaches all three.
+export const TAB_PRESS_SPRING = PRESS_SPRING;
+export const TAB_PRESS_SCALE = SEARCH_PRESS_SCALE;
 
 // THE SEARCH PILL KEEPS THE PILL'S OWN 10, and that is a decision rather than an
 // oversight. It IS the tracking pill: pressScaleX by PRESS_SCALE_Y, 1.225989 by
@@ -1504,6 +1554,45 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     pressOutTimer.current = setTimeout(releasePress, wait);
   };
 
+  // -- AND THE SEARCH GLYPHS RELEASE WITHOUT THE GUARD -----------------------
+  //
+  // THE GLYPHS ARE OUTSIDE THE GestureDetector. It closes above them, so a press
+  // on one is not a touch the pan ever sees: onStart does not run, onFinalize
+  // does not run, and the unconditional pressAmt.value = withSpring(0) at the
+  // top of onFinalize -- the thing that actually catches every other press in
+  // this bar -- is not in the picture at all. A tab item has TWO ways back to
+  // rest. A glyph has one.
+  //
+  // AND THAT ONE WAS GUARDED BY A FLAG ONLY THE PAN CAN CLEAR. releasePress
+  // returns early on `dragging`, which is written in exactly two places, both
+  // inside the gesture. The guard is right for a tab item: a fast flick can
+  // reverse the ordering and schedule a release into the middle of a live drag,
+  // and onFinalize will do the release properly when the finger actually goes.
+  // It is wrong here, because there is no onFinalize coming. If `dragging` is
+  // set when the timer fires, the glyph's only release path returns having done
+  // nothing, and NOTHING ELSE EVER WRITES pressAmt BACK TO 0: settlePill moves
+  // capX and capR and does not touch it, the placement effect does not touch
+  // it, and arriving at slot 0 does not touch it. The pill sits expanded until
+  // the next press-in raises it again, which is exactly the report.
+  //
+  // SO THIS IS THE SAME SCHEDULER WITHOUT THE TEST. It cannot strand a live
+  // drag, because a drag cannot be live: the finger that pressed this glyph was
+  // never the pan's, and the pan's own presses still go through releasePress
+  // untouched. Nothing about the gesture is read, written or configured here --
+  // the fix is in the control, which is where the difference is.
+  //
+  // THE WAIT IS THE SAME releaseAt, so the pill still holds its expansion
+  // through the travel to slot 0 and comes off on arrival rather than on
+  // departure. Only the guard is gone.
+  const scheduleGlyphRelease = () => {
+    cancelPressRelease();
+    const wait = Math.max(releaseAt.current - Date.now(), PRESS_RELEASE_DELAY);
+    pressOutTimer.current = setTimeout(() => {
+      pressOutTimer.current = null;
+      pressAmt.value = withSpring(0, PRESS_SPRING);
+    }, wait);
+  };
+
   // A timer that outlives the component would call withSpring on a value whose
   // component has gone.
   useEffect(() => () => {
@@ -1801,8 +1890,123 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // translateX THEN scale, in that order: a transform list is applied in order
   // and scale takes the element's own centre, so the pill grows about its own
   // middle rather than sliding as it grows. Width comes from the two edges.
+  // ── INVISIBLE IN SEARCH MODE, AND INVISIBLE IS ALL IT IS ──────────────────
+  //
+  // THE PILL STAYS IN THE TREE, STAYS LAID OUT, AND STAYS WRITTEN TO. Its
+  // position, its width, its squash, its frost and dragActive are all still set
+  // by the pan on every drag, in both modes, exactly as the four root-cause
+  // notes above require. Nothing about the gesture's world changes -- not its
+  // config, not its state, not whether its callbacks run to completion, not the
+  // presence of any view. The ONLY difference is that the thing they write to
+  // has no opacity.
+  //
+  // A MULTIPLICAND, NOT A REPLACEMENT, so capOpacity goes on meaning what it
+  // meant and this is a second, independent reason to be invisible.
+  //
+  // NO ANIMATION, DELIBERATELY. searchMode is a boolean read straight into the
+  // worklet, so the factor is 1 or 0 with nothing in between and no frame in
+  // which the pill is caught half-gone. A fade would be a moment of the user
+  // watching it leave, which is what was asked against.
+  // ── STANDING ASIDE ────────────────────────────────────────────────────────
+  //
+  // 0 IS THE WHOLE BAR, 1 IS THE CHIP, and everything between is the crossfade.
+  //
+  // NOTHING ABOUT THE GESTURE IS TOUCHED BY IT, and that is the design rather
+  // than a claim. Read the four root-cause notes at the pan: each bug came from
+  // making a MODE a property of the gesture's world -- its config, its state,
+  // whether its callbacks finish, whether its view is in the hierarchy. This
+  // touches none of the four:
+  //
+  //   THE HANDLER IS UNCHANGED. Not a line of it, not .enabled(), no touch
+  //   callback, no chain.
+  //   THE VIEW STAYS. The dock, the shell, the row, the detector and the track
+  //   are all mounted at full size at all times. Nothing gets display: none,
+  //   nothing is conditionally rendered, nothing is resized.
+  //   THE MEASUREMENTS NEVER MOVE. onTrackLayout and onSlotLayout report the
+  //   same boxes retracted as not, because opacity is not layout. slotsSV is
+  //   never rewritten, so the pan's finger-to-slot arithmetic cannot drift.
+  //   THE CHIP IS A SIBLING, not a replacement. It is drawn over the bar, not
+  //   in place of it.
+  //
+  // 150 OUT AND 190 BACK. Out is quicker because it is getting out of the way
+  // and the user is already moving; back is slower because it is arriving and
+  // wants to be seen to. Both are well under the shortest drag anyone makes.
+  const { retracted } = useChrome();
+  const retractAmt = useSharedValue(0);
+  useEffect(() => {
+    retractAmt.value = withTiming(retracted ? 1 : 0, { duration: retracted ? 150 : 190 });
+  }, [retracted]);
+
+  // THE BAR FADES AND DOES NOT MOVE. A translate would be a second thing to
+  // undo and would take the detector's view somewhere its layout says it is
+  // not; opacity leaves every box exactly where it was.
+  //
+  // AND IT DROPS AS IT GOES. RETRACT_DROP is a TRANSFORM and not a layout
+  // change, which is the whole of rule 5: BAR_H and TAB_BAR_HEIGHT are exported
+  // and profile.tsx derives its footer clearance from them, so the bar's BOX may
+  // never move. A translate leaves every measurement exactly where it was --
+  // including the ones onSlotLayout reports to the pan.
+  //
+  // VERTICAL ONLY, which is why it is safe on an ancestor of the detector at
+  // all. The pan reads e.x against slot x; nothing in its arithmetic is a y.
+  //
+  // AND IT DOES NOT APPLY IN SEARCH MODE AT ALL. There is no bar there to get
+  // out of the way -- the glass, the border, the pill and every label are
+  // already gone or at zero -- so the only thing left inside this wrapper is the
+  // two glyphs, and those must stay put while the map is dragged. Retraction
+  // still does its whole job on the other three tabs, where a real bar exists.
+  const barFadeStyle = useAnimatedStyle(() => ({
+    opacity: searchMode ? 1 : 1 - retractAmt.value,
+    transform: [{ translateY: searchMode ? 0 : retractAmt.value * RETRACT_DROP }],
+  }));
+
+  // ── THE TWO MAP CONTROLS PRESS LIKE THE PILL ──────────────────────────────
+  //
+  // THE BAR'S OWN VOCABULARY, NOT A SECOND ONE. PRESS_SPRING is the spring every
+  // press in this file uses and SEARCH_PRESS_SCALE is the growth the search
+  // objects were already given -- 5 points a side on a 56pt object, which is
+  // half of PRESS_GROW for the reason set out where it is declared. Nothing new
+  // is invented; two more consumers are added to what is there.
+  //
+  // A HOLD AND A DRAG BOTH WORK, and that falls out of using onPressIn and
+  // onPressOut rather than onPress: the pill is grown on touch-down and stays
+  // grown for as long as the finger is down, wherever it wanders inside the
+  // control. Nothing here moves, so there is no travel to follow -- only the
+  // growth to sustain.
+  //
+  // THREE VALUES, ONE SPRING AND ONE SCALE. PRESS_SPRING and SEARCH_PRESS_SCALE
+  // are what TAB_PRESS_SPRING and TAB_PRESS_SCALE export for the map's pin, so
+  // all four controls -- home glyph, query chip, magnifier and pin -- grow by
+  // the same amount at the same rate. They are named here by their originals
+  // rather than by the aliases, so the file has one name per value.
+  const homeGlyphAmt = useSharedValue(0);
+  const magGlyphAmt = useSharedValue(0);
+  const chipAmt = useSharedValue(0);
+  const glyphGrow = (v: typeof homeGlyphAmt) => useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + v.value * (SEARCH_PRESS_SCALE - 1) }],
+  }));
+  const homeGlyphStyle = glyphGrow(homeGlyphAmt);
+  const magGlyphStyle = glyphGrow(magGlyphAmt);
+  const chipPressStyle = glyphGrow(chipAmt);
+
+  // -- WHAT THE CHIP SHOWS, TRIMMED -----------------------------------------
+  //
+  // A TRAILING SPACE HAS A WIDTH AND NO INK. The capsule is sized by its Text,
+  // so " San Francisco " measures wider than it draws and the glyphs sit left
+  // of the middle by half of whatever was typed after them -- which is exactly
+  // the report. Trimming before it is measured makes the box the size of the
+  // word, and a box the size of its word cannot be off-centre.
+  //
+  // AND THE EMPTINESS TEST IS THE SAME STRING. A query of one space is not a
+  // query; gating on the raw value would have shown an empty capsule for it.
+  //
+  // DISPLAY ONLY. `query` itself is untouched -- it is the field's value and
+  // another screen's input, and trimming it here would change what a search
+  // searches for rather than what this chip draws.
+  const chipQuery = query.trim();
+
   const capsuleStyle = useAnimatedStyle(() => ({
-    opacity: capOpacity.value,
+    opacity: capOpacity.value * (searchMode ? 0 : 1),
     width: capR.value - capX.value,
     // Translate, then the scales about the element's own centre, so the pill
     // grows where it stands — and, during a drag, grows around wherever the
@@ -1974,8 +2178,14 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   //
   // THE HIT AREA DOES NOT FOLLOW THE SURFACE, and that is deliberate — see
   // ovalTapW. A press must still reach the pill.
-  const homeLeft = slotW / 2 - SEARCH_CIRCLE / 2;
-  const ovalLeft = homeLeft + SEARCH_CIRCLE + SEARCH_OBJ_GAP;
+  // ── THE OVAL IS THE WHOLE BAR NOW ────────────────────────────────────────
+  //
+  // END_GAP, NOT PAST THE HOME CIRCLE. The circle is gone -- the way out of
+  // search is the chevron at this end of the oval, inside it, so there is no
+  // second object to leave room for. The oval therefore starts where a resting
+  // pill would start at slot 0 and ends where one would end at slot 3, which is
+  // the whole track less the gap every tab already leaves.
+  const ovalLeft = END_GAP;
   const searchPillLeft = SEARCH_INDEX * slotW + END_GAP;
   const ovalW = searchPillLeft + pillW - ovalLeft;
   // THE OVAL'S TOUCHES STOP WHERE THE PILL BEGINS, which is the oval's old full
@@ -1984,7 +2194,9 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // length would swallow every press on the pill and the pill would stop
   // bulging. Two spans, one for paint and one for touch, and the pill keeps its
   // own press.
-  const ovalTapW = searchPillLeft - ovalLeft;
+  // ovalLeft AND ovalW SURVIVE THE OVAL. They were the surface's geometry and
+  // are now only the two glyphs' anchors -- one at each end of the span the
+  // oval used to fill, which is what keeps them where they have always been.
 
   // NOTHING IN SEARCH MODE ANIMATES ITS POSITION, and that rule outlived the
   // cross-fade that used to sit beside it. A SCALE is allowed where a translate
@@ -2010,6 +2222,11 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // own centre, and that centre is homeLeft + 28, a render constant that is
   // never animated, so the bulge grows symmetrically about the icon and the
   // label instead of dragging them anywhere.
+  // DEAD SINCE THE HOME CIRCLE WENT, and left in place deliberately. Its only
+  // consumer was that circle; homeAmt, which drives it, is still written by the
+  // Home item press. Removing this would mean following that thread into the
+  // press handling of a file with four documented gesture failures, for the sake
+  // of one unused style object. Delete it in a pass that is about nothing else.
   const homeObjStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 + homeAmt.value * (SEARCH_PRESS_SCALE - 1) }],
   }));
@@ -2530,57 +2747,11 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   //
   // pointerEvents none THROUGHOUT: there is a separate Pressable for that, after
   // the detector. See the note at the tap target.
-  const ovalNode = searchMode ? (
-    <View
-      style={[st.searchOval, { left: ovalLeft, width: ovalW }]}
-      pointerEvents="none"
-    >
-      <View style={st.searchOvalClip}><BarGlass /></View>
-      <View style={st.searchOvalEdge} pointerEvents="none" />
-      {/* THE TEXT STOPS BEFORE THE PILL. The pill lies on the oval's last
-          pillW points, so the row is padded by exactly that on the right and
-          the prompt and the placeholder end at the pill's left edge. */}
-      <View style={[st.barFieldRow, { paddingRight: pillW }]}>
-        <Text style={st.prompt}>{`~/${searchName}:-$`}</Text>
-        <View style={st.barFieldBody}>
-          {query.length === 0
-            ? <TabBarPlaceholder size={BAR_PROMPT_FS} prompts={SEARCH_PROMPTS_BAR} />
-            : <Text style={st.barQuery} numberOfLines={1}>{query}</Text>}
-        </View>
-      </View>
-    </View>
-  ) : null;
-
   // IDENTICAL ON BOTH PATHS, which is what keeps the drag honest: the same row,
   // the same track, the same onLayout, the same GestureDetector. Only the
   // surface behind them changes.
   const content = (
     <View style={st.row}>
-      {/* THE HOME CIRCLE'S SURFACE, and it is BEFORE the detector so it sits
-          BEHIND the Home item rather than over it. The icon and the label are
-          still the item's own, drawn by WaveIcon and WaveChar exactly as in
-          normal mode; all this adds is the ground they stand on, and the press
-          that makes the ground answer a finger.
-
-          MOUNTED OR NOT, AND NOTHING IN BETWEEN. It holds a BlurView, and a
-          BlurView asked to be transparent is not a BlurView that has gone, so
-          the only reliable way to remove it is to remove it. searchMode is the
-          whole of the condition now — there is no fade for a flag to have to
-          outlive. See the note at searchMode.
-
-          pointerEvents none THROUGHOUT. The tap target is the Home item's own
-          Pressable underneath, which is the same rectangle the circle is drawn
-          on; this is a backdrop and never a button. */}
-      {searchMode && (
-        <Reanimated.View
-          style={[st.searchObj, { left: homeLeft, width: SEARCH_CIRCLE }, homeObjStyle]}
-          pointerEvents="none"
-        >
-          <View style={st.searchObjClip}><BarGlass /></View>
-          <View style={st.searchObjFill} pointerEvents="none" />
-          <View style={st.searchObjEdge} pointerEvents="none" />
-        </Reanimated.View>
-      )}
       <GestureDetector gesture={pan}>
         {/* THE TRACK CARRIES NO PADDING, and that is what makes the arithmetic
             honest. Two things are measured against it and they have to agree:
@@ -2903,8 +3074,38 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
                     A PLAIN View AGAIN, because there is no animated style left
                     to carry. In normal mode this is what it always rendered:
                     all four stacks at full opacity. */}
+                {/* ── AND NOW THE TWO SURVIVORS DO NOT PAINT EITHER ──
+                    THE REASON THEY WERE KEPT HAS GONE. Home stayed because it
+                    stood on a circle and Search because the pill stood on it;
+                    the circle is deleted and the pill is invisible, so both were
+                    left drawing their glyph and their word onto the oval that
+                    now spans the whole track -- over the prompt, because the
+                    items are inside `content` and `content` paints after
+                    ovalNode. The chevron does Home's job and the magnifier does
+                    Search's, so nothing is lost by hiding them.
+
+                    OPACITY, NOT AN UNMOUNT, and that is the one difference from
+                    Flights and Bookings above. Those leave the tree; these two
+                    stay in it at zero. Both are safe for the same reason the
+                    note above gives -- onSlotLayout reads the PRESSABLE's box,
+                    the Pressable is flex: 1, and nothing in here can move it --
+                    and this way the two WaveIcon/WaveChar subtrees stay mounted,
+                    so nothing about the wave is torn down and rebuilt when the
+                    mode flips.
+
+                    NOTHING THE GESTURE READS IS TOUCHED. WaveIcon and WaveChar
+                    only ever READ slotsSV, capX, capR, pressAmt and dragAmt and
+                    compute a transform and a stroke from them; they write no
+                    shared value and feed nothing back. Their worklets go on
+                    running at zero opacity, which costs two invisible nodes and
+                    changes nothing else.
+
+                    searchMode ALONE IS THE TEST, because the condition on the
+                    line below has already excluded Flights and Bookings by the
+                    time this is read -- in search mode the only items that reach
+                    it are Home and Search. */}
                 {(!searchMode || i === 0 || i === SEARCH_INDEX) && (
-                <View style={st.stack}>
+                <View style={[st.stack, searchMode && st.stackHidden]}>
                   <WaveIcon
                     paths={item.paths}
                     index={i}
@@ -2982,13 +3183,230 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
           swallows them too: React Native's responder walks ANCESTORS from the
           hit view rather than siblings beneath it. Not being in the tree is the
           only thing that reliably lets a touch through. */}
+      {/* ── THE WAY OUT, AT THE END THE HOME CIRCLE USED TO BE ──
+          A GLYPH AND NOTHING ELSE. No pill, no fill, no edge -- the oval is
+          already the surface and a second one inside it would read as a button
+          on a button. It sits where the circle sat, so the gesture of leaving
+          search starts in the same place it always did.
+
+          A HOUSE RATHER THAN A CHEVRON, AND GREEN. The chevron said "back",
+          which is a direction and not a destination -- and on a screen reached
+          by pressing a tab rather than by pushing a route, back is not a thing
+          the app has. This goes HOME, so it says Home. Green because
+          INK_WAVE is this app's colour for the one live and actionable thing on
+          a surface, and on a bar that is otherwise a readout this is it. The
+          magnifier at the other end stays at label ink: it opens what is already
+          under the finger, which is not the same kind of act as leaving.
+
+          IT IS THE ONLY THING IN SEARCH MODE THAT LEAVES IT, which is why it is
+          drawn after the field's own tap and given its own span rather than
+          being laid over one. */}
       {searchMode && (
         <Pressable
-          style={[st.ovalTap, { left: ovalLeft, width: ovalTapW }]}
-          onPress={() => setTyping(true)}
+          style={[st.ovalGlyph, { left: ovalLeft, width: GLYPH_TAP }]}
+          // ── THE PILL ARRIVES THE WAY IT ARRIVES FROM ANY OTHER TAB ──
+          //
+          // enter(0) MOVED THE PILL AND NOTHING ELSE. The Home TAB, pressed in
+          // search mode, does four things on touch-down and one on release; this
+          // glyph did none of them, so the pill slid back to slot 0 and simply
+          // appeared there -- the one arrival in the bar with no expansion at
+          // all, which is exactly the artefact the item's own note says was
+          // fixed once already.
+          //
+          // SO IT DOES WHAT THAT BRANCH DOES, line for line: cancel any stale
+          // release, snapshot the mode before this press can change it, grow its
+          // own object, arm the hold at PRESS_HOLD_MS + PRESS_TRAVEL_SETTLE_MS
+          // because this press causes a TRAVEL, and delay the pill's growth by
+          // PRESS_TRAVEL_LEAD so it expands on arrival rather than on departure.
+          // The release then goes through schedulePressRelease like every other.
+          //
+          // homeGlyphAmt WHERE THE ITEM USES homeAmt, and that is the only
+          // difference. homeAmt drove the Home circle, which is deleted; this
+          // glyph is the object that stands in its place.
+          onPressIn={() => {
+            cancelPressRelease();
+            pressBeganInSearch.current = searchMode;
+            homeGlyphAmt.value = withSpring(1, PRESS_SPRING);
+            releaseAt.current = Date.now() + PRESS_HOLD_MS + PRESS_TRAVEL_SETTLE_MS;
+            pressAmt.value = withDelay(PRESS_TRAVEL_LEAD, withSpring(1, PRESS_SPRING));
+          }}
+          onPressOut={() => {
+            homeGlyphAmt.value = withSpring(0, PRESS_SPRING);
+            scheduleGlyphRelease();
+          }}
+          // BOTH, AND IN THIS ORDER. It was setSearchMode(false) alone, which
+          // left search mode but left the ROUTE on Search -- so the bar came
+          // back with its pill resting on a tab the user had just asked to
+          // leave. enter(0) is the same call the Home tab's own press makes, so
+          // this glyph and that tab do the identical thing.
+          //
+          // ONE HANDLER, ONE BATCH, which is what the Search item's own note
+          // asks for: the route and the mode land in the same render, so the
+          // route guard sees a consistent pair on its first test rather than
+          // switching the mode back while the navigation is still in flight.
+          // ── AND THE RELEASE IS ARMED HERE, NOT ONLY IN onPressOut ──
+          //
+          // THE GLYPH UNMOUNTS INSIDE THIS HANDLER. setSearchMode(false) removes
+          // the whole {searchMode && ...} block, and a Pressable that is gone
+          // does not deliver its remaining callbacks -- so onPressOut, which is
+          // where schedulePressRelease was called from, could never run. The
+          // pill grew on touch-down and nothing was ever scheduled to bring it
+          // back, which is why it arrived at Home expanded and stayed there.
+          //
+          // THE TAB ITEM HAS NO SUCH PROBLEM because it is never unmounted: it
+          // is one of four Pressables that exist in both modes, so its own
+          // onPressOut always arrives. Copying its press-in statements was not
+          // enough, because the difference is not in what it does but in what
+          // stays mounted to do it.
+          //
+          // schedulePressRelease IS IDEMPOTENT -- it cancels any pending timer
+          // before arming a new one -- so calling it here AND in onPressOut is
+          // safe whichever of the two actually runs.
+          //
+          // AND IT LEAVES THE SAME STATE THE TAB'S OWN EXIT LEAVES. It set the
+          // mode and navigated and stopped there, so `query` survived: going
+          // Home and back into search showed what had been typed before, which
+          // is a stale answer to a question nobody asked twice.
+          //
+          // THE EFFECT THAT CLEANS UP CANNOT DO IT. It fires only when the
+          // route and the mode have come APART -- and this batches them, which
+          // is deliberate and correct, so it returns on its first test. There
+          // is no path here but doing it explicitly.
+          //
+          // ALL FIVE, in the order the tab item does them, and kbH with them
+          // rather than left to a keyboard event: see the note where it is
+          // declared.
+          onPress={() => {
+            // ARMED HERE AS WELL AS IN onPressOut, because this handler
+            // UNMOUNTS THE GLYPH: setSearchMode(false) removes the whole
+            // {searchMode && ...} block, and a Pressable that is gone may never
+            // deliver its onPressOut. Both are idempotent -- each cancels any
+            // pending timer before arming a new one -- so whichever runs, one
+            // release is armed and never two.
+            scheduleGlyphRelease();
+            // AND THE GLYPH'S OWN SCALE COMES OFF HERE TOO, for the same reason
+            // and with the same hole underneath it. homeGlyphAmt is a shared
+            // value on GlassTabBar, which does not unmount -- only this
+            // Pressable does -- so a 1 written at press-in and never written
+            // back survives the whole time search mode is away and is still 1
+            // when it comes back. The glyph reappeared already expanded, and
+            // nothing but another press would have brought it down.
+            //
+            // THE SPRING, NOT AN ASSIGNMENT, so the two paths are the same
+            // statement. onPressOut writes the identical line; whichever of the
+            // two actually runs, the value goes to 0 the same way, and both
+            // running is a spring to a value it is already going to.
+            homeGlyphAmt.value = withSpring(0, PRESS_SPRING);
+            setSearchMode(false);
+            setTyping(false);
+            setQuery('');
+            setKbH(0);
+            Keyboard.dismiss();
+            enter(0);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Leave search and go home"
+        >
+          <Reanimated.View style={[st.glyphPill, homeGlyphStyle]}>
+            <View style={st.glyphClip}>
+              <BlurView
+                intensity={SHEET_BLUR}
+                tint="systemChromeMaterialDark"
+                experimentalBlurMethod="dimezisBlurView"
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            </View>
+            <View style={st.glyphFill} pointerEvents="none" />
+            <View style={st.glyphEdge} pointerEvents="none" />
+          <Svg width={GLYPH_SIZE} height={GLYPH_SIZE} viewBox="0 0 24 24">
+            {/* The roof, then the walls. Two paths rather than one so the
+                pitch keeps its mitre and the uprights keep their square ends. */}
+            <Path
+              d="M3.5 11.5 12 4.5l8.5 7"
+              fill="none"
+              stroke={INK_WAVE}
+              strokeWidth={1.9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <Path
+              d="M5.8 10.2v9h12.4v-9"
+              fill="none"
+              stroke={INK_WAVE}
+              strokeWidth={1.9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+          </Reanimated.View>
+        </Pressable>
+      )}
+      {/* ── THE MAGNIFIER, AND NOW IT IS THE WAY IN ──
+          IT IS THE ONLY THING THAT OPENS THE FIELD. There is no oval left to
+          tap: the surface, its prompt and the tap span that covered it are all
+          gone, so the glyph that named the action now performs it. Same
+          position, same size, same treatment -- only its pointerEvents changed,
+          from none to a press.
+
+          STILL NO SURFACE OF ITS OWN. A Pressable with no background is a hit
+          area, not a button; what the user sees is an icon on the map. */}
+      {searchMode && (
+        <Pressable
+          style={[st.ovalGlyph, { left: ovalLeft + ovalW - GLYPH_TAP, width: GLYPH_TAP }]}
+          onPressIn={() => { magGlyphAmt.value = withSpring(1, PRESS_SPRING); }}
+          onPressOut={() => { magGlyphAmt.value = withSpring(0, PRESS_SPRING); }}
+          // THE SAME BELT AS THE HOME GLYPH'S, AND FOR THE SAME REASON. This
+          // one does not unmount itself -- setTyping(true) leaves searchMode
+          // alone, so the {searchMode && ...} block it lives in stays -- but it
+          // DOES change a mode inside its own press, and the full field it
+          // raises covers the bar. Whether Pressability delivers an onPressOut
+          // to a control that has just been occluded is not something this file
+          // can settle, and the cost of not needing to know is one idempotent
+          // line: a spring to the value it is already going to.
+          onPress={() => {
+            magGlyphAmt.value = withSpring(0, PRESS_SPRING);
+            setTyping(true);
+          }}
           accessibilityRole="button"
           accessibilityLabel="Open the search field"
-        />
+        >
+          <Reanimated.View style={[st.glyphPill, magGlyphStyle]}>
+            <View style={st.glyphClip}>
+              <BlurView
+                intensity={SHEET_BLUR}
+                tint="systemChromeMaterialDark"
+                experimentalBlurMethod="dimezisBlurView"
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            </View>
+            <View style={st.glyphFill} pointerEvents="none" />
+            <View style={st.glyphEdge} pointerEvents="none" />
+          <Svg width={GLYPH_SIZE} height={GLYPH_SIZE} viewBox="0 0 24 24">
+            {/* INK_WAVE, THE SAME GREEN THE HOME GLYPH TAKES. They are the
+                two controls on this bar and both are live and actionable, so
+                one ink between them says they are the same class of thing.
+                GLYPH_INK -- the field's own label grey -- was right when the
+                magnifier sat on an oval full of text and was the quieter of the
+                two; there is no oval and no text now, and a lone grey glyph
+                beside a green one read as disabled. */}
+            <Path
+              d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14"
+              fill="none"
+              stroke={INK_WAVE}
+              strokeWidth={1.9}
+            />
+            <Path
+              d="M16.2 16.2 21 21"
+              fill="none"
+              stroke={INK_WAVE}
+              strokeWidth={1.9}
+              strokeLinecap="round"
+            />
+          </Svg>
+          </Reanimated.View>
+        </Pressable>
       )}
     </View>
   );
@@ -2998,6 +3416,18 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
       style={[st.dock, { bottom: insets.bottom + TAB_BAR_MARGIN_V, paddingHorizontal: DOCK_INSET }]}
       pointerEvents="box-none"
     >
+      {/* ── THE FADE'S ONE WRAPPER, ADDED ONCE AND NEVER REMOVED ──
+          IT IS AN ANCESTOR OF THE DETECTOR, so it is written down. Bug four in
+          the notes at the pan was display: 'none' on the shell -- an ancestor
+          taken OUT of the native hierarchy under an open gesture, after which
+          the handler could never finalize. This is the opposite of that: a view
+          that is always mounted, never conditionally rendered, and never
+          changes type, carrying nothing but an opacity. Its presence is a fact
+          of the source, not of the mode.
+
+          box-none SO IT TAKES NOTHING. It is a painting layer; every touch goes
+          straight through it to the bar underneath exactly as before. */}
+      <Reanimated.View style={[st.barFade, barFadeStyle]} pointerEvents="box-none">
       {useGlass ? (
         // GlassContainer EXISTS in this version and both glass views are inside
         // it, which is what lets their effects merge the way Apple's do rather
@@ -3010,7 +3440,6 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
         // the top would be two materials arguing about the same pixels.
         <GlassContainer>
           <GlassView glassEffectStyle="regular" style={[st.glassPill, typing && st.offscreen]}>
-            {ovalNode}
             {capsuleNode}
             {content}
           </GlassView>
@@ -3114,9 +3543,82 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
               </Svg>
             )}
           </Reanimated.View>
-          {ovalNode}
           {capsuleNode}
           {content}
+        </View>
+      )}
+      </Reanimated.View>
+      {/* ── WHAT WAS SEARCHED FOR, AND IT DOES NOT COME AND GO ──
+          NOT A RETRACTION STATE ANY MORE. It was one: it faded in on a drag and
+          out again, because it existed to be what remained when the bar shrank.
+          There is no bar in search mode to shrink, and a query that appears only
+          while a finger is down is a readout nobody can read -- so it is simply
+          present whenever there is one, and absent whenever there is not.
+
+          NO ANIMATED STYLE AT ALL, therefore. It does not fade, scale or sink;
+          it is a plain View gated on the query, which is what "permanently"
+          means. retractAmt no longer reaches it.
+
+          THE EMPTY BRANCH IS GONE. It used to draw a magnifier when nothing was
+          typed -- which is now the magnifier already standing at the right-hand
+          glyph, so it would have been a crossfade between a glyph and an
+          identical copy of itself.
+
+          BETWEEN THE TWO GLYPHS, ON THEIR LINE, not above them. It sat on its
+          own row and read as a caption floating over the bar; the three belong
+          to each other -- home left, query centre, magnifier right -- and one
+          row is what says so. Its span is exactly the gap the two glyphs leave,
+          so it can never overlap either however long the query is.
+
+          AND IT IS PRESSABLE NOW. Tapping it opens the field, the same as
+          tapping the magnifier: the query is what you would be going back to
+          edit, so the text itself is the most obvious thing to press to edit
+          it. It was pointerEvents none while it was a readout. */}
+      {/* CENTRED ON THE SCREEN, NOT INSIDE THE GAP. It spanned from the
+          home glyph to the magnifier and centred itself in that -- which is
+          centred only if the two glyphs are equidistant from the middle, and
+          they are not: the oval's left edge is END_GAP and its right is the
+          pill's right edge, so the span is a couple of points off and the
+          capsule sat left of centre. left and right at 0 make the container
+          the dock's whole padded width, which IS symmetric, and the capsule
+          centres in that.
+
+          THE FULL WIDTH IS THE LAYOUT AND NOT THE TOUCH TARGET, which is the
+          whole of this. Making the container full width centred it and also
+          made it a Pressable lying across both glyphs -- and being the last
+          child, it took every touch that landed on either. Holding the
+          magnifier expanded the chip; pressing Home was read as a chip press,
+          which left no way out of search at all.
+
+          SO THE CONTAINER IS A View WITH box-none AND THE Pressable IS INSIDE
+          IT. box-none means this View is never itself a target but its children
+          still are, so the span across the glyphs stops existing as far as
+          touch is concerned. The Pressable is not stretched -- the container
+          centres it and it takes the width of the capsule it holds -- so the
+          only pressable pixels are the ones the user can see. */}
+      {searchMode && chipQuery !== '' && (
+        <View style={st.chip} pointerEvents="box-none">
+          <Pressable
+            onPressIn={() => { chipAmt.value = withSpring(1, PRESS_SPRING); }}
+            onPressOut={() => { chipAmt.value = withSpring(0, PRESS_SPRING); }}
+            // AND THE THIRD OF THE THREE. Same mode change, same field over the
+            // top, same idempotent line. All three controls in search mode now
+            // release their own scale in onPress as well as in onPressOut, so
+            // none of them depends on a callback arriving after the thing that
+            // would deliver it has been covered or removed.
+            onPress={() => {
+              chipAmt.value = withSpring(0, PRESS_SPRING);
+              setTyping(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit the search: ${chipQuery}`}
+          >
+            <Reanimated.View style={[st.chipCapsule, chipPressStyle]}>
+              <View style={st.chipClip}><BarGlass /></View>
+              <View style={st.chipEdge} pointerEvents="none" />
+              <Text style={st.chipText} numberOfLines={1}>{chipQuery}</Text>
+            </Reanimated.View>
+          </Pressable>
         </View>
       )}
       {/* THE FULL FIELD, ABOVE THE KEYBOARD. Mounted only while typing, so its
@@ -3496,6 +3998,65 @@ const st = StyleSheet.create({
   // alignItems centre still stacks the icon over the word and centres both in
   // the slot; paddingVertical still sets the item's height. See ITEM_PAD_V.
   item: { flex: 1, paddingVertical: ITEM_PAD_V, alignItems: 'center' },
+  // HOME'S AND SEARCH'S STACK IN SEARCH MODE. Opacity only -- no display, no
+  // height, nothing Yoga reports differently -- so the Pressable's box is the
+  // box onSlotLayout has always read.
+  stackHidden: { opacity: 0 },
+  // ── RETRACTED ─────────────────────────────────────────────────────────────
+  // The fade's wrapper. No layout of its own: it is the same box the bar
+  // already occupied, so adding it moved nothing.
+  barFade: { flex: 1 },
+  // The chip sits over the bar's own centre line and is sized by its contents,
+  // which is what lets one style serve a glyph and a capsule.
+  // ON THE GLYPHS' OWN LINE. Same top and same height as st.ovalGlyph, so all
+  // three controls share a centre line by construction rather than by two
+  // numbers that have to be kept equal. `left` and `width` come from the call
+  // site, because they are the gap between the glyphs and only the render knows
+  // where those are.
+  //
+  // NOTHING HERE READS OR CHANGES BAR_H. It used to position off it; the glyphs'
+  // own top does the work now.
+  chip: {
+    position: 'absolute',
+    top: CAPSULE_TOP,
+    left: 0,
+    right: 0,
+    height: SEARCH_CIRCLE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Short, and only as wide as the text it holds up to a cap -- a reminder of
+  // what was typed, not a field.
+  // THE PADDING IS EQUAL AND ALWAYS WAS: paddingHorizontal is one value on both
+  // sides, and there is no paddingLeft, paddingRight or paddingStart anywhere
+  // that could override half of it. It was not the asymmetry.
+  //
+  // alignItems IS WHAT WAS MISSING. RN's default flexDirection is COLUMN, so
+  // justifyContent: 'center' was centring the text VERTICALLY and the cross
+  // axis -- the horizontal one -- was left at its default `stretch`. The Text
+  // filled the content box and drew left-aligned inside it, so every point of
+  // slack the box had went to the right. Centre on both axes and add textAlign,
+  // so the ink is centred whether the slack is in the box or inside the Text.
+  chipCapsule: {
+    height: 34,
+    maxWidth: 220,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  chipClip: { ...StyleSheet.absoluteFillObject, borderRadius: 17, overflow: 'hidden' },
+  chipEdge: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    borderColor: SHEET_EDGE,
+    borderRadius: 17,
+  },
+  chipText: {
+    fontFamily: MONO, fontSize: BAR_PROMPT_FS, color: '#ffffff',
+    textAlign: 'center',
+  },
   // BarGlass's second layer. Black, and over the blur rather than under it.
   barFill: { backgroundColor: BAR_FILL },
 
@@ -3593,6 +4154,54 @@ const st = StyleSheet.create({
     position: 'absolute',
     top: CAPSULE_TOP,
     height: SEARCH_CIRCLE,
+  },
+  // THE GLYPHS' BOX, AND IT PAINTS NOTHING. Same top and height as the field it
+  // sits in, so both icons are centred on the oval's own centre line; no fill,
+  // no radius, no border.
+  // ── THE MAP CONTROLS' PILL ────────────────────────────────────────────────
+  //
+  // 40 SQUARE INSIDE A 44 TAP, so the surface is the size of the home button on
+  // the map and the four points around it are slack rather than paint. The
+  // radius is half the side, which is what makes a square a pill.
+  //
+  // FOUR LAYERS, IN THE ORDER EVERY GLASS SURFACE IN THIS APP USES: a clip
+  // holding the blur, the near-opaque fill over it, the hairline over that, and
+  // the glyph last. The fill is rgba(5,5,5,0.82) -- the same value the map's
+  // home button and the consent strip already carry, so the three read as one
+  // material rather than three.
+  //
+  // THE HAIRLINE IS A SIBLING VIEW and never a border on the blurred view: a
+  // border there is flattened into the blur on one platform and clipped on the
+  // other. This is the recipe hm.edge and cs.edge already use.
+  glyphPill: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glyphClip: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 25,
+    overflow: 'hidden',
+  },
+  glyphFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 25,
+    backgroundColor: 'rgba(5,5,5,0.82)',
+  },
+  glyphEdge: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: SHEET_EDGE,
+  },
+  ovalGlyph: {
+    position: 'absolute',
+    top: CAPSULE_TOP,
+    height: SEARCH_CIRCLE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // flex so the placeholder takes what the prompt leaves, and hidden so a long
   // one is clipped at the field's edge rather than pushing it wider.

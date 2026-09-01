@@ -1301,13 +1301,11 @@ export default function Index() {
     const depCell = movementTimeCell(
       clock24(saved.from.actualIso, saved.from.actual),
       clock24(saved.from.estimatedIso, saved.from.estimated),
-      clock24(saved.from.scheduledIso, saved.from.scheduled),
-      saved.from.actualSource, true);
+      clock24(saved.from.scheduledIso, saved.from.scheduled), true);
     const arrCell = movementTimeCell(
       clock24(saved.to.actualIso, saved.to.actual),
       clock24(saved.to.estimatedIso, saved.to.estimated),
-      clock24(saved.to.scheduledIso, saved.to.scheduled),
-      saved.to.actualSource, false);
+      clock24(saved.to.scheduledIso, saved.to.scheduled), false);
     setFlight({
       flight: saved.flightNumber,
       airline: saved.airline,

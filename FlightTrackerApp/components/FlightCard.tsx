@@ -99,6 +99,22 @@ import {
   OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
 } from '../lib/glass';
 import { CARD_RADIUS, CARD_PAD, CARD_FILL, PAGE_BG } from '../lib/cards';
+// HOW FAR THE BLACK TAKES TO BECOME GLASS, in points, measured from the bottom
+// of the cutout downward.
+//
+// 40 IS ENOUGH TO BE A FADE AND SHORT ENOUGH TO STAY A TOP. Under about 24 the
+// ramp reads as a hard edge with a soft apology on it; much over 56 and the
+// card has a dark band across its head rather than a black top, which is the
+// thing the island is supposed to disappear into.
+const MAP_CARD_FADE = 40;
+
+// THE MAP VARIANT RUNS TO THE TOP OF THE SCREEN and has to pay the safe area
+// back as padding, or its first line sits under the cutout. Read here rather
+// than passed as a prop: it is a property of the device, not of the card.
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SHEET_BLUR } from '../lib/glass';
 
 // Declared here rather than imported from a screen, exactly as lib/glass.tsx,
 // lib/flightstatus.tsx and components/swipe.tsx declare their own. The values are
@@ -241,24 +257,29 @@ export function movementTimeCell(
   // the caller, exactly as the other two are, so this function never has to know
   // about ISOs or timezones.
   scheduled: string,
-  actualSource: string | null | undefined,
   isDeparture: boolean,
 ): TimeCell {
   const noun = isDeparture ? 'Departure' : 'Arrival';
-  if (hasTime(actual)) {
-    const suffix = actualSource === 'runway'
-      ? (isDeparture ? ' (wheels up)' : ' (touchdown)')
-      : '';
-    return { label: `Actual ${noun}`, value: `${actual}${suffix}` };
-  }
-  // NO SUFFIX ON THIS BRANCH, and the asymmetry with the one above is the whole
-  // point. " (wheels up)" tells you something the label does not: that an actual
-  // time came off a runway sensor rather than off the gate. " (predicted)" told
-  // you only that an estimate was an estimate, which is what the word Estimated
-  // is for — so it was a parenthetical restating its own label.
+  // ── THE TIME, AND NOTHING AFTER IT ────────────────────────────────────────
   //
-  // That is why estimatedSource is no longer a parameter: it existed solely to
-  // decide that suffix.
+  // " (wheels up)" AND " (touchdown)" ARE GONE. They said where a measurement
+  // was taken -- a runway sensor rather than the gate -- which is a fact about
+  // the provider's instrumentation and not about the flight. The label already
+  // says the only thing a reader is asking: whether this time HAPPENED or is
+  // expected. A clock that has to be qualified in brackets to be read is a
+  // clock competing with its own label.
+  //
+  // AND actualSource WENT WITH IT. It was a parameter of this function for one
+  // purpose -- choosing between those two strings -- and with them gone it had
+  // no reader here, so it is off the signature and off all four call sites.
+  // See the note at the tiles for what did NOT become dead with it.
+  if (hasTime(actual)) {
+    return { label: `Actual ${noun}`, value: actual };
+  }
+  // BOTH BRANCHES ARE BARE NOW, and the asymmetry this note used to explain has
+  // gone with the suffix that caused it. " (predicted)" was removed long before
+  // for the reason that now applies to both: a parenthetical restating its own
+  // label. That is also why estimatedSource is not a parameter.
   if (hasTime(estimated)) {
     return { label: `Estimated ${noun}`, value: estimated };
   }
@@ -364,19 +385,19 @@ export function flightDataFromApi(data: any, effective?: string): FlightData {
   // in finer detail, not a second opinion, so it stops being evidence.
   const trustedRaw = effectiveMapped === mapped ? (data?.raw_status ?? null) : null;
   const status = displayStatus(effectiveMapped, dep.delay, trustedRaw);
-  // Formatted BEFORE the cell is chosen, because the cell appends "(predicted)"
-  // or "(wheels up)" to the value and there would be no way to reach the time
-  // again afterwards. clock24 leaves "N/A" alone, so hasTime still recognises it.
+  // Formatted BEFORE the cell is chosen. The cell no longer appends anything --
+  // "(predicted)" and "(wheels up)" have both gone -- but the order still
+  // matters: movementTimeCell CHOOSES between the three, so whichever it picks
+  // has to arrive already formatted. clock24 leaves "N/A" alone, so hasTime
+  // still recognises it.
   const depCell = movementTimeCell(
     clock24(dep.actual_iso ?? null, dep.actual),
     clock24(dep.estimated_iso ?? null, dep.estimated),
-    clock24(dep.scheduled_iso ?? null, dep.scheduled),
-    dep.actual_source, true);
+    clock24(dep.scheduled_iso ?? null, dep.scheduled), true);
   const arrCell = movementTimeCell(
     clock24(arr.actual_iso ?? null, arr.actual),
     clock24(arr.estimated_iso ?? null, arr.estimated),
-    clock24(arr.scheduled_iso ?? null, arr.scheduled),
-    arr.actual_source, false);
+    clock24(arr.scheduled_iso ?? null, arr.scheduled), false);
   return {
     flight: data?.flight_number || "—",
     airline: data?.airline || "—",
@@ -436,27 +457,33 @@ export function flightDataFromApi(data: any, effective?: string): FlightData {
 // for anything saved in advance that is "scheduled" forever. Only the clock can
 // say otherwise, and only the caller has one. See effectiveStatus in lib/saved.
 //
-// THE RAW STATUS IS ALWAYS null, and that is a real difference rather than an
-// oversight: SavedFlight does not store the provider's own word. The badge
-// therefore shows the mapped status, so a stored flight reads SCHEDULED where a
-// freshly fetched one might have read BOARDING. Storing the raw word would be a
-// schema change; showing a word the record does not have would be a lie.
+// THE RAW STATUS IS THE RECORD'S OWN, and it is subject to the same rule
+// flightDataFromApi applies. An earlier version of this passed null on the
+// belief that SavedFlight did not store the provider's word; it does --
+// savedFlightFromApi writes rawStatus straight off the response -- so a stored
+// flight can read BOARDING exactly as a freshly fetched one does.
+//
+// THE CONTRADICTED-RAW-WORD RULE COMES WITH IT. If the clock has already
+// overruled the stored status, the finer word underneath it was describing the
+// same overruled claim and stops being evidence. Same test, same reasoning, same
+// two lines as the other builder.
 export function flightDataFromSaved(f: SavedFlight, effective: string): FlightData {
-  const status = displayStatus(effective, f.from.delay, null);
+  const trustedRaw = effective === (f.status || 'unknown').toLowerCase()
+    ? f.rawStatus
+    : null;
+  const status = displayStatus(effective, f.from.delay, trustedRaw);
   const depCell = movementTimeCell(
     clock24(f.from.actualIso, f.from.actual),
     clock24(f.from.estimatedIso, f.from.estimated),
-    clock24(f.from.scheduledIso, f.from.scheduled),
-    f.from.actualSource, true);
+    clock24(f.from.scheduledIso, f.from.scheduled), true);
   const arrCell = movementTimeCell(
     clock24(f.to.actualIso, f.to.actual),
     clock24(f.to.estimatedIso, f.to.estimated),
-    clock24(f.to.scheduledIso, f.to.scheduled),
-    f.to.actualSource, false);
+    clock24(f.to.scheduledIso, f.to.scheduled), false);
   return {
     flight: f.flightNumber || "\u2014",
     airline: f.airline || "\u2014",
-    status: badgeLabel(null, status),
+    status: badgeLabel(trustedRaw, status),
     statusColor: getStatusColor(status),
     statusBg: getStatusBg(status),
     from: f.from.iata || "\u2014",
@@ -788,13 +815,17 @@ function SheetGroup({ title, items }: {
     suffix?: string;
     // MAY USE A SECOND LINE, where every other tile is held to one.
     //
-    // The wrap is the point, not a concession to it. A movement value is a clock
-    // and a qualifier — "10:15 (wheels up)" — and at 17 characters it is 153pt
-    // against 112pt of second-column tile. Held to one line it truncates to
-    // "10:15 (wheels...", cutting off the half that says whether the time
-    // happened or is expected. Given two lines it breaks at its own space, which
-    // puts the clock on one line and the qualifier under it: exactly where a
-    // person would have broken it.
+    // AND IT IS STILL NEEDED, WITH THE SUFFIX GONE. " (wheels up)" used to be
+    // half of why: "10:15 (wheels up)" is 17 characters against 112pt of
+    // second-column tile. That half has been removed -- but movementTile still
+    // appends the DELAY, and "10:15 · 50m late" is 16 characters and 144pt,
+    // which does not fit either. Held to one line a late movement would truncate
+    // to "10:15 · 50m l...", cutting off the half that says how late. Given two
+    // it breaks at its own space, which puts the clock on one line and the
+    // offset under it: exactly where a person would have broken it.
+    //
+    // The unqualified case was always one line and is unchanged: a bare "10:15"
+    // has nothing to wrap.
     twoLines?: boolean;
   }[];
 }) {
@@ -1069,6 +1100,29 @@ type FlightCardProps = {
   toggleRouteOnMap: () => void;
   refreshFlightCard: () => void;
   closeFlightCard: () => void;
+  // ── THE MAP'S OWN CUT OF THIS CARD ────────────────────────────────────────
+  //
+  // OFF EVERYWHERE ELSE, AND THAT IS THE CONTRACT. Home and the search results
+  // pass nothing and get exactly the card they had: both swipe panels, the route
+  // card, the updated-x-ago line, the tap that opens the sheet. This flag is
+  // read in four places and every one of them is additive-by-omission.
+  //
+  // WHAT IT REMOVES AND WHY:
+  //   THE ROUTE CARD -- the map panel beside it already names both airports,
+  //   their codes and their clocks, so the route block would be the same
+  //   journey stated twice on one screen.
+  //   THE UPDATED LINE -- it belongs to a result the user searched for. Nobody
+  //   searched for this; they tapped a line on a globe.
+  //   BOTH SWIPE PANELS -- save, refresh, notify and close are a list's
+  //   vocabulary. See renderLeftActions below, where undefined is how this
+  //   library is told there is no panel.
+  //   THE SHEET TAP -- a third layer over a card that is already over a map.
+  //
+  // WHAT IT DOES NOT DO IS DISMISS. The swipe-up that closes the map card is the
+  // OVERLAY's, not the card's: the thing being dismissed is the overlay, the
+  // card is only what is drawn in it, and putting the gesture here would mean a
+  // Pan handler that has to be disabled on every other screen.
+  mapVariant?: boolean;
 };
 
 export function FlightCard({
@@ -1081,7 +1135,11 @@ export function FlightCard({
   toggleRouteOnMap,
   refreshFlightCard,
   closeFlightCard,
+  mapVariant = false,
 }: FlightCardProps) {
+  // CALLED UNCONDITIONALLY, read only when mapVariant. A hook behind an if is
+  // not a hook.
+  const insets = useSafeAreaInsets();
   // A PLAIN BOOLEAN, not a flight identity. The expanded-card version needed a
   // key because its state outlived the card and could describe a flight that
   // had since been replaced. A sheet cannot: it reads `flight` live, it is
@@ -1745,14 +1803,14 @@ export function FlightCard({
                       // comparison the group exists to make is a glance down a
                       // column rather than across a row.
                       //
-                      // twoLines IS WHAT MAKES THAT FIT, and it now has more to
-                      // fit than it did. movementTimeCell appends " (wheels up)"
-                      // or " (touchdown)" to a five-character clock, and
-                      // movementTile appends " · 50m late" on top of that, so a
-                      // value can run well past the 112pt a second-column tile
-                      // offers. Wrapped, it breaks at its own spaces rather than
-                      // truncating, which is the whole point: the qualifier and
-                      // the offset are the half that says what the clock MEANS.
+                      // twoLines IS WHAT MAKES THAT FIT, and it has one thing
+                      // to fit rather than two. movementTimeCell used to append
+                      // " (wheels up)" or " (touchdown)" as well; that is gone,
+                      // and what remains is movementTile's " · 50m late" on a
+                      // five-character clock -- still past the 112pt a
+                      // second-column tile offers. Wrapped, it breaks at its own
+                      // space rather than truncating, which is the whole point:
+                      // the offset is the half that says what the clock MEANS.
                       //
                       // The row is a line taller whenever either is present.
                       // airportTiles stretches its children, so both tiles take
@@ -1975,9 +2033,35 @@ export function FlightCard({
               overshootFriction={2}
               animationOptions={SWIPE_SPRING}
               onSwipeableWillOpen={onCardWillOpen}
-              childrenContainerStyle={sf.rowSurface}
-              renderLeftActions={isArchivedCard ? undefined : renderCardLeft}
-              renderRightActions={renderCardRight}
+              // ── AND THIS IS WHY THE CARD WAS OPAQUE ──
+              // rowSurface IS backgroundColor: PAGE_BG, WHICH IS #050505 WITH
+              // NO ALPHA. It goes on the Swipeable's children container, which
+              // is an ANCESTOR of the view holding the BlurView -- so the blur
+              // had nothing behind it to sample but solid black, and returned
+              // solid black. Four rounds of fixes went to the tint, the fill
+              // and the gradient, every one of them ABOVE the blur, where none
+              // of them could have helped.
+              //
+              // IT IS STILL RIGHT EVERYWHERE ELSE. Its job is to stop the swipe
+              // panels being legible through the row: the library renders them
+              // as absoluteFill siblings UNDER the children, and a transparent
+              // row occludes nothing. On a black page an opaque black backdrop
+              // is invisible, which is why this was free for two years and
+              // ruinous the moment the same card was put over a map.
+              //
+              // NOTHING SHOWS THROUGH IN THE VARIANT, and that was read rather
+              // than assumed. In ReanimatedSwipeable.js the children container
+              // is style={[animatedStyle, childrenContainerStyle]} and
+              // animatedStyle is a translateX and a pointerEvents -- no
+              // background of its own; styles.container is { overflow:
+              // 'hidden' } alone; and the two action wrappers take their
+              // children from renderLeftActions?.() and renderRightActions?.(),
+              // which are undefined here. The wrappers exist and paint nothing.
+              // Omitting this leaves the container with no background at all,
+              // which is exactly what a card over a map wants.
+              childrenContainerStyle={mapVariant ? undefined : sf.rowSurface}
+              renderLeftActions={mapVariant || isArchivedCard ? undefined : renderCardLeft}
+              renderRightActions={mapVariant ? undefined : renderCardRight}
             >
               {/* AT THE AIRPORT. The specification table became the three
                   things somebody standing in a terminal actually looks for. The
@@ -2010,9 +2094,15 @@ export function FlightCard({
                   padding, so the card already filled it. What changed is what it
                   MEANS — ExpandAction reads it as the width of the thing being
                   dragged, and the thing being dragged is this. */}
+              {/* activeOpacity 1 AND NO onPress ON THE MAP, rather than a
+                  different element. Swapping the TouchableOpacity for a View
+                  would change the tree shape between variants and remount the
+                  whole card body the first time one was opened from the map;
+                  a touchable with nothing to do and no feedback is inert and
+                  costs a wrapper nobody sees. */}
               <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={openAirportSheet}
+                activeOpacity={mapVariant ? 1 : 0.7}
+                onPress={mapVariant ? undefined : openAirportSheet}
                 onLayout={e => { cardW.value = e.nativeEvent.layout.width; }}
               >
               {/* HIDDEN WHILE THE SHEET IS UP, because the sheet is not a panel
@@ -2047,10 +2137,191 @@ export function FlightCard({
               <View
                 ref={airportCardRef}
                 collapsable={false}
-                style={[g.sheetShell, s.airportCard, airportSheetOpen && s.airportCardStood]}
+                style={[
+                  g.sheetShell, s.airportCard,
+                  // THE TOP EDGE IS THE SCREEN'S, so there must not be a corner
+                  // on it. Squaring the two upper corners and paying the safe
+                  // area back as padding is what lets the surface run up behind
+                  // the cutout with nothing of its own visible up there -- the
+                  // island reads as the top of the card rather than as something
+                  // sitting above it.
+                  mapVariant && { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+                  // insets.top + CARD_PAD, DOWN FROM insets.top + MAP_CARD_FADE
+                  // + CARD_PAD -- 113 to 73 on a 59pt inset. The fade's 40
+                  // points were being paid twice: once as the ramp, which is
+                  // paint, and again as padding, which is space. Only the first
+                  // is needed. The first line now begins inside the last stretch
+                  // of the ramp, where it is nearly transparent, which is where
+                  // it should have been all along.
+                  mapVariant && { paddingTop: insets.top + CARD_PAD },
+                  airportSheetOpen && s.airportCardStood,
+                ]}
               >
-                <GlassLayers />
-                <View style={[g.sheetEdge, s.airportCardEdge]} pointerEvents="none" />
+                {/* ── ONE FILL, NOT TWO, AND HALF AS DENSE ──
+                    THE CARD RENDERED OPAQUE AND THE ARITHMETIC SAYS WHY. It was
+                    GlassLayers -- a BlurView under a tint of rgba(0,0,0,0.22) --
+                    and then a second fill of rgba(5,5,5,0.82) over that. Two
+                    translucent layers multiply what they let through:
+
+                      0.78 through the tint  x  0.18 through the fill  =  0.14
+
+                    Fourteen per cent of a blurred image survived, and the image
+                    is a globe painted #050505 and #121212. Fourteen per cent of
+                    near-black over near-black is black. The BlurView was never
+                    covered and was compositing correctly the whole time -- it
+                    was simply buried under 86% of ink.
+
+                    SO THE TINT AND THE FILL ARE ONE LAYER NOW, at 0.55, which
+                    passes 45% instead of 14%. GlassLayers is not used here at
+                    all rather than being used and then undone.
+
+                    0.55 RATHER THAN THE HOME BUTTON'S 0.82, and the difference
+                    is area. A 40pt disc at 0.82 reads as dark glass because the
+                    eye has the whole map beside it for comparison; a card that
+                    fills the upper half of the screen at the same value has
+                    nothing to be compared against and simply reads as a panel.
+                    Big surfaces need to be thinner than small ones to say the
+                    same thing. */}
+                {mapVariant ? (
+                  <>
+                    {/* AND IT STARTS BELOW THE CAP TOO. The cap is opaque, so
+                        the blur under it could not show through -- but "could
+                        not" is a claim about compositing and the ask was that
+                        nothing be there to make the claim about. Inset by
+                        insets.top, there is no blur, no vibrancy and no
+                        backdrop sample anywhere in the island's band; the only
+                        thing painting there is a solid #000000. The blur still
+                        covers every pixel of the card that is not the cap,
+                        which is all of it that is meant to be glass. */}
+                    <BlurView
+                      intensity={SHEET_BLUR}
+                      tint="systemChromeMaterialDark"
+                      experimentalBlurMethod="dimezisBlurView"
+                      style={[StyleSheet.absoluteFill, mapVariant && { top: insets.top }]}
+                      pointerEvents="none"
+                    />
+                    {/* ── BLACK AT THE TOP, NOTHING AT THE BOTTOM ──
+                        THE FLAT FILL IS GONE, and that is the whole change. Any
+                        constant fill makes the card the same darkness at the
+                        island as it is over the middle of the map, which is
+                        exactly the two things this has to do differently: hide a
+                        piece of hardware at the top, and be genuinely see-through
+                        below it. One value cannot do both, and 0.55 was the
+                        compromise that did neither.
+
+                        SO IT IS A RAMP, AND IT ENDS AT NOTHING. Below the fade
+                        there is no fill at all -- the card is the BlurView and
+                        the map is really behind it. GlassLayers' own tint is not
+                        used here either, for the same reason.
+
+                        THE CAP OWNS THE ISLAND'S BAND AND THIS OWNS THE FADE
+                        UNDER IT. It used to be one three-stop ramp doing both --
+                        alpha 1 from y=0 to insets.top, then down to nothing over
+                        MAP_CARD_FADE. The solid half is a flat View now, so this
+                        is two stops from black to nothing over MAP_CARD_FADE and
+                        starts where the cap ends. Nothing overlaps it, so there
+                        is nothing for it to be composited with.
+
+                        AND THE CONTENT STARTS INSIDE THE FADE. paddingTop below
+                        is insets.top + CARD_PAD, so the first line begins a
+                        little way down the ramp rather than clear of it. */}
+                    <LinearGradient
+                      // ── PURE BLACK, NOT THE PAGE'S BLACK ──
+                      //
+                      // THE DIFFERENCE WAS FIVE LEVELS AND NOTHING ELSE. The
+                      // stops were rgba(5,5,5,1) -- #050505, this app's page
+                      // colour -- and the Dynamic Island is the panel switched
+                      // off, which is #000000. Five of 255 is under two per
+                      // cent, which is exactly the "slightly lighter" that made
+                      // the seam visible.
+                      //
+                      // IT IS NOT THE BLUR SHOWING THROUGH. The first two stops
+                      // are alpha 1, so nothing beneath them reaches the screen
+                      // -- the BlurView, the fill and the map are all fully
+                      // covered for the whole solid section. The only thing that
+                      // could be lighter than the island there is the colour
+                      // itself, and it was.
+                      //
+                      // THE PAGE COLOUR IS STILL RIGHT EVERYWHERE ELSE. #050505
+                      // is what a card sits ON; this is a card pretending to be
+                      // the hardware, which is a different job.
+                      colors={['rgba(0,0,0,1)', 'rgba(0,0,0,0)']}
+                      locations={[0, 1]}
+                      // AND THE RAMP STARTS BELOW THE CAP AS WELL, so its own
+                      // solid section no longer exists: the cap owns the band
+                      // and this owns the fade under it. One stop pair, from
+                      // black to nothing, over MAP_CARD_FADE -- which is what
+                      // the three-stop version was always describing and is now
+                      // the only thing it does. Nothing overlaps the cap, so
+                      // nothing can be composited with it.
+                      style={[s.mapCardFade, { top: insets.top, height: MAP_CARD_FADE }]}
+                      pointerEvents="none"
+                    />
+                    {/* ── AND A FLAT BLACK CAP OVER THE ISLAND'S OWN BAND ──
+                        THE GRADIENT'S FIRST SECTION IS ALREADY alpha 1, so this
+                        paints the same colour in the same place -- which is the
+                        point. It removes the whole class of reasons the band
+                        could be anything other than #000: a stop interpolated in
+                        premultiplied space, a `locations` array the platform
+                        rounds differently, a CAGradientLayer dithered against
+                        the layer below, or the BlurView being composited over a
+                        sibling rather than under it. A plain View with a
+                        backgroundColor has none of those degrees of freedom.
+                        Whatever the gradient was doing up there, this is what is
+                        on screen now.
+
+                        insets.top AND NOT insets.top + MAP_CARD_FADE. The cap's
+                        job is the hardware's band only; the ramp below it is
+                        still the ramp, and the card is still genuinely
+                        see-through under the cutout. */}
+                    <View
+                      style={[s.mapCardCap, { height: insets.top }]}
+                      pointerEvents="none"
+                    />
+                  </>
+                ) : (
+                  <GlassLayers />
+                )}
+                {/* ── NO LIT EDGE ANYWHERE NEAR THE ISLAND ──
+                    g.sheetEdge IS A 1px BORDER ON ALL FOUR SIDES at
+                    rgba(255,255,255,0.08). With the top corners squared and the
+                    card running to y=0, the top run drew a lit line straight
+                    across the screen's top edge beside the cutout, and
+                    borderTopWidth: 0 removes that.
+
+                    THE CORNERS ARE THE REST OF IT, and they are the only thing I
+                    found painting ABOVE the gradient -- every value I had been
+                    changing was below it. s.airportCardEdge re-declares
+                    borderRadius: CARD_RADIUS, which the card's own
+                    borderTopLeftRadius: 0 does not reach -- it is a different
+                    View -- so the edge kept two 12pt rounded top corners on a
+                    card that has none. borderTopWidth: 0 removes the straight
+                    run between them but NOT the arcs: the left and right borders
+                    still curve up and inward, drawing two short lit strokes at
+                    rgba(255,255,255,0.08) either side of the cutout, which is
+                    about twenty levels of grey in exactly the place the island
+                    is being compared against. Squaring them ends it. */}
+                <View
+                  style={[
+                    g.sheetEdge, s.airportCardEdge,
+                    // AND IT STARTS BELOW THE CAP. Squaring the corners killed
+                    // the arcs, but the LEFT AND RIGHT borders still ran from
+                    // y=0 down -- two 1px verticals at rgba(255,255,255,0.08),
+                    // one at each screen edge, straight through the band the
+                    // island is being compared against. They are the last thing
+                    // in this subtree that paints anything but black up there.
+                    // top: insets.top drops the whole edge below the cap, so
+                    // the band is the cap and nothing else, and the card's
+                    // border is unchanged everywhere it is actually visible.
+                    mapVariant && {
+                      top: insets.top,
+                      borderTopWidth: 0,
+                      borderTopLeftRadius: 0,
+                      borderTopRightRadius: 0,
+                    },
+                  ]}
+                  pointerEvents="none"
+                />
                 {/* THE WORD SITS IN THE HEADING'S ROW, centred on the CARD
                     rather than on the space beside the heading — which is what
                     the absolute positioning is for. left 0 and right 0 span the
@@ -2113,15 +2384,17 @@ export function FlightCard({
                       adds the flex that claims the remainder and the gutter that
                       holds it off the date.
 
-                      120pt HERE, AND THAT IS WHY MovementLine TAKES THREE LINES.
-                      A value can run to "10:15 (wheels up) · 50m late" — 28
-                      characters, 252.0pt, the whole card interior. Two lines of
-                      120 hold 240, so the worst case cannot fit in two however
-                      it breaks; at three it wraps to "10:15 (wheels" / "up) ·
-                      50m" / "late" and keeps the figure. A 6pt gutter would give
-                      126 and just fit in two, with the second line landing on
-                      126.0 exactly — no slack at all, and the wrong thing to
-                      build a layout on. */}
+                      120pt HERE, AND MovementLine STILL TAKES THREE LINES.
+                      The worst case it was sized for was "10:15 (wheels up) ·
+                      50m late" — 28 characters, 252.0pt, the whole card
+                      interior, which two lines of 120 could not hold however it
+                      broke. With the suffix removed the worst case is "10:15 ·
+                      50m late", 16 characters and 144pt, which fits in two.
+                      THE THIRD LINE IS THEREFORE SLACK NOW rather than load-
+                      bearing, and it is left in place: numberOfLines is a
+                      ceiling, not a height, so an unused third line costs
+                      nothing and taking it away is a layout change nobody asked
+                      for. Worth removing deliberately, not as a side effect. */}
                   <View style={[s.airportTimes, s.airportMovements]}>
                     {/* THE SAME RULE THE SHEET USES, through the same function.
                         See MovementLine and movementTile. */}
@@ -2148,6 +2421,8 @@ export function FlightCard({
               </TouchableOpacity>
             </ReanimatedSwipeable>
 
+            {!mapVariant && (
+            <>
             {/* THE ROUTE IS A CARD AGAIN, AND THE GESTURE IS THE REASON.
                   It stood on the bare page because a surface exists to group
                   things and there was one thing left inside it. That held while
@@ -2276,6 +2551,8 @@ export function FlightCard({
                 style={s.routeStatus}
               />
             )}
+            </>
+            )}
             </Reanimated.View>
     </>
   );
@@ -2399,6 +2676,19 @@ const s = StyleSheet.create({
   // sheetEdge at a card's corner. Radius only: the position, the hairline and
   // SHEET_EDGE's colour all still come from sheetEdge itself.
   airportCardEdge: { borderRadius: CARD_RADIUS },
+  // THE RAMP'S BOX. Pinned to the top and full width; its HEIGHT is set inline
+  // because it is the safe-area inset plus the fade, and only the render knows
+  // the inset.
+  mapCardFade: { position: 'absolute', top: 0, left: 0, right: 0 },
+  // THE CAP'S BOX. Same box as the ramp's, and its height is the inset alone.
+  //
+  // #000000, ALPHA 1, AND NOTHING ELSE IN THE BAND. Not rgba, not a token, not
+  // PAGE_BG -- the literal blackest value the display can be asked for, written
+  // where it can be read. The BlurView, the ramp and the hairline all start at
+  // insets.top now, so this is the ONLY layer painting between y=0 and the
+  // bottom of the cutout, and it is alpha 1, so nothing under it composites
+  // either.
+  mapCardCap: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#000000' },
   // Invisible but still laid out. See the note at the card.
   airportCardStood: { opacity: 0 },
   // detailsTitle's treatment, as its own style. NOT detailsTitle itself: that
@@ -2618,11 +2908,11 @@ const s = StyleSheet.create({
   // Right-aligning put the values hard against the card's inner edge, which read
   // as overflowing it; 8 holds them inboard.
   //
-  // The column goes from 120pt to 112, and the worst case breaks BETTER there:
-  // at 120 it split "10:15 (wheels" / "up) · 50m" / "late", tearing the
-  // parenthetical and orphaning a word; at 112 it splits "10:15" /
-  // "(wheels up)" / "· 50m late", which is where a person would have broken it.
-  // Still three lines either way.
+  // The column goes from 120pt to 112. This used to be argued from a worst case
+  // of "10:15 (wheels up) · 50m late", which needed three lines at either width
+  // and broke more cleanly at 112. That suffix is gone; the worst case is now
+  // "10:15 · 50m late" and breaks in two at both widths. The 112 stands on the
+  // label argument below, which is unaffected.
   // paddingRight 8, BACK DOWN FROM 20, and a label decided it rather than taste.
   // 20 was affordable while the date had its own row and this column ran to 170
   // on a short carrier; with the date back in the column beside it the column is
@@ -2633,8 +2923,8 @@ const s = StyleSheet.create({
   // scheduled flight would have rendered as "Estimated Departur...". At 8 the
   // text width is 112.0 and it clears by 5.6.
   //
-  // The values are unaffected either way: the worst case breaks "10:15" /
-  // "(wheels up)" / "· 50m late" at both widths.
+  // The values are unaffected either way: the worst case is now "10:15" /
+  // "· 50m late" and fits in two lines at both widths.
   airportMovements: { flex: 1, paddingLeft: 12, paddingRight: 8, alignItems: "flex-end" },
   // 20, and the largest thing in this card. See the note at the column.
   //

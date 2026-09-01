@@ -56,7 +56,10 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { savedFlightFromApi, makeFlightId, ISO_DAY_RE } from '../lib/storage';
+import {
+  savedFlightFromApi, makeFlightId, ISO_DAY_RE,
+  type SavedFlight, type MapRoute,
+} from '../lib/storage';
 import { airlineFromFlightNumber } from '../lib/airlines';
 import { clock24 } from '../lib/time';
 import {
@@ -105,10 +108,34 @@ import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../components/Glo
 // READ, NOT TOUCHED. The bar is drawn by the navigator outside this screen and
 // floats over whatever the screen puts at the bottom; the expanded card pads for
 // it so nothing is hidden underneath. See the note at the overlay.
-import { TAB_BAR_HEIGHT } from '../components/GlassTabBar';
+import {
+  TAB_BAR_HEIGHT,
+  // THE BAR'S OWN PRESS, REUSED RATHER THAN RESTATED. The pin is the third
+  // control of the same kind as the two glyphs in the bar; all three should
+  // grow by the same amount on the same spring, and two imports are how that
+  // stays true when one of them is retuned.
+  TAB_PRESS_SPRING,
+  TAB_PRESS_SCALE,
+} from '../components/GlassTabBar';
+// THE APP'S ONE HAPTIC. components/swipe fires it when a full swipe arms and
+// when a long press opens the map menu -- both moments where a gesture becomes
+// a result. Tapping a hairline arc and having a panel appear is the same kind of
+// moment, and a second weight for it would be a second vocabulary.
+import { EXPAND_HAPTIC } from '../components/swipe';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+// runOnJS ALONE. This screen's animations are React Native's Animated
+// throughout; the one thing it needs from Reanimated is the hop back to the JS
+// thread that a gesture worklet has to make to call anything.
+import Reanimated, {
+  runOnJS, useSharedValue, useAnimatedStyle, withSpring,
+} from 'react-native-reanimated';
 // WHICH ROUTES ARE DRAWN. A store rather than a derivation from the watchlist —
 // the map shows what was asked for and nothing else.
 import { useMapRoutes } from '../lib/maproutes';
+// THE CHROME'S OWN FLAG. This screen is the only thing that knows a drag is
+// happening; the tab bar is the only thing that needs to. Neither can reach the
+// other, so the value goes through a context both are inside. See lib/chrome.
+import { useChrome } from '../lib/chrome';
 // WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
@@ -687,6 +714,9 @@ const ROUTE_SEPARATORS = [' to ', ' \u2192 ', '\u2192', ' > ', '>', ' - '];
 // "Thiruvananthapuram to New York City" is five. Anything longer is prose.
 const ROUTE_MAX_WORDS = 6;
 
+// The longest a single PLACE may be. See the note in singleAirportQuery.
+const SINGLE_MAX_WORDS = 4;
+
 // Words that are never a place. Used for one decision only: telling "Mumbai to
 // Xyzzy" — a route naming somewhere this app cannot resolve, which has to be
 // reported — from "flight to Mumbai", which is a question and belongs to /chat.
@@ -756,6 +786,46 @@ type RouteParse =
   | null;
 
 function parseRouteQuery(q: string): RouteParse {
+  // ── ONE PLACE IS NOT A ROUTE, AND IT IS ASKED FIRST ─────────────────────
+  //
+  // TWO SEPARATE FALSE READINGS SENT CITY NAMES TO AN ERROR, and both are cut
+  // off here rather than patched where they surface.
+  //
+  //   ROUTE_REGEX'S SEPARATOR IS OPTIONAL, so "BLRDEL" is a route -- and so is
+  //   every SIX-LETTER WORD. "MUMBAI" is MUM + BAI, MUM is not a code, and the
+  //   hard error "MUM is not an airport code I know" returns before the single
+  //   rung is ever reached. Measured against the dataset: 185 of the city names
+  //   are six letters with at least one half that is not a code. "DELHI" is
+  //   five and has always worked, which is the whole of the difference between
+  //   the two the report named.
+  //
+  //   AND A TWO-WORD NAME SPLITS INTO TWO PLACES. routeSplits cuts "new york"
+  //   into "new" and "york"; both fuzzy-resolve, both to EWR, and equal ends
+  //   are a hard error too. 180 of the 198 multi-word city names in the dataset
+  //   split into something that resolves -- some to the same airport, which
+  //   errors, and some to two DIFFERENT ones, which is worse: "San Bartolomé"
+  //   would have quietly searched SAN to ACE.
+  //
+  // SO THE WHOLE STRING IS OFFERED TO THE RESOLVER BEFORE IT IS CUT UP. If the
+  // line names one place, it is not a route and never was, and returning null
+  // hands it to the single-airport rung -- which is exactly where a bare code
+  // already goes. This is what makes a name work as well as its code.
+  //
+  // AND IT IS SAFE, because a real route is not a place. Checked: "BLR DEL",
+  // "BLRDEL", "DEL BOM", "delhi mumbai", "new york london", "london paris",
+  // "bangalore chennai" and "goa delhi" all resolve to NOTHING as whole
+  // strings, so none of them reaches this return.
+  //
+  // AN EXPLICIT SEPARATOR OUTRANKS IT. Someone who writes " to ", ">" or " - "
+  // has said the word "route" out loud, and a line that says so is parsed as
+  // one even if the whole of it happens to resolve. That also keeps "delhi to
+  // delhi" reporting equal ends rather than silently becoming one airport.
+  const whole = q.trim().replace(/\s+/g, ' ');
+  const wl = whole.toLowerCase();
+  if (!ROUTE_SEPARATORS.some(sep => wl.includes(sep)) && resolveRouteEnd(whole) !== null) {
+    return null;
+  }
+
   // Codes first, on the whole string, exactly as this has always worked. Three
   // letters, an optional separator, three letters — and now both are checked
   // against the dataset before anything is spent on them.
@@ -837,7 +907,19 @@ function singleAirportQuery(q: string): Airport | null {
   const t = q.trim().replace(/\s+/g, ' ');
   if (t === '') return null;
   const words = t.toLowerCase().split(' ');
-  if (words.length > 3 || words.some(w => NOT_A_PLACE.has(w))) return null;
+  // FOUR, UP FROM THREE, and the dataset is what sets it. Nine city names run
+  // to more than three words -- "Ho Chi Minh City", "San Carlos de Bariloche",
+  // "Nossa Senhora do Carmo" and six more -- and a cap of three rejected every
+  // one of them after parseRouteQuery had already agreed they were places. The
+  // orphan test keeps its own three: it is guessing at a name it could NOT
+  // resolve, which is a different and much weaker position to be in.
+  //
+  // NOT_A_PLACE IS STILL THE REAL GATE. The cap is the coarse half of it; the
+  // word list is what actually tells a question from a name, and a fourth word
+  // does not weaken it. Two of the nine are still out of reach at four -- "La
+  // Paz / El Alto" and one malformed dataset entry -- and both are reachable by
+  // code.
+  if (words.length > SINGLE_MAX_WORDS || words.some(w => NOT_A_PLACE.has(w))) return null;
   const end = resolveRouteEnd(t);
   return end === null ? null : end.airport;
 }
@@ -1144,6 +1226,101 @@ function routeEndLabel(code: string, name: string, cap: number): string {
   return routeClip(short, cap);
 }
 
+// ── TEST DATA. REMOVE THIS BLOCK AND ITS THREE USES ─────────────────────────
+//
+// ONE HARDCODED INTERNATIONAL FLIGHT so the long-haul case can be seen without
+// saving one: Indore to New York, which crosses eleven timezones, the
+// antimeridian-free long way, and an entire day boundary. Every field the flight
+// card renders is populated -- gate, terminal, belt, check-in desk, aircraft,
+// registration, both delays, and actual/estimated/scheduled at both ends -- so
+// the card is exercised rather than sampled.
+//
+// TO REMOVE IT: delete this block, the `TEST_FLIGHT` in mapFlights, the one in
+// panelFlight, and the one in cardToggleSave's guard. Each is marked.
+//
+// THE TIMES ARE FIXED, NOT RELATIVE. A flight whose clock moves would make the
+// card's countdowns and its progress bar move with it, which is what makes a
+// mock hard to read against a real one. This one departed at a stated instant
+// and the status says what it is doing; nothing here drifts.
+//
+// THE ISO FIELDS CARRY LOCAL WALL-CLOCK DIGITS under a +00:00 that is a lie,
+// which is exactly what the flight DTO does -- see the note at the top of
+// lib/time. clock24 reads the digits; zonedIsoToTs pairs them with the timezone
+// beside them. A mock that used true offsets would be the one shape this app
+// does not handle.
+const TEST_FLIGHT: SavedFlight = {
+  id: 'TEST-6E1462-2026-09-02',
+  flightNumber: '6E1462',
+  airline: 'IndiGo',
+  flightDate: '2026-09-02',
+  status: 'active',
+  from: {
+    iata: 'IDR',
+    airport: 'Devi Ahilya Bai Holkar International Airport',
+    city: 'Indore',
+    shortName: 'Devi Ahilya Bai Holkar',
+    terminal: '1',
+    gate: 'A3',
+    scheduled: '2026-09-02 02:40',
+    actual: '2026-09-02 02:58',
+    estimated: '2026-09-02 02:52',
+    delay: 18,
+    scheduledIso: '2026-09-02T02:40:00+00:00',
+    estimatedIso: '2026-09-02T02:52:00+00:00',
+    actualIso: '2026-09-02T02:58:00+00:00',
+    timezone: 'Asia/Kolkata',
+    checkinDesk: '12-16',
+    baggage: null,
+    actualSource: 'runway',
+    estimatedSource: 'schedule',
+  },
+  to: {
+    iata: 'JFK',
+    airport: 'John F Kennedy International Airport',
+    city: 'New York',
+    shortName: 'John F Kennedy',
+    terminal: '4',
+    gate: 'B22',
+    scheduled: '2026-09-02 09:15',
+    actual: '',
+    estimated: '2026-09-02 09:41',
+    delay: 26,
+    scheduledIso: '2026-09-02T09:15:00+00:00',
+    estimatedIso: '2026-09-02T09:41:00+00:00',
+    actualIso: null,
+    timezone: 'America/New_York',
+    checkinDesk: null,
+    baggage: '7',
+    actualSource: null,
+    estimatedSource: 'provider',
+  },
+  // The provider's own finer word, which the badge prefers when the clock has
+  // not overruled the mapped status. See flightDataFromSaved.
+  rawStatus: 'En Route',
+  aircraftModel: 'Airbus A350-900',
+  aircraftRegistration: 'VT-IXA',
+  savedAt: 1756771200000,
+  updatedAt: 1756771200000,
+  landedAt: null,
+  archivedAt: null,
+  remindersSetAt: null,
+  schemaVersion: 10,
+};
+
+// The route that draws it. TEST DATA -- goes with the block above.
+const TEST_ROUTE: MapRoute = {
+  id: TEST_FLIGHT.id,
+  from: 'IDR',
+  to: 'JFK',
+  dep: departureTs(TEST_FLIGHT),
+  arr: arrivalTs(TEST_FLIGHT),
+};
+
+// Reanimated needs a component it has wrapped to accept an animated style, and
+// Pressable is not one. Declared at module scope so it is created once for the
+// life of the process rather than on every render of the screen.
+const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
+
 export default function Search() {
   // THE QUERY IS THE BAR'S, and this screen only reads it. setQuery is here for
   // one purpose: clearResultView wipes the line when the account changes, exactly
@@ -1172,6 +1349,7 @@ export default function Search() {
   // THE OVERLAY'S LIST. This screen is the only one that draws it; the card that
   // adds and removes is on two screens and owns none of it. See lib/maproutes.
   const { routes, hydrated: routesHydrated, showPast, setShowPast, removeRoute } = useMapRoutes();
+  const { setRetracted } = useChrome();
   const insets = useSafeAreaInsets();
 
   const [chatResponse, setChatResponse] = useState<string | null>(null);
@@ -2047,6 +2225,18 @@ export default function Search() {
   // rules rather than by anyone remembering to.
   //
   // null MEANS NO PAGE YET, and it is the only "not ready" test left.
+  // ── THE PIN'S PRESS ───────────────────────────────────────────────────────
+  //
+  // THE TAB BAR'S SPRING AND THE TAB BAR'S GROWTH, imported rather than copied.
+  // Press in and the whole button expands -- surface, hairline and glyph
+  // together, because the scale is on the Pressable itself and everything it
+  // draws is inside it. A hold sustains it and a drag inside the control keeps
+  // it, which is what onPressIn and onPressOut give without any tracking.
+  const pinAmt = useSharedValue(0);
+  const pinStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + pinAmt.value * (TAB_PRESS_SCALE - 1) }],
+  }));
+
   const [mapLoad, setMapLoad] = useState<string | null>(null);
 
   // SENT WHEN BOTH SIDES ARE READY, whichever arrives last — the map's style may
@@ -2083,12 +2273,17 @@ export default function Search() {
   // code is dropped silently: the dataset can lack an airport a flight names,
   // and a missing arc is the right outcome for one.
   const mapFlights = useMemo<MapFlight[]>(
-    () => routes.flatMap(r => {
+    // TEST DATA -- the concat is the whole of how the mock reaches the map.
+    () => [TEST_ROUTE, ...routes].flatMap(r => {
       const a = airportByCode(r.from);
       const b = airportByCode(r.to);
       if (a === null || b === null) return [];
       return [{
         id: r.id,
+        // THE NAMES THE MAP PRINTS BESIDE THE ENDPOINT DOTS. From the airport
+        // dataset rather than the saved record, because a route carries only
+        // codes -- and because this is the same table the airport panel names a
+        // place from, so the two cannot disagree.
         a: [a.lon, a.lat] as [number, number],
         b: [b.lon, b.lat] as [number, number],
         dep: r.dep,
@@ -2178,7 +2373,27 @@ export default function Search() {
   // store has since corrected.
   const panelFlight = panelFlightId === null
     ? null
-    : (savedFlights.find(f => f.id === panelFlightId) ?? null);
+    // TEST DATA -- the first arm is the mock; the second is every real record.
+    : (panelFlightId === TEST_FLIGHT.id
+      ? TEST_FLIGHT
+      : (savedFlights.find(f => f.id === panelFlightId) ?? null));
+
+  // ── WHICH ARC IS SELECTED ─────────────────────────────────────────────────
+  //
+  // ONE EFFECT FOR EVERY PATH INTO AND OUT OF THE PANEL. Opening, closing,
+  // switching to another arc and switching to an airport all change
+  // panelFlightId and nothing else has to remember to clear the highlight.
+  //
+  // KEYED ON mapLoad TOO, like everything else this screen tells the page, so a
+  // WebView reload does not leave the selection behind. See the note there.
+  //
+  // THE id ALONE NOW. This used to carry the two endpoint coordinates for a
+  // city highlight that ran on selection; the map draws no labels of its own at
+  // all any more, so there is nothing for a selection to tell it about them.
+  useEffect(() => {
+    if (mapLoad === null) return;
+    mapRef.current?.setSelectedFlight(panelFlightId);
+  }, [panelFlightId, mapLoad]);
 
   // ── ONE KEY FOR ONE MACHINE ───────────────────────────────────────────────
   //
@@ -2206,9 +2421,15 @@ export default function Search() {
   // THE BIG LINE AT THE TOP, whichever panel is open: a city, or a flight
   // number. Uppercased in both cases because the treatment is the heading's,
   // not the subject's.
+  //
+  // FOR A FLIGHT IT IS THE ORIGIN CITY, not the flight number, and the order is
+  // the point. The panel now types the place you leave, then the arrow, then
+  // the place you arrive -- which is the journey, in the order it happens. The
+  // flight number is a label for that journey and reads below it.
   const panelHeading = panelIata !== null
     ? (panelAirport === null ? '' : panelAirport.city.toUpperCase())
-    : (panelFlight === null ? '' : panelFlight.flightNumber.toUpperCase());
+    : (panelFlight === null ? '' : panelFlight.from.city
+        ?? panelFlight.from.airport).toUpperCase();
 
   // ── THE TYPE-ON ───────────────────────────────────────────────────────────
   //
@@ -2394,17 +2615,24 @@ export default function Search() {
     if (panelFlight !== null) {
       const f = panelFlight;
       const eff = effectiveStatus(f, now);
+      // THE ORDER HERE IS THE ORDER ON SCREEN READ AS A JOURNEY, not top to
+      // bottom: the destination city, then the two codes, then the two clocks,
+      // then what the flight is called and what it is doing. The render places
+      // each one by key -- see panelStepText -- so this list is purely the
+      // sequence in which they arrive.
       const out: PanelStep[] = [
-        { kind: 'text', key: 'airline', text: f.airline || '\u2014', dim: false },
-        { kind: 'text', key: 'route', text: `${f.from.iata} \u2192 ${f.to.iata}`, dim: false },
+        { kind: 'text', key: 'toCity', text: (f.to.city ?? f.to.airport).toUpperCase(), dim: false },
+        { kind: 'text', key: 'fromCode', text: f.from.iata, dim: false },
+        { kind: 'text', key: 'toCode', text: f.to.iata, dim: false },
         {
-          kind: 'text', key: 'dep', dim: true,
-          text: `DEP ${clock24(f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso, f.from.scheduled)} ${f.from.iata}`,
+          kind: 'text', key: 'fromTime', dim: true,
+          text: clock24(f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso, f.from.scheduled),
         },
         {
-          kind: 'text', key: 'arr', dim: true,
-          text: `ARR ${clock24(f.to.actualIso ?? f.to.estimatedIso ?? f.to.scheduledIso, f.to.scheduled)} ${f.to.iata}`,
+          kind: 'text', key: 'toTime', dim: true,
+          text: clock24(f.to.actualIso ?? f.to.estimatedIso ?? f.to.scheduledIso, f.to.scheduled),
         },
+        { kind: 'text', key: 'num', text: f.flightNumber.toUpperCase(), dim: false },
         { kind: 'text', key: 'status', text: eff.toUpperCase(), dim: false },
       ];
       // HOW FAR ALONG, AND ONLY WHILE IT IS FLYING. The same linear rule the
@@ -2481,6 +2709,22 @@ export default function Search() {
     return stepAt > 0 ? first.text : first.text.slice(0, stepTyped);
   }, [panelSteps, stepAt, stepTyped]);
 
+  // ── ONE STEP, BY NAME, AS FAR AS IT HAS TYPED ─────────────────────────────
+  //
+  // THE AIRPORT PANEL RENDERS ITS STEPS AS A LIST and can walk them in order;
+  // the flight panel lays two of them side by side with an arrow between, so it
+  // needs to ask for one by name and get exactly what the sequencer has reached.
+  // The rule is the list render's own, restated once rather than inlined six
+  // times: finished steps render whole, the step AT stepAt renders sliced, and
+  // anything after has not started.
+  const panelStepText = (key: string): string => {
+    const i = panelSteps.findIndex(v => v.key === key);
+    if (i < 0 || i > stepAt) return '';
+    const v = panelSteps[i];
+    if (v.kind !== 'text') return '';
+    return i < stepAt ? v.text : v.text.slice(0, stepTyped);
+  };
+
   // ── THE STEPS REACHED THROUGH A REF, NOT A DEPENDENCY ─────────────────────
   //
   // THIS IS WHAT THE RESTART LOOP WAS. The sequencer depended on panelSteps, an
@@ -2510,12 +2754,35 @@ export default function Search() {
   const panelStepsRef = useRef<PanelStep[]>(panelSteps);
   useEffect(() => { panelStepsRef.current = panelSteps; }, [panelSteps]);
 
-  // panelIata AND typingDone ARE THE WHOLE DEPENDENCY LIST. The first changes
-  // when the user picks another airport; the second flips once, when the city
-  // name lands. Neither can be moved by a clock tick, a saved-flight change or
-  // any other render.
+  // WHAT THE PANEL WAS HANDED, AND WHAT THE MACHINE DID WITH IT. The two halves
+  // are logged together because the reported fault -- a heading with nothing
+  // under it -- looks the same whether the steps were never BUILT or never
+  // TYPED, and only seeing both numbers at once separates them.
   useEffect(() => {
-    if (panelIata === null || !typingDone) { setStepAt(0); setStepTyped(0); return; }
+    if (panelKey === null) return;
+    console.log(
+      `[PANEL] ${panelKey} heading="${panelHeading}" steps=${panelSteps.length}`
+      + ` [${panelSteps.map(s => s.key).join(", ")}]`);
+  }, [panelKey, panelHeading, panelSteps]);
+
+  // panelKey AND typingDone ARE THE WHOLE DEPENDENCY LIST. The first changes
+  // when the user picks another subject; the second flips once, when the
+  // heading lands. Neither can be moved by a clock tick, a saved-flight change
+  // or any other render.
+  //
+  // THE GUARD READS panelKey, AND IT DID NOT. When this machine was generalised
+  // to drive the flight panel as well, the dependency list was changed and this
+  // line was not -- so on a flight panel, where panelIata is null by
+  // construction, the sequencer returned here every time and reset stepAt to 0.
+  // The heading typed and nothing else ever did.
+  //
+  // IT IS THE SAME TEST panelTyping AND handleMapTap MAKE, and that is the point
+  // of writing it the same way: stepAt frozen at 0 also froze panelTyping at
+  // true, which hid the expand control AND made every tap on empty map read as
+  // "finish the type-on" instead of "close" -- so the flight panel could not be
+  // dismissed either. One word, three symptoms.
+  useEffect(() => {
+    if (panelKey === null || !typingDone) { setStepAt(0); setStepTyped(0); return; }
     // SKIPPED: every step already past. stepAt at the list length means the
     // render draws all of them whole — nothing equals stepAt, so nothing is
     // sliced — and the codes row, which shows every code whose index is at or
@@ -2633,11 +2900,17 @@ export default function Search() {
   // that is saved. The bookmark therefore only ever unsaves.
   const cardToggleSave = async () => {
     if (panelFlight === null) return;
+    // TEST DATA -- the mock is not in the store and unsaving it would report a
+    // removal that never happened.
+    if (panelFlight.id === TEST_FLIGHT.id) return;
     await unsaveWithBanner(panelFlight);
   };
 
   const cardRefresh = async () => {
     if (panelFlight === null) return;
+    // TEST DATA -- refreshing the mock would spend a lookup on a flight number
+    // that may not exist.
+    if (panelFlight.id === TEST_FLIGHT.id) return;
     await refreshOne(panelFlight);
   };
 
@@ -2658,6 +2931,63 @@ export default function Search() {
     }).start();
   };
 
+  // ── SHUT, WITHOUT THE ANIMATION ───────────────────────────────────────────
+  //
+  // FOR THE PATHS WHERE THE THING THE CARD DESCRIBES IS ALREADY GONE. collapseCard
+  // is the user closing a card that is still about something; this is the card
+  // being made irrelevant by something else, and animating a dismissal of a
+  // subject that has already left is a wave goodbye to an empty room.
+  //
+  // cardAnim GOES BACK TO 0 AS WELL AS THE FLAG. expandCard sets it to 0 before
+  // it animates, so this is belt and braces -- but a flag cleared while its
+  // animated value is still 1 is exactly the kind of half-state that makes the
+  // NEXT open flash at full size for a frame.
+  const closeCardNow = useCallback(() => {
+    cardAnim.setValue(0);
+    setCardOpen(false);
+  }, [cardAnim]);
+
+  // ── THE CARD BELONGS TO THE PANEL, AND CANNOT OUTLIVE IT ──────────────────
+  //
+  // EVERY PATH THAT CHANGED THE PANEL LEFT THE CARD OPEN. cardOpen is a boolean
+  // on this screen and nothing but collapseCard was clearing it, so all of these
+  // dismissed the panel and left the card standing behind it:
+  //
+  //   handleMapTap        a tap on empty map clears panelIata and panelFlightId
+  //   leaveAirport        the five camera motions that are not selections
+  //   handleFlight        tapping a DIFFERENT arc, which swapped the card's
+  //                       subject underneath it rather than closing anything
+  //   openAirport         tapping a dot while a flight's card was open
+  //   the focus effect    returning to the tab calls leaveAirport
+  //
+  // The render gate hides the card when panelFlight goes null, so most of these
+  // LOOKED closed -- and then the next panel opened with cardOpen still true and
+  // the card came straight back up over it, which is the report.
+  //
+  // ONE EFFECT ON panelKey RATHER THAN A CALL IN EACH. panelKey is the identity
+  // of what the panel is describing, so "it changed" is exactly "the card is
+  // about something else now", and every path above goes through it by
+  // construction. A sixth path added later is covered without being found.
+  //
+  // AND IT DOES NOT FIGHT expandCard. Opening the card does not touch panelKey,
+  // so this does not re-run when the card opens -- only when the subject moves.
+  useEffect(() => {
+    closeCardNow();
+  }, [panelKey, closeCardNow]);
+
+  // ── AND IT DOES NOT SURVIVE LEAVING THE SCREEN ────────────────────────────
+  //
+  // ON BLUR, WHICH IS THE CLEANUP RATHER THAN THE BODY. Going Home does not
+  // unmount this screen -- the tab navigator keeps it -- so cardOpen, panelIata
+  // and panelFlightId all persist, and coming back showed the card exactly as it
+  // was left, on top of the panel the camera effect was busy clearing.
+  //
+  // A SECOND useFocusEffect AND NOT A LINE IN THE CAMERA ONE. That one returns
+  // early on its first focus, so a cleanup registered inside it would not exist
+  // on the first visit -- and the camera's business is where to point, not what
+  // is on top of it.
+  useFocusEffect(useCallback(() => closeCardNow, [closeCardNow]));
+
   // ANIMATED OUT, THEN UNMOUNTED, so the collapse is seen rather than cut off.
   // The panel underneath was never unmounted, so it is simply revealed again --
   // with its own control still on it, exactly as it was left.
@@ -2666,6 +2996,28 @@ export default function Search() {
       toValue: 0, duration: CAL_OUT_MS, easing: EASE_IN, useNativeDriver: true,
     }).start(({ finished }) => { if (finished) setCardOpen(false); });
   };
+
+  // THE ONE GESTURE THE MAP CARD HAS.
+  //
+  // BUILT ONCE, AND IT MUST BE DECLARED AFTER collapseCard. useMemo with an
+  // empty dependency list evaluates on the first render and captures whatever
+  // collapseCard is at that moment -- so building it above the function would
+  // capture the temporal dead zone and throw. The stale closure this leaves is
+  // harmless and deliberate: collapseCard only touches cardAnim, which is a ref,
+  // and setCardOpen, which React guarantees stable.
+  //
+  // NOT REBUILT PER RENDER, because a gesture object swapped underneath a finger
+  // already on it is how a handler loses the touch it was tracking.
+  const cardDismiss = useMemo(
+    () => Gesture.Pan()
+      .activeOffsetY(-14)
+      .onEnd((e) => {
+        'worklet';
+        if (e.translationY < -70 || e.velocityY < -900) runOnJS(collapseCard)();
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   // WHAT THE CARD IS DRAWN FROM. Built on every render rather than memoised
   // because it reads `now`, which ticks every minute and is exactly what the
@@ -2681,6 +3033,10 @@ export default function Search() {
   // the map between the draw and the tap -- nothing opens, which is the same
   // outcome a tap on empty map has.
   const handleFlight = useCallback((id: string) => {
+    // AN ARC IS THE HARDEST THING ON THIS MAP TO HIT, so it is the one that most
+    // needs to confirm it was hit. The haptic fires here rather than in the page
+    // because only this side knows the tap resolved to something worth opening.
+    EXPAND_HAPTIC();
     setPanelSkipped(false);
     setPanelIata(null);
     setPanelFlightId(id);
@@ -3860,6 +4216,7 @@ export default function Search() {
         onAirport={showAirport}
         onCity={handleCity}
         onFlight={handleFlight}
+        onDrag={setRetracted}
         onMapTap={handleMapTap}
       />
       {/* ── ANCHORED FILTER PANEL ──
@@ -4456,7 +4813,94 @@ export default function Search() {
           LAST CHILDREN OF s.root, with the button and the strip, for the reason
           found earlier: anything rendered before the ScrollView is underneath
           its content container and cannot be pressed. */}
-      {panelKey !== null && (
+      {/* ── THE FLIGHT PANEL ──
+          TWO PLACES AND AN ARROW, because that is what a flight is. It read as
+          a list of lines -- DEP, ARR, a route string -- which is the same facts
+          filed as a table; a journey has a shape and the panel now has it.
+
+          EACH COLUMN CARRIES WHAT THE AIRPORT PANEL CARRIES for a place: the
+          city, the code, the local clock. Same three facts, same order, same
+          type -- so the two panels teach each other rather than being two
+          designs for one corner of the screen.
+
+          IT TYPES BY THE SAME MACHINE AND THE SAME RULES. The origin city is
+          the heading and types at the heading's speed; everything after it is a
+          step, in the order it arrives on screen read as a journey -- the
+          destination, then the codes, then the clocks, then the flight's own
+          name and what it is doing. panelStepText places each one; the sequencer
+          knows nothing about the layout.
+
+          WIDER THAN THE AIRPORT PANEL, and it has to be: two city names side by
+          side do not fit the 210pt one place needs.
+
+          THE ARROW WAITS FOR THE DESTINATION. Drawn as soon as the first step
+          starts, so it never points at nothing. */}
+      {panelKey !== null && panelFlight !== null && (
+        <View
+          style={[ap.wrapFlight, { top: winHeight * 0.26 }]}
+          pointerEvents="box-none"
+        >
+          <View style={ap.pair}>
+            <View style={ap.pairCol}>
+              <Text style={ap.pairCity} numberOfLines={2}>
+                {panelHeading.slice(0, typed)}
+                {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
+              </Text>
+              <Text style={ap.pairCode}>{panelStepText('fromCode')}</Text>
+              <Text style={ap.pairTime}>{panelStepText('fromTime')}</Text>
+            </View>
+            <Text style={ap.pairArrow}>{stepAt >= 1 || typingDone ? '\u2192' : ''}</Text>
+            <View style={[ap.pairCol, ap.pairColRight]}>
+              <Text style={ap.pairCity} numberOfLines={2}>{panelStepText('toCity')}</Text>
+              <Text style={ap.pairCode}>{panelStepText('toCode')}</Text>
+              <Text style={ap.pairTime}>{panelStepText('toTime')}</Text>
+            </View>
+          </View>
+
+          {/* THE RULE WAITS FOR BOTH CLOCKS, so it never lands between a place
+              and the rest of that place. Same job as on the airport panel:
+              separate the SUBJECT from the data about it. */}
+          {panelStepText('toTime') !== '' && <View style={ap.rule} />}
+
+          <Text style={ap.mono}>{panelStepText('num')}</Text>
+          <Text style={[ap.mono, { color: getStatusColor(effectiveStatus(panelFlight, now)) }]}>
+            {panelStepText('status')}
+          </Text>
+          {panelStepText('prog') !== '' && (
+            <Text style={ap.monoDim}>{panelStepText('prog')}</Text>
+          )}
+
+          {/* ── THE WAY INTO THE FULL CARD ──
+              THE SAME PILL THE AIRPORT PANEL USES FOR ITS ONE ACTION, because
+              it is the same kind of thing: the one control on a panel that is
+              otherwise a readout.
+
+              !panelTyping FOR THE REASON EVERY CONTROL ON THIS PANEL IS: a tap
+              during the type-on means "finish it", and a control mounted then
+              would turn that tap into an expansion.
+
+              AND !cardOpen, BECAUSE THE CARD IS WHAT THIS OPENS. Once it is
+              open the pill is an invitation to do the thing already done, and
+              it was drawing behind and below the card -- a control from the
+              layer underneath, showing past the thing it summoned. It comes
+              back with the card's dismissal, which is the same state change
+              that put it away. */}
+          {!panelTyping && !cardOpen && (
+            <Pressable
+              style={ap.searchBtn}
+              onPress={expandCard}
+              accessibilityRole="button"
+              accessibilityLabel={`open the full card for ${panelFlight.flightNumber}`}
+            >
+              <Text style={ap.searchTxt}>
+                {'full card '}
+                <Text style={ap.searchCode}>{'\u2304'}</Text>
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+      {panelKey !== null && panelAirport !== null && (
         <View style={[ap.wrap, { top: winHeight * 0.26 }]} pointerEvents="box-none">
           {/* THE CITY, TYPED — AND, ONCE IT HAS LANDED, THE WAY BACK TO IT.
               The panel already flies to any of the city's OTHER airports from
@@ -4482,7 +4926,7 @@ export default function Search() {
               THE CURSOR RIDES THE END OF THE TEXT while it runs and goes when it
               lands — a block that stayed would read as an input waiting for
               more, which this is not. */}
-          {panelTyping || panelAirport === null ? (
+          {panelTyping ? (
             <Text style={ap.city} numberOfLines={2}>
               {panelHeading.slice(0, typed)}
               {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
@@ -4548,8 +4992,7 @@ export default function Search() {
 
               THE ROW IS ONLY MOUNTED ONCE A CODE HAS ARRIVED, so it reserves no
               height while the text lines are still printing. */}
-          {panelAirport !== null
-            && panelSteps.some((s, i) => s.kind === 'code' && i <= stepAt) && (
+          {panelSteps.some((s, i) => s.kind === 'code' && i <= stepAt) && (
             <View style={ap.codes} pointerEvents="box-none">
               {panelSteps.map((s, i) => {
                 if (s.kind !== 'code' || i > stepAt) return null;
@@ -4594,7 +5037,7 @@ export default function Search() {
               hitSlop IS DELIBERATELY ABSENT. The sibling codes above carry 10
               because they are small, free and easy to miss; this is large,
               paid, and should be hit only where it is drawn. */}
-          {panelAirport !== null && panelOrigin !== null && !panelTyping
+          {panelOrigin !== null && !panelTyping
             && panelOrigin.iata !== panelAirport.iata && (
             <Pressable
               style={ap.searchBtn}
@@ -4609,29 +5052,6 @@ export default function Search() {
             </Pressable>
           )}
 
-          {/* ── THE WAY INTO THE FULL CARD ──
-              THE SAME PILL THE AIRPORT PANEL USES FOR ITS ONE ACTION, because
-              it is the same kind of thing: the one control on a panel that is
-              otherwise a readout. It costs nothing -- the card is drawn from the
-              record already in hand -- but it is still the only pressable thing
-              here, and looking like the other one is what says so.
-
-              !panelTyping FOR THE REASON EVERY CONTROL ON THIS PANEL IS: a tap
-              during the type-on means "finish it", and a control mounted then
-              would turn that tap into an expansion. */}
-          {panelFlight !== null && !panelTyping && (
-            <Pressable
-              style={ap.searchBtn}
-              onPress={expandCard}
-              accessibilityRole="button"
-              accessibilityLabel={`open the full card for ${panelFlight.flightNumber}`}
-            >
-              <Text style={ap.searchTxt}>
-                {'full card '}
-                <Text style={ap.searchCode}>{'\u2304'}</Text>
-              </Text>
-            </Pressable>
-          )}
         </View>
       )}
       {/* ── THE LOCATION CONSENT PROMPT ──
@@ -4737,60 +5157,23 @@ export default function Search() {
           <Text style={[pt.label, !showPast && pt.labelOff]}>{'PAST'}</Text>
         </Pressable>
       )}
-      {/* ── THE FULL CARD, OVER THE MAP ──
-          LAST CHILD OF s.root, so it is above the map, both panels and every
-          control -- and so its touches are not swallowed by anything drawn
-          after it, which is the rule this screen has learned twice.
-
-          THE SCRIM IS THE SHEETS' OWN, so the map stays visible behind the card
-          at the same strength it stays visible behind the airport sheet. It is
-          pressable and collapses: tapping beside the card is the way back, the
-          same as tapping beside a sheet.
-
-          THE CARD'S OWN Pressable SWALLOWS THE TAP so a press on the card does
-          not fall through to the scrim and close it. */}
-      {cardOpen && cardData !== null && panelFlight !== null && (
-        <View style={StyleSheet.absoluteFill}>
-          <Animated.View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, fc.dim, { opacity: cardAnim }]}
-          />
-          <Pressable style={StyleSheet.absoluteFill} onPress={collapseCard} />
-          <Animated.View style={[fc.wrap, { top: insets.top }, cardStyle]}>
-            <ScrollView
-              style={fc.scroll}
-              contentContainerStyle={[
-                fc.scrollBody,
-                { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 24 },
-              ]}
-              showsVerticalScrollIndicator={false}
-            >
-              <Pressable>
-                <FlightCard
-                  flight={cardData}
-                  flightRecord={panelFlight}
-                  now={now}
-                  isSaved
-                  handleToggleSave={cardToggleSave}
-                  routeOnMap={routes.some(r => r.id === panelFlight.id)}
-                  toggleRouteOnMap={cardToggleRoute}
-                  refreshFlightCard={cardRefresh}
-                  closeFlightCard={collapseCard}
-                />
-              </Pressable>
-            </ScrollView>
-          </Animated.View>
-        </View>
-      )}
       {home !== null && (
-        <Pressable
-          style={[hm.btn, { top: insets.top + 12 }]}
+        <AnimatedPressable
+          style={[hm.btn, { top: insets.top + 12 }, pinStyle]}
+          onPressOut={() => { pinAmt.value = withSpring(0, TAB_PRESS_SPRING); }}
           // THE FIRST STAGE, AND THE ONE MOST LIKELY TO BE MISSING. If pressing
           // the button prints nothing at all, the touch never reached this
           // Pressable and every later stage is irrelevant — see the report on
           // the ScrollView's content container, which is drawn after this and is
           // a hit target over its own bounds.
-          onPressIn={() => console.log('[HOME] 0. pressIn reached the Pressable')}
+          //
+          // AND IT GROWS THE BUTTON, on the tab bar's own spring. One handler
+          // rather than two: there was already an onPressIn here and JSX takes
+          // only one of each.
+          onPressIn={() => {
+            console.log('[HOME] 0. pressIn reached the Pressable');
+            pinAmt.value = withSpring(1, TAB_PRESS_SPRING);
+          }}
           onPress={() => {
             console.log('[HOME] 6a. onPress fired');
             // 5 of 5. The reported bug: this flew the camera home and left the
@@ -4846,7 +5229,77 @@ export default function Search() {
             />
             <SvgCircle cx={12} cy={12} r={3.2} fill={HOME_BTN_INK_DOT} />
           </Svg>
-        </Pressable>
+        </AnimatedPressable>
+      )}
+      {/* ── THE FULL CARD, OVER THE MAP ──
+          GENUINELY LAST NOW, AND IT WAS NOT. This block claimed to be the last
+          child of s.root and sat above the home button and the past-arc pill in
+          the source, so both drew AFTER it and the pin floated on top of the
+          card. When the card is open it is the foreground; nothing on the map
+          belongs in front of it.
+
+          THE SCRIM IS THE SHEETS' OWN, so the map stays visible behind the card
+          at the same strength it stays visible behind the airport sheet. It is
+          pressable and collapses: tapping beside the card is the way back, the
+          same as tapping beside a sheet.
+
+          THE CARD'S OWN Pressable SWALLOWS THE TAP so a press on the card does
+          not fall through to the scrim and close it. */}
+      {cardOpen && cardData !== null && panelFlight !== null && (
+        <View style={StyleSheet.absoluteFill}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, fc.dim, { opacity: cardAnim }]}
+          />
+          <Pressable style={StyleSheet.absoluteFill} onPress={collapseCard} />
+          {/* ── IT COMES OUT FROM BEHIND THE ISLAND ──
+              top: 0 AND NOT insets.top, which is the whole of item 6. Anchored
+              at the inset the card began BELOW the status bar and read as an
+              ordinary card that had faded in near the top; anchored at 0 its
+              surface runs up under the island itself, so the edge that grows is
+              hidden behind the cutout and the card appears to come out of it.
+              transformOrigin puts the scale's fixed point on that same hidden
+              edge, so the growth happens downward from behind it.
+
+              THE CONTENT STILL CLEARS THE ISLAND, but not from here. The
+              overlay adds no padding at all now -- the card runs to y=0 and to
+              both screen edges -- and the CARD pays the safe area back as its
+              own paddingTop, squaring its two upper corners at the same time.
+              Both belong together, so both live in FlightCard under mapVariant;
+              splitting them left a gap the first time. */}
+          <Animated.View style={[fc.wrap, cardStyle]}>
+            {/* ── SWIPE UP, AND NOTHING ELSE ──
+                THE GESTURE IS THE OVERLAY'S, NOT THE CARD'S. What is being
+                dismissed is this layer; the card is only what is drawn in it. It
+                also means FlightCard needs no Pan handler that every other
+                screen would have to switch off -- see mapVariant, which removes
+                the side panels by passing the library no renderers at all.
+
+                activeOffsetY WITH A NEGATIVE FLOOR ONLY. -14 up claims the
+                gesture; there is no positive bound, so a downward drag never
+                activates this handler at all and cannot be mistaken for a
+                dismissal that changed its mind.
+
+                A DISTANCE OR A FLICK. 70pt is a deliberate push; -900 catches
+                the fast short flick that never travels that far. */}
+            <GestureDetector gesture={cardDismiss}>
+              <View style={fc.body}>
+                <FlightCard
+                  flight={cardData}
+                  flightRecord={panelFlight}
+                  now={now}
+                  isSaved
+                  handleToggleSave={cardToggleSave}
+                  routeOnMap={routes.some(r => r.id === panelFlight.id)}
+                  toggleRouteOnMap={cardToggleRoute}
+                  refreshFlightCard={cardRefresh}
+                  closeFlightCard={collapseCard}
+                  mapVariant
+                />
+              </View>
+            </GestureDetector>
+          </Animated.View>
+        </View>
       )}
     </View>
   );
@@ -4870,7 +5323,10 @@ export default function Search() {
 // THE MATERIAL STILL MATCHES, so they remain the same family; only the SIZE says
 // "smaller scope". That is the one signal changed, and it is the cheapest one
 // that separates them.
-const HOME_BTN_SIZE = 40;
+// 42, UP FROM 40, WITH THE TWO BAR GLYPHS. The three map controls are one set
+// and are sized together; the consent strip's right offset is derived from this,
+// so it moves with them and the two never touch.
+const HOME_BTN_SIZE = 50;
 // 18 RATHER THAN A STRICT 22 * 40/56 = 15.7. Proportional is the right instinct
 // and slightly wrong here: below about 16 the 1px ring stroke gets fragile, and a
 // smaller surface needs a proportionally LARGER glyph to stay legible. 18 leaves
@@ -4922,6 +5378,97 @@ const ap = StyleSheet.create({
   // codes should have it too, they should get this same entry.
   cityPressed: { opacity: 0.7 },
   caret: { color: '#4ade80', fontSize: 20 },
+  // ── THE FLIGHT PANEL'S TWO COLUMNS ────────────────────────────────────────
+  //
+  // 280 RATHER THAN 210. One city name fits the narrower cap comfortably; two
+  // beside an arrow do not, and a wrapped "SAN FRANCISCO" in an 85pt column
+  // would be four lines of two syllables.
+  //
+  // ITS OWN ENTRY, NOT A MODIFIER ON ap.wrap, AND THAT IS THE FIX FOR THE FIX.
+  // The previous attempt added `right: 20` and removed the maxWidth from the
+  // override -- but ap.wrap still carries maxWidth: 210, and a key absent from
+  // the later style does not clear the earlier one. So the box stayed 210 wide,
+  // the columns stayed at (210 - 36) / 2 = 87pt, and BANGALORE went on breaking
+  // after eight characters. A style cannot un-set a property; it can only be
+  // replaced by one that never set it.
+  //
+  // 20 EITHER SIDE AND NO CAP. On a 390pt screen that is 350 of panel and
+  // (350 - 36) / 2 = 157pt a column -- BANGALORE is about 79pt at 15/0.5, so it
+  // does not wrap, and neither does any ordinary city name.
+  wrapFlight: { position: 'absolute', left: 20, right: 20 },
+  // flex-start at the TOP, not centre: the two cities may wrap to different
+  // heights and the codes under them must still line up with each other.
+  pair: { flexDirection: 'row', alignItems: 'flex-start' },
+  pairCol: { flex: 1 },
+  // The arrival column reads toward the arrow, which is what makes the pair a
+  // journey rather than two lists.
+  pairColRight: { alignItems: 'flex-end' },
+  // 18, DOWN FROM THE AIRPORT PANEL'S 26, because there are two of them. Same
+  // family, same tracking, same shadow -- a step down the scale rather than a
+  // different treatment.
+  // ── 15, DOWN FROM 18, AND THE TRACKING WITH IT ────────────────────────────
+  //
+  // THE ARITHMETIC, because "it fits" is not something to assert. On a 390pt
+  // screen the panel is 390 - 40 of margin = 350; the arrow takes 16 plus 20 of
+  // padding, leaving 157 a column. Inter SemiBold runs about 0.55em average, so
+  // a character costs roughly size*0.55 + letterSpacing:
+  //
+  //   SAN FRANCISCO       13 ch  at 15/0.5  ->  ~112pt   fits, and wraps at the
+  //                                              space if it ever needs to
+  //   THIRUVANANTHAPURAM  18 ch  at 15/0.5  ->  ~157pt   exactly at the edge
+  //                       18 ch  at 18/1    ->  ~196pt   over by 39
+  //
+  // AND ONE UNBREAKABLE WORD IS WHY THE SIZE HAD TO MOVE AT ALL. numberOfLines
+  // is 2, but a single word has no break opportunity, so wrapping cannot save a
+  // long name -- only width or size can, and the width is already everything the
+  // margins allow. 15 is the largest size at which the longest city name in the
+  // dataset lands inside a column on the narrowest phone this app supports.
+  //
+  // 0.5 RATHER THAN 1 for the same reason: at 18 characters the tracking alone
+  // was 18pt, which is more than a whole character of the budget.
+  pairCity: {
+    fontFamily: SANS_SEMI,
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: 0.5,
+    color: 'rgba(226,226,226,0.95)',
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  // GREEN, AND IT IS THE MAP'S GREEN. These two codes name the dots the map has
+  // just drawn larger at either end of the selected arc; using the airport
+  // panel's own code colour is what ties the three together.
+  pairCode: {
+    fontFamily: MONO,
+    fontSize: 13,
+    letterSpacing: 1,
+    color: '#4ade80',
+    marginTop: 4,
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  // The local clock, at the panel's dim tier, because it is a reading rather
+  // than a name. Which airport it belongs to is the column it is in.
+  pairTime: {
+    fontFamily: MONO,
+    fontSize: 12,
+    color: 'rgba(226,226,226,0.55)',
+    marginTop: 2,
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  // Aligned to the CITIES rather than centred on the block, so it sits between
+  // the two names and not beside the clocks. paddingHorizontal keeps it off both
+  // columns at the narrowest width.
+  pairArrow: {
+    fontFamily: MONO,
+    fontSize: 16,
+    lineHeight: 22,
+    color: 'rgba(226,226,226,0.45)',
+    paddingHorizontal: 10,
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
   country: {
     fontFamily: SANS,
     fontSize: 12,
@@ -5112,12 +5659,26 @@ const fc = StyleSheet.create({
   // transformOrigin puts the scale's fixed point on that same edge.
   wrap: {
     position: 'absolute',
-    left: 0, right: 0, bottom: 0,
+    top: 0, left: 0, right: 0,
     transformOrigin: 'top center',
   },
-  scroll: { flex: 1 },
-  // The page's own horizontal margin, so the card sits where a card sits.
-  scrollBody: { paddingHorizontal: 20, paddingTop: 12 },
+  // ── FULL BLEED, AND NO PADDING AT ALL ─────────────────────────────────────
+  //
+  // THE GAP AND THE VISIBLE TOP EDGE WERE BOTH THIS. The card was inset 20pt
+  // horizontally and pushed down by insets.top - 26, so it began BELOW the
+  // island with two lit corners and a horizontal edge running the width of the
+  // screen above it -- which is a card near the top, not a card coming out of
+  // the island.
+  //
+  // NOW IT STARTS AT y=0 AND TOUCHES BOTH EDGES. There is no gap because there
+  // is no offset, and no visible top edge because the edge is the screen's own.
+  // The card's top corners are squared off for the same reason -- see
+  // mapCardTop in FlightCard, which also pays back the safe-area inset as
+  // padding so the content still clears the cutout.
+  //
+  // NO ScrollView: the map variant is one block and does not scroll, and a
+  // scroll view here would take the vertical drag the dismiss needs.
+  body: {},
 });
 
 const hm = StyleSheet.create({

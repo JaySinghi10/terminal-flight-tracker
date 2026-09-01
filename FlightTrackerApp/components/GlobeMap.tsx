@@ -48,6 +48,20 @@ const ADMIN1_LINE = 'rgba(255,255,255,0.07)';
 // hierarchy they express. See ROAD_TIERS.
 const LABEL_COUNTRY = 'rgba(226,226,226,0.72)';
 const LABEL_CITY = 'rgba(226,226,226,0.42)';
+// ── NO LABEL OF THIS MAP'S OWN ──────────────────────────────────────────────
+//
+// LABEL_END AND ITS LAYER ARE GONE, and with them the fifth attempt at naming a
+// flight's endpoints. Four tries matched the tile's label by name and failed on
+// spelling; the fifth stopped matching and drew its own text over the `ends`
+// source, which worked and then said everything twice -- the tile's "Bengaluru"
+// and this one's, side by side, because a tile's label cannot be suppressed for
+// one feature and nothing here could stop it being written.
+//
+// THE TILE'S NAME IS ENOUGH. It is already there, already correct in the local
+// spelling, and already placed by a collision engine that knows what else is on
+// screen. The endpoints keep their emphasis in the one place emphasis belongs on
+// a map made of dots and lines: airport-end draws them larger, brighter and at
+// every zoom. Nothing about which cities a flight joins is lost.
 const LABEL_HALO = '#050505';
 const AIRPORT_INK = '#4ade80';
 // -- THE FLIGHT OVERLAY'S INKS ------------------------------------------------
@@ -356,17 +370,40 @@ const CITY_HIT_R = 24;
 
 // ── TAPPING A LINE ───────────────────────────────────────────────────────────
 //
-// 24 POINTS WIDE, WHICH IS THE SAME TARGET THE CITY LABELS GET. line-width is
-// in screen pixels exactly as circle-radius is, so a constant is a constant-size
-// target at every zoom -- and an arc needs it more than either point does: the
-// drawn line is 0.6 to 1.8px, which is at the limit of what can be seen and
-// far past the limit of what can be hit.
+// 44 POINTS WIDE, UP FROM 24, AND THE OLD FIGURE WAS REASONED FROM THE WRONG
+// PREMISE. It was set to 24 on the argument that a line offers its whole LENGTH
+// to aim at and so needs less slack ACROSS itself than a point does. That is
+// true of aiming and false of missing: 24 is 12 either side, and 12 points is
+// under two millimetres on a phone. A finger pad is eight or nine, so a tap
+// centred a millimetre off the line landed outside the target entirely -- and
+// the next thing under it was a city label, which flew the camera somewhere
+// else. Being wrong by a millimetre should not be indistinguishable from
+// pointing at something else.
 //
-// A WIDTH, NOT A RADIUS, so the figure is the FULL thickness rather than a
-// half-width: 24 here is 12 either side of the line, against the city's 24 in
-// every direction. That is deliberate -- a line offers its whole length to aim
-// at, so it needs less slack across itself than a single point does.
-const ARC_HIT_W = 24;
+// 44 IS 22 EITHER SIDE, which is the airport dot's own radius and about the
+// width of the pad that is doing the pointing.
+//
+// A WIDTH, NOT A RADIUS: the figure is the full thickness, so it compares to
+// twice a circle's.
+const ARC_HIT_W = 44;
+
+// ── HOW AN ARC THINS TOWARD ITS ENDS ─────────────────────────────────────────
+//
+// 0.35 AT BOTH ENDS, 1.0 AT THE MIDPOINT, on a half sine. An aircraft is low at
+// the airports and high in between, and a line that thickens through the middle
+// reads as that without printing a number that would be a lie -- the arc is a
+// great circle, not a flight profile, and nothing here knows a cruise altitude.
+//
+// A SINE RATHER THAN A TRIANGLE because a triangle has a corner at the top, and
+// a visible kink in the middle of a route would read as a waypoint. sin(pi*t) is
+// flat at its peak and steepest at the ends, which is also where the change
+// needs to be legible: the taper has to be obvious at the airport, where the
+// line meets a dot, and unnoticeable across the middle third.
+//
+// 0.35 RATHER THAN 0. A line that goes to nothing at its ends disconnects from
+// the endpoint dot it is supposed to touch; at 0.35 of a 1.8px arc the tip is
+// still 0.6px, which is the width a past arc is drawn at anyway.
+const ARC_TAPER_MIN = 0.35;
 
 // WHERE A FRAMED ROUTE STOPS ZOOMING IN. Two airports in the same city would
 // otherwise fit a bounding box a few kilometres across and fill the screen with
@@ -495,6 +532,11 @@ const STYLE = {
     arcs: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     planes: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     night: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+    // THE AIRPORTS AT THE ENDS OF THE DRAWN ARCS. A separate source rather than
+    // a flag on the 1,223, for the reason the pin is separate: that blob is
+    // baked into the page as a constant and rebuilding it to mark two dots
+    // would re-send the whole dataset every time a route was added.
+    ends: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   },
   // ── THE SKY CONTRIBUTES NOTHING, ON PURPOSE ───────────────────────────────
   //
@@ -675,46 +717,6 @@ const STYLE = {
         'text-halo-width': 1,
       },
     },
-    // ── THE CITY LABELS' TAP TARGET, INVISIBLE AND A CONSTANT SIZE ───────────
-    //
-    // THE AIRPORT DOT'S TRICK, APPLIED TO A WORD. circle-radius is already in
-    // SCREEN pixels, so a plain number is a target that stays the same size at
-    // every zoom -- which is the whole point, because a city label at z4 is 9pt
-    // of text and would otherwise be unhittable at exactly the zooms this
-    // feature exists for.
-    //
-    // A CIRCLE LAYER ON A VECTOR SOURCE, which is the part worth stating: the
-    // place layer's features are POINTS, so a circle sits exactly where the
-    // label is anchored. Nothing is duplicated and nothing has to be kept in
-    // step -- the same source-layer, the same filter and the same minzoom as
-    // the labels, so a label that is drawn is a label that can be tapped and
-    // one that is not, cannot.
-    //
-    // circle-opacity 0 STILL QUERIES, and this was read rather than assumed
-    // when the airport target was built: maplibre-gl's CircleStyleLayer
-    // queryIntersectsFeature never looks at circle-opacity, and isHidden checks
-    // only minzoom, maxzoom and visibility. An invisible circle is a live hit
-    // target.
-    //
-    // IT IS THE ANCHOR AND NOT THE TEXT BOX, and that is a real limitation
-    // rather than an oversight. MapLibre exposes no query against a symbol's
-    // laid-out glyph box, so the target is a disc around the label's centre:
-    // tapping the middle of a name always works, and tapping the first letter
-    // of a long one can miss. 24px covers a name of about ten characters at
-    // this size.
-    {
-      id: 'city-hit',
-      type: 'circle',
-      source: 'ofm',
-      'source-layer': 'place',
-      minzoom: 4,
-      filter: ['in', ['get', 'class'], ['literal', ['city', 'town']]],
-      paint: {
-        'circle-radius': CITY_HIT_R,
-        'circle-color': LABEL_CITY,
-        'circle-opacity': 0,
-      },
-    },
     // -- SAVED FLIGHTS, ONE LAYER AT TWO WEIGHTS -----------------------------
     //
     // GREEN MEANS THE FLIGHT IS STILL AHEAD OF YOU OR IN THE AIR; GREY MEANS IT
@@ -748,16 +750,40 @@ const STYLE = {
       source: 'arcs',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
+        // THE COLOUR IS UNTOUCHED BY SELECTION, and that is deliberate. Colour
+        // on this map means STATE -- green for a flight still ahead of you or in
+        // the air, grey for one that is over -- and a selected arc has not
+        // changed state by being tapped. Recolouring it would make one arc lie
+        // about what it is for as long as its panel is open.
         'line-color': ['case', ['==', ['get', 'past'], 1], ARC_PAST, ARC_LIVE],
-        // THE WEIGHT READS THE SAME RULE AS THE COLOUR, which is the whole of
-        // this change: whatever is green is also the wider of the two. At z1 a
-        // hairline is near the limit of what a phone screen resolves, so hue
-        // alone would not separate them when zoomed out -- the weight carries
-        // the distinction before the colour is even readable.
+        // WEIGHT IS WHAT SELECTION SPEAKS WITH, because weight is already this
+        // layer's word for emphasis: live arcs are wider than past ones for
+        // exactly the same reason. A selected arc is wider again -- about double
+        // -- and at full opacity, so it separates from its neighbours whatever
+        // state it is in and whatever else is on the map.
+        // THE MULTIPLY IS INSIDE EACH STOP, AND IT HAS TO BE.
+        //
+        // THE FIRST ATTEMPT WRAPPED THE INTERPOLATE IN A '*' AND BLACKED OUT THE
+        // WHOLE MAP. A zoom expression may only be the INPUT TO A TOP-LEVEL step
+        // or interpolate -- as an operand of anything else it is rejected, the
+        // style fails validation, and no layer draws at all. Not the arcs: the
+        // land, the water, every label. One invalid paint property costs the
+        // entire style, which is why this is worth spelling out.
+        //
+        // SO THE INTERPOLATE IS OUTERMOST and each of its two outputs does its
+        // own multiply. That is the ordinary zoom-and-property form: zoom
+        // decides the ramp, the feature decides its place on it. The arithmetic
+        // is identical to the version that was rejected -- the same case, the
+        // same 0.6/1.0/1.8/2.2/3.6, the same taper -- only the nesting differs.
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          1, ['case', ['==', ['get', 'past'], 1], 0.6, 1.0],
-          6, ['case', ['==', ['get', 'past'], 1], 1.0, 1.8]],
-        'line-opacity': ['case', ['==', ['get', 'past'], 1], 1, 0.85],
+          1, ['*', ['case', ['==', ['get', 'sel'], 1], 2.2,
+                    ['case', ['==', ['get', 'past'], 1], 0.6, 1.0]],
+              ['get', 'w']],
+          6, ['*', ['case', ['==', ['get', 'sel'], 1], 3.6,
+                    ['case', ['==', ['get', 'past'], 1], 1.0, 1.8]],
+              ['get', 'w']]],
+        'line-opacity': ['case', ['==', ['get', 'sel'], 1], 1,
+          ['case', ['==', ['get', 'past'], 1], 1, 0.85]],
       },
     },
     // ── THE ARCS' TAP TARGET, INVISIBLE AND A CONSTANT WIDTH ────────────────
@@ -800,6 +826,33 @@ const STYLE = {
         'circle-color': AIRPORT_INK,
         'circle-opacity': ['interpolate', ['linear'], ['zoom'],
           AIRPORT_MIN_ZOOM, 0, AIRPORT_FULL_ZOOM, 1],
+      },
+    },
+    // ── THE AIRPORTS A DRAWN ROUTE ACTUALLY TOUCHES ─────────────────────────
+    //
+    // LARGER, BRIGHTER, AND AT EVERY ZOOM. The 1,223 dots underneath fade in at
+    // z4.5 and top out at 4.5px, which is right for "here is an airport" and
+    // useless for "here is where your flight begins". These are the two ends of
+    // something the user asked to see, so they are drawn like it: about half
+    // again the radius, full opacity from the globe view down, and no minzoom
+    // at all.
+    //
+    // THE DARK RING IS WHAT MAKES IT A DISC. An arc terminates inside these, and
+    // without a stroke in the ocean's own colour the dot and the line it meets
+    // merge into one blob at the exact place the eye is trying to read.
+    //
+    // ABOVE THE PLAIN DOTS so an endpoint always wins its own pixels, and below
+    // the tap target so the hit geometry is unchanged -- these add emphasis, not
+    // a new thing to press.
+    {
+      id: 'airport-end',
+      type: 'circle',
+      source: 'ends',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 3.4, 10, 7],
+        'circle-color': AIRPORT_INK,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': OCEAN,
       },
     },
     // ── THE TAP TARGET, INVISIBLE AND A CONSTANT SIZE ────────────────────────
@@ -1285,6 +1338,20 @@ function start() {
   // Without this the loop would keep writing the centre every frame and fight
   // the finger for the map.
   function onGrab() { cancelCamera(); }
+
+  // ── THE PAGE SAYS WHEN THE USER IS MOVING THE MAP ─────────────────────────
+  //
+  // dragstart AND dragend, NOT movestart AND moveend, and the difference is the
+  // whole correctness of this. move fires for every camera change including the
+  // ones this app makes itself -- flying to an airport, framing a route, going
+  // home -- so a bar keyed on move would retract every time the map moved on its
+  // own, which is precisely when the user is not touching it. drag fires only
+  // for a finger on the surface.
+  //
+  // IT SAYS NOTHING ABOUT WHAT SHOULD HAPPEN. The message is "a drag started",
+  // not "hide the tab bar"; what to do about it is decided three layers away.
+  map.on('dragstart', function () { post({ type: 'drag', on: true }); });
+  map.on('dragend', function () { post({ type: 'drag', on: false }); });
   var el = map.getCanvasContainer();
   el.addEventListener('touchstart', onGrab, { capture: true, passive: true });
   el.addEventListener('mousedown', onGrab, { capture: true, passive: true });
@@ -1495,6 +1562,12 @@ function start() {
   }
 
   map.on('click', function (e) {
+    // EVERY STAGE OF A TAP, TIMED. The panel was reported as slow to appear and
+    // there are four candidates between the finger and the first character: the
+    // query, the nearest-wins loop, the camera, and everything on the other side
+    // of the bridge. Only the first three are measurable in here; t0 is posted
+    // with the result so React Native can subtract and see its own share.
+    var t0 = performance.now();
     // AIRPORTS FIRST, AND THAT ORDER IS THE POINT. Both targets exist above
     // z4.5 and they overlap constantly -- an airport dot sits a few pixels from
     // the city label that names the place it serves. The airport is the more
@@ -1518,7 +1591,75 @@ function start() {
       return;
     }
 
-    var cit = map.queryRenderedFeatures(e.point, { layers: ['city-hit'] });
+    // ── ARCS BEFORE CITIES ──────────────────────────────────────────────
+    //
+    // THIS ORDER IS REVERSED FROM WHAT IT WAS, and the reversal is the point.
+    // Cities used to win on the reasoning that a point is more specific than a
+    // line. On a map where the lines are the thing the user put there, that is
+    // backwards: nobody taps a globe covered in their own flights meaning to
+    // read the name of a town under one. The arc is what was aimed at.
+    //
+    // AIRPORTS STILL WIN OVER BOTH. A dot IS more specific than either, it is
+    // 22px across, and it sits at the end of the very arc in question -- so
+    // aiming at one is unambiguous in a way that aiming at a label near a line
+    // is not.
+    var arcEarly = map.queryRenderedFeatures(e.point, { layers: ['arc-hit'] });
+    var arcEarlyBest = null;
+    var arcEarlyD = Infinity;
+    for (var ai = 0; ai < arcEarly.length; ai++) {
+      var aco = arcEarly[ai].geometry.coordinates;
+      for (var ak = 0; ak < aco.length; ak++) {
+        var ap2 = map.project(aco[ak]);
+        var adx = ap2.x - e.point.x, ady = ap2.y - e.point.y;
+        var add = adx * adx + ady * ady;
+        if (add < arcEarlyD) { arcEarlyD = add; arcEarlyBest = arcEarly[ai]; }
+      }
+    }
+    var tArc = performance.now();
+    if (arcEarlyBest !== null) {
+      var pr0 = arcEarlyBest.properties;
+      frameRoute(pr0.ax, pr0.ay, pr0.bx, pr0.by);
+      post({
+        type: 'flight',
+        id: pr0.id,
+        candidates: arcEarly.length,
+        px: Math.round(Math.sqrt(arcEarlyD)),
+        tQuery: Math.round(tArc - t0),
+        tFrame: Math.round(performance.now() - t0)
+      });
+      return;
+    }
+
+    // ── THE LABELS ANSWER FOR THEMSELVES ────────────────────────────────
+    //
+    // THIS QUERIES label-city DIRECTLY, INSIDE A BOX, and both halves of that
+    // are the fix for a real bug: an invisible target was winning taps the user
+    // could not have aimed at.
+    //
+    // WHY THE CIRCLE LAYER HAD TO GO. city-hit was a 24px disc on EVERY place
+    // feature, drawn or not. A symbol layer drops labels that collide, and at
+    // any zoom most of them do -- so the map was covered in invisible 48px
+    // targets with no text to warn anyone, scattered along exactly the arcs the
+    // user was trying to tap. A target nobody can see must not win, and the only
+    // way for it not to exist is for it not to be a separate layer.
+    //
+    // A SYMBOL QUERY RESPECTS PLACEMENT. queryRenderedFeatures against a symbol
+    // layer tests the boxes the collision index actually placed, so a label that
+    // lost its collision is not returned. That is precisely "only where the
+    // label was rendered", and it is why the alternative -- dropping cities
+    // below arcs in the order -- was not needed: the ordering was never wrong,
+    // the target was.
+    //
+    // THE BOX IS WHAT KEEPS IT A CONSTANT SCREEN-PIXEL TARGET, which a bare
+    // point query would not be: CITY_HIT_R either side of the touch, at every
+    // zoom, exactly as before. It also tests the label's own placed box rather
+    // than its anchor, so tapping the first letter of a long name now works --
+    // the limitation the circle version had to admit to.
+    var cbox = [
+      [e.point.x - ${CITY_HIT_R}, e.point.y - ${CITY_HIT_R}],
+      [e.point.x + ${CITY_HIT_R}, e.point.y + ${CITY_HIT_R}]
+    ];
+    var cit = map.queryRenderedFeatures(cbox, { layers: ['label-city'] });
     var hitC = (cit && cit.length > 0) ? nearestHit(e.point, cit) : null;
     if (hitC !== null) {
       var cc = hitC.f.geometry.coordinates;
@@ -1538,41 +1679,6 @@ function start() {
         lat: cc[1],
         candidates: cit.length,
         px: hitC.px
-      });
-      return;
-    }
-
-    // ARCS LAST, BECAUSE A POINT IS MORE SPECIFIC THAN A LINE. An arc passes
-    // through and near a great many dots and labels on its way across the
-    // world, and at every one of them the user almost certainly meant the
-    // place. The line is what is left when nothing more specific was there.
-    //
-    // NEAREST BY VERTEX, not by the feature's own order. A LineString has no
-    // single position to project, so the distance to an arc is the distance to
-    // its closest SAMPLE -- and at 64 samples an arc is dense enough that the
-    // nearest vertex is within a pixel or two of the nearest point on the line.
-    // Exact perpendicular distance to each segment would be more arithmetic for
-    // an answer that only has to order two overlapping lines.
-    var arc = map.queryRenderedFeatures(e.point, { layers: ['arc-hit'] });
-    var bestArc = null;
-    var bestArcD = Infinity;
-    for (var j = 0; j < arc.length; j++) {
-      var co = arc[j].geometry.coordinates;
-      for (var k = 0; k < co.length; k++) {
-        var q = map.project(co[k]);
-        var ex = q.x - e.point.x, ey = q.y - e.point.y;
-        var ed = ex * ex + ey * ey;
-        if (ed < bestArcD) { bestArcD = ed; bestArc = arc[j]; }
-      }
-    }
-    if (bestArc !== null) {
-      var pr = bestArc.properties;
-      frameRoute(pr.ax, pr.ay, pr.bx, pr.by);
-      post({
-        type: 'flight',
-        id: pr.id,
-        candidates: arc.length,
-        px: Math.round(Math.sqrt(bestArcD))
       });
       return;
     }
@@ -1714,6 +1820,10 @@ function start() {
   // changes: which arcs are live, where the aircraft are, and where night is.
   var FLIGHTS = [];
   var NOW = Date.now();
+  // WHICH ROUTE'S PANEL IS OPEN, or null. Set from React Native and read only
+  // by rebuild, so selection travels the same path everything else about these
+  // arcs travels and cannot get out of step with the geometry.
+  var SELECTED = null;
   var RAD = Math.PI / 180;
 
   function fc(features) { return { type: 'FeatureCollection', features: features }; }
@@ -1877,21 +1987,49 @@ function start() {
       // alone would file every timeless route as having landed at the epoch.
       var past = f.arr !== null && NOW > f.arr;
       var live = f.dep !== null && f.arr !== null && NOW >= f.dep && NOW <= f.arr;
-      for (var s = 0; s < f.segs.length; s++) {
-        // THE ID AND BOTH ENDPOINTS RIDE ON EVERY SEGMENT, and the endpoints are
-        // the reason. An arc that crosses the antimeridian is SPLIT into two
-        // LineStrings, so the segment a finger lands on may begin and end
-        // nowhere near the flight's actual airports -- framing the route from
-        // the tapped geometry would frame half of it. These are the route's own
-        // ends, repeated on each piece.
+      // ── THE TAPER, AND WHY THE ARC IS NOW SIXTY-FOUR FEATURES ─────────────
+      //
+      // A LINE LAYER TAKES ONE WIDTH FOR A WHOLE FEATURE. line-width is a paint
+      // property evaluated per feature, not per vertex -- there is no
+      // line-gradient for width, and line-gradient itself only does colour. So
+      // the only way a single drawn line can change thickness along its length
+      // is for it to stop being a single feature.
+      //
+      // SO EACH ARC IS EMITTED AS ONE FEATURE PER SAMPLE PAIR, each carrying its
+      // own w value between 0.35 and 1, and the paint MULTIPLIES the layer's width
+      // by it. That is what makes the taper scale to whatever weight the arc
+      // already had: a past arc at 0.6 and a selected one at 3.6 both thin to
+      // 35% of themselves, so the shape is the same and the emphasis is not lost.
+      //
+      // 64 SEGMENTS IS ALREADY THE SAMPLING, so this adds features but no
+      // geometry -- the same points, cut differently. The steps between adjacent
+      // widths are 65ths of the range and round caps bridge them; at any zoom
+      // this map allows they are under a pixel.
+      //
+      // THE ANTIMERIDIAN IS HANDLED BY SKIPPING, not by splitArc. A pair whose
+      // longitudes differ by more than half a turn is the seam; dropping that
+      // one pair leaves the two halves drawn and the wrap undrawn, which is what
+      // splitArc was doing with whole segments. splitArc is still what the
+      // aircraft's own position reads, so it stays.
+      var pn = f.pts.length;
+      for (var s = 0; s + 1 < pn; s++) {
+        var p0 = f.pts[s], p1 = f.pts[s + 1];
+        if (Math.abs(p1[0] - p0[0]) > 180) continue;
+        var t = (s + 0.5) / (pn - 1);
         arcs.push({
           type: 'Feature',
           properties: {
             past: past ? 1 : 0,
+            sel: (SELECTED !== null && f.id === SELECTED) ? 1 : 0,
+            // THE ID AND BOTH ENDPOINTS RIDE ON EVERY SEGMENT. A finger lands on
+            // one 64th of a route and has to be able to name the whole of it,
+            // and framing from the tapped geometry would frame a hundredth of
+            // the journey.
             id: f.id,
-            ax: f.a[0], ay: f.a[1], bx: f.b[0], by: f.b[1]
+            ax: f.a[0], ay: f.a[1], bx: f.b[0], by: f.b[1],
+            w: ${ARC_TAPER_MIN} + (1 - ${ARC_TAPER_MIN}) * Math.sin(Math.PI * t)
           },
-          geometry: { type: 'LineString', coordinates: f.segs[s] }
+          geometry: { type: 'LineString', coordinates: [p0, p1] }
         });
       }
       if (live) {
@@ -1918,6 +2056,27 @@ function start() {
     }
     map.getSource('arcs').setData(fc(arcs));
     map.getSource('planes').setData(fc(planes));
+    // BOTH ENDS OF EVERY FLIGHT, DEDUPLICATED. Two flights out of the same
+    // airport would otherwise stack two circles on one point, which is invisible
+    // at full opacity and a darker ring at anything less.
+    var seen = {};
+    var ends = [];
+    for (var m = 0; m < FLIGHTS.length; m++) {
+      var g = FLIGHTS[m];
+      var pair = [g.a, g.b];
+      for (var n = 0; n < 2; n++) {
+        var k = pair[n][0] + ',' + pair[n][1];
+        if (seen[k]) continue;
+        seen[k] = 1;
+        // NO PROPERTIES. The only layer left on this source is airport-end, a
+        // circle of a fixed size and colour, so the feature is a position and
+        // nothing else. The names and codes that used to ride here existed for
+        // label-end and went with it.
+        ends.push({ type: 'Feature', properties: {},
+                    geometry: { type: 'Point', coordinates: pair[n] } });
+      }
+    }
+    map.getSource('ends').setData(fc(ends));
     map.getSource('night').setData(fc(nightBands(NOW)));
     post({ type: 'overlay', arcs: FLIGHTS.length, planes: planes.length });
   }
@@ -1925,12 +2084,42 @@ function start() {
   function setFlights(list) {
     FLIGHTS = list.map(function (f) {
       var pts = arcPoints(f.a, f.b, 64);
-      return { id: f.id, a: f.a, b: f.b, dep: f.dep, arr: f.arr, pts: pts, segs: splitArc(pts) };
+      return { id: f.id, a: f.a, b: f.b,
+               dep: f.dep, arr: f.arr, pts: pts, segs: splitArc(pts) };
     });
     rebuild();
   }
 
   function tick(ms) { NOW = ms; rebuild(); }
+
+  // A REBUILD RATHER THAN A FEATURE STATE, and the reason is that there is
+  // nothing to save. setFeatureState needs a promoteId on the source and a
+  // second paint path reading feature-state; rebuild already runs on every
+  // minute tick and costs one pass over a handful of flights whose geometry is
+  // already sampled. One code path for what an arc looks like.
+  // ── ONE PAINT PROPERTY, NOT A SECOND LAYER ────────────────────────────────
+  //
+  // A DUPLICATE label-city WOULD HAVE COLLIDED WITH ITSELF. Two symbol layers
+  // over one source both want to place the same label, and the collision index
+  // drops one of them -- so the highlight would have flickered against the thing
+  // it was highlighting, or needed allow-overlap and drawn every selected name
+  // twice with a doubled halo. Setting the paint on the layer that is already
+  // there has none of that: one label, one placement, a different colour.
+  //
+  // THE EXPRESSION IS REBUILT RATHER THAN PARAMETERISED because a paint property
+  // cannot read a variable the page holds; the names are baked into the expression
+  // each time the selection changes, which is a handful of times a session.
+  //
+  // ALL THREE NAME FIELDS, because LABEL_NAME coalesces all three to decide what
+  // to DRAW, and a highlight that tested only one would miss exactly the places
+  // whose English name differs from their local one.
+  // THE ARC'S OWN HIGHLIGHT, AND NOTHING ELSE NOW. The endpoint city labels are
+  // permanent and are rebuilt with the flight list, so selection has no work to
+  // do on them.
+  function setSelected(id) {
+    SELECTED = id;
+    rebuild();
+  }
 
   // ── HIDING WHAT IS OVER ────────────────────────────────────────────────────
   //
@@ -1964,7 +2153,8 @@ function start() {
     pin: pinReport,
     flights: setFlights,
     tick: tick,
-    past: setShowPast
+    past: setShowPast,
+    select: setSelected
   };
 
   // ── WHAT THE PIN IS ACTUALLY DOING, ONCE THE MAP HAS SETTLED ───────────────
@@ -2057,6 +2247,8 @@ export type MapFlight = {
   // tapped. The page never resolves it -- it posts it back and the screen looks
   // it up in the list it already holds.
   id: string;
+  // NO NAMES AND NO CODES. They were here for a label layer this map no longer
+  // has -- see the note where LABEL_END used to be. The tiles name the cities.
   a: [number, number];
   b: [number, number];
   dep: number | null;
@@ -2097,6 +2289,14 @@ export type GlobeMapHandle = {
   // layer whose features are already tagged, so this costs one boolean across
   // the bridge and no geometry -- see setShowPast in the page.
   setShowPast: (on: boolean) => void;
+  // WHICH ROUTE IS SELECTED, or null for none. The selected arc is drawn heavier
+  // and at full opacity; its colour is untouched, because colour on this map
+  // means state and being tapped is not a state.
+  //
+  // THE id ALONE. It used to carry the endpoint coordinates as well, for a city
+  // highlight that ran on selection; there is no label layer of this map's own
+  // any more, so there is nothing for them to have driven.
+  setSelectedFlight: (id: string | null) => void;
   // DIAGNOSTIC. Asks the page to report what it is actually holding, which is
   // the one thing React cannot see: homeView and the pin source live in the
   // WebView and survive anything that happens on this side.
@@ -2129,6 +2329,9 @@ type GlobeMapProps = {
   // all that crosses: the record it names is on the other side, in the saved
   // list, and the page has never seen it.
   onFlight?: (id: string) => void;
+  // TRUE WHILE A FINGER IS MOVING THE MAP. Only for the duration of the drag,
+  // and only for a drag -- the app's own camera flights do not raise it.
+  onDrag?: (on: boolean) => void;
   // THE MAP WAS TAPPED AND NOTHING WAS THERE. Distinct from onAirport rather
   // than inferred from its absence, because "nothing was hit" is the event that
   // dismisses the panel and it has to be observable.
@@ -2136,7 +2339,7 @@ type GlobeMapProps = {
 };
 
 const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
-  function GlobeMap({ onReady, onAirport, onCity, onFlight, onMapTap }, ref) {
+  function GlobeMap({ onReady, onAirport, onCity, onFlight, onDrag, onMapTap }, ref) {
     const webRef = useRef<WebView>(null);
 
     // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
@@ -2189,6 +2392,10 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
       },
       setShowPast(on: boolean) {
         call(`window.__cam&&window.__cam.past(${on ? 'true' : 'false'})`);
+      },
+      setSelectedFlight(id: string | null) {
+        call('window.__cam&&window.__cam.select('
+          + (id === null ? 'null' : JSON.stringify(id)) + ')');
       },
     }), [call]);
 
@@ -2282,12 +2489,15 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
             onCity?.(String(m.name), Number(m.lon), Number(m.lat));
           }
           if (m.type === 'flight') {
-            console.log(`[MAP] arc tapped: ${m.id} (nearest of ${m.candidates}, ${m.px}px from touch)`);
+            console.log(
+              `[MAP] arc tapped: ${m.id} (nearest of ${m.candidates}, ${m.px}px)`
+              + ` | query+nearest ${m.tQuery}ms, +camera ${m.tFrame}ms`);
             onFlight?.(String(m.id));
           }
           if (m.type === 'frameRoute') {
             console.log(`[MAP] frame route: ${m.km}km to the midpoint, ${m.ms}ms`);
           }
+          if (m.type === 'drag') onDrag?.(!!m.on);
           if (m.type === 'mapTap') onMapTap?.();
           if (m.type === 'flyPlace') {
             console.log(`[MAP] fly to ${m.what}: ${m.km}km direct, ${m.ms}ms, zoom ${m.zoom}`);

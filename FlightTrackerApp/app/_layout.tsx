@@ -30,6 +30,11 @@ import { AccountProvider } from "../lib/account";
 // does: the card that ADDS a route is on two screens and the map that DRAWS one
 // is on a third state of a third, and none of them owns the list.
 import { MapRoutesProvider } from "../lib/maproutes";
+// AND WHETHER THE CHROME SHOULD STAND ASIDE. OUTSIDE Tabs rather than inside a
+// screen, because the tab bar is the navigator's furniture and the thing that
+// raises the flag is a screen -- the two are siblings and this is the only place
+// that contains both. See lib/chrome.
+import { ChromeProvider } from "../lib/chrome";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -82,6 +87,7 @@ export default function Layout() {
       <AccountProvider>
         <SavedProvider>
           <MapRoutesProvider>
+            <ChromeProvider>
             <QueryProvider>
               <ToastProvider>
                 <Tabs
@@ -90,6 +96,7 @@ export default function Layout() {
                 />
               </ToastProvider>
             </QueryProvider>
+            </ChromeProvider>
           </MapRoutesProvider>
         </SavedProvider>
       </AccountProvider>
