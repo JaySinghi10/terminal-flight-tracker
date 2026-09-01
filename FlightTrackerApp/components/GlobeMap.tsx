@@ -44,7 +44,8 @@ const OCEAN = '#050505';
 const LAND = '#121212';
 const COUNTRY_LINE = 'rgba(255,255,255,0.20)';
 const ADMIN1_LINE = 'rgba(255,255,255,0.07)';
-const ROAD_LINE = 'rgba(255,255,255,0.10)';
+// The road inks are not here: they are a six-step ramp and belong beside the
+// hierarchy they express. See ROAD_TIERS.
 const LABEL_COUNTRY = 'rgba(226,226,226,0.72)';
 const LABEL_CITY = 'rgba(226,226,226,0.42)';
 const LABEL_HALO = '#050505';
@@ -102,11 +103,63 @@ const FONT = ['Noto Sans Regular'];
 const AIRPORT_MIN_ZOOM = 4.5;
 const AIRPORT_FULL_ZOOM = 6;
 
-// MOTORWAYS ONLY, AND ONLY WHEN CLOSE. At z9 the viewport is roughly 40km
-// across, which is a city rather than a country — the zoom at which a road is
-// telling you something about where you are instead of drawing a net over a
-// continent. Nothing else from `transportation` is drawn at any zoom.
-const ROAD_MIN_ZOOM = 9;
+// ── THE ROAD NETWORK ────────────────────────────────────────────────────────
+//
+// A TABLE RATHER THAN SIX NEAR-IDENTICAL LAYER OBJECTS, because the hierarchy IS
+// the design and it should be readable in one glance. Each row is a class of
+// road, the zoom it earns its place at, its ink, and how wide it gets.
+//
+// EACH CLASS ARRIVES WHERE IT STARTS MEANING SOMETHING, which is the whole
+// point of not drawing them all at once. A motorway at z5 is the shape of a
+// country's spine; a residential street at z5 is noise on a continent. The
+// viewport is roughly 40,000/2^z km across, so z5 is a country, z9 a large
+// metro, z13 a district and z16 a street.
+//
+// THE INK IS NEUTRAL WHITE AT SIX ALPHAS ON #121212 LAND. Alpha rather than six
+// mixed greys so the ramp is monotone by construction and cannot drift; a road
+// can never be brighter than the class above it because the numbers say so.
+//
+// AND THEY ALL PAINT UNDER THE BORDERS. The brightest road, a motorway at 0.30,
+// is brighter than a country line at 0.20 — which is right at z14 where roads
+// are the subject, and wrong at a frontier where the border must still read as
+// the stronger fact. Order settles it rather than colour: boundaries are drawn
+// after, so they win the shared pixel.
+type RoadTier = {
+  id: string;
+  classes: string[];
+  minzoom: number;
+  color: string;
+  // [zoom, px] stops, interpolated linearly between.
+  width: [number, number][];
+};
+
+const ROAD_TIERS: RoadTier[] = [
+  { id: 'road-minor', classes: ['minor'], minzoom: 13,
+    color: 'rgba(255,255,255,0.08)', width: [[13, 0.4], [16, 0.9], [18, 1.8]] },
+  { id: 'road-tertiary', classes: ['tertiary'], minzoom: 11,
+    color: 'rgba(255,255,255,0.11)', width: [[11, 0.4], [14, 1.0], [18, 2.5]] },
+  { id: 'road-secondary', classes: ['secondary'], minzoom: 9,
+    color: 'rgba(255,255,255,0.15)', width: [[9, 0.4], [12, 0.9], [15, 1.8], [18, 3.5]] },
+  { id: 'road-primary', classes: ['primary'], minzoom: 7,
+    color: 'rgba(255,255,255,0.19)', width: [[7, 0.5], [11, 1.0], [14, 2.0], [18, 4.5]] },
+  { id: 'road-trunk', classes: ['trunk'], minzoom: 6,
+    color: 'rgba(255,255,255,0.24)', width: [[6, 0.5], [10, 1.2], [14, 2.4], [18, 5]] },
+  { id: 'road-motorway', classes: ['motorway'], minzoom: 5,
+    color: 'rgba(255,255,255,0.30)', width: [[5, 0.5], [10, 1.4], [14, 3.0], [18, 6]] },
+];
+
+// ROAD NAMES ARE A CLOSE-ZOOM LUXURY. Below this the labels collide with each
+// other and with the city names, and a street name on a map of a country tells
+// nobody anything.
+const ROAD_LABEL_MIN_ZOOM = 14;
+const ROAD_LABEL_INK = 'rgba(226,226,226,0.38)';
+
+// Turns a tier's [zoom, px] table into a MapLibre interpolate expression.
+function roadWidth(stops: [number, number][]): unknown[] {
+  const out: unknown[] = ['interpolate', ['linear'], ['zoom']];
+  for (const [z, w] of stops) { out.push(z, w); }
+  return out;
+}
 
 // ── WHERE IT OPENS ──────────────────────────────────────────────────────────
 //
@@ -177,6 +230,24 @@ const PIN_RING = '#050505';
 const AIRPORT_ZOOM = 9;
 const GLOBE_APEX_ZOOM = 0;
 const AIRPORT_FLY_MS = 3000;
+
+// ── WHEN THE PULL-BACK IS EARNED ────────────────────────────────────────────
+//
+// 1,500km, AND THE NUMBER COMES FROM WHAT THE MOTION IS FOR. Rising to the whole
+// globe and turning it says "the world is bigger than this screen and we are
+// crossing it". Delhi to Mumbai is 1,150km — a domestic hop where that sentence
+// is false, and the animation reads as three seconds of theatre for a move you
+// could have made by dragging. Delhi to Dubai is 2,200km and genuinely is a
+// crossing.
+//
+// 1,500 SITS IN THE GAP between those two cases rather than on top of either, so
+// neither is decided by a rounding error. Below it the camera simply goes, at
+// half the duration: a short move should not take as long as a long one.
+//
+// THE ROUTE ARC IS NOT SUBJECT TO THIS. Travelling the great circle IS the
+// motion there, whatever the distance — see flyRoute, which is untouched.
+const AIRPORT_PULLBACK_KM = 1500;
+const AIRPORT_NEAR_MS = 1400;
 
 // ROUTE: follow the great circle from origin to destination.
 //
@@ -276,6 +347,28 @@ const STYLE = {
       'source-layer': 'water',
       paint: { 'fill-color': OCEAN },
     },
+    // THE ROADS, UNDER EVERY BOUNDARY. Least important first so a motorway
+    // paints over a lane where they meet. See ROAD_TIERS for the hierarchy.
+    //
+    // line-opacity FADES EACH CLASS IN over its first zoom level rather than
+    // switching it on: minzoom alone makes a whole network of streets appear
+    // between one frame and the next, which reads as a glitch rather than as
+    // detail arriving.
+    ...ROAD_TIERS.map((t) => ({
+      id: t.id,
+      type: 'line',
+      source: 'ofm',
+      'source-layer': 'transportation',
+      minzoom: t.minzoom,
+      filter: ['in', ['get', 'class'], ['literal', t.classes]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': t.color,
+        'line-width': roadWidth(t.width),
+        'line-opacity': ['interpolate', ['linear'], ['zoom'],
+          t.minzoom, 0, t.minzoom + 1, 1],
+      },
+    })),
     // ADMIN-1 UNDER COUNTRY, so a national border that is also a state border
     // is drawn at the heavier weight. maritime is excluded on both: a maritime
     // boundary is a line drawn across open sea and it reads as an error.
@@ -307,22 +400,36 @@ const STYLE = {
         'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.5, 5, 0.9, 10, 1.2],
       },
     },
-    // THE ONLY ROAD LAYER THERE IS. class == motorway, and not before z9.
+    // ROAD NAMES, AND ONLY WHEN CLOSE. symbol-placement line makes the name
+    // follow the road rather than sit beside a point on it, which is the only
+    // way a street name reads as belonging to that street.
+    //
+    // BELOW THE PLACE NAMES IN THE STACK, so a city name always wins a
+    // collision: at z14 you may need the street, but you must never lose the
+    // city while looking for it.
     {
-      id: 'motorway',
-      type: 'line',
+      id: 'label-road',
+      type: 'symbol',
       source: 'ofm',
-      'source-layer': 'transportation',
-      minzoom: ROAD_MIN_ZOOM,
-      filter: ['==', ['get', 'class'], 'motorway'],
+      'source-layer': 'transportation_name',
+      minzoom: ROAD_LABEL_MIN_ZOOM,
+      layout: {
+        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-font': FONT,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 9, 18, 11],
+        'symbol-placement': 'line',
+        'text-anchor': 'center',
+        'text-max-angle': 30,
+        'text-padding': 2,
+      },
       paint: {
-        'line-color': ROAD_LINE,
-        'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 14, 1.6],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 10, 1],
+        'text-color': ROAD_LABEL_INK,
+        'text-halo-color': LABEL_HALO,
+        'text-halo-width': 1,
       },
     },
-    // TWO CLASSES OF NAME AND NOTHING ELSE — no villages, no water names, no
-    // road names. A country is the subject; a city is an annotation on one.
+    // TWO CLASSES OF PLACE NAME — no villages and no water names. A country is
+    // the subject; a city is an annotation on one.
     {
       id: 'label-country',
       type: 'symbol',
@@ -642,14 +749,36 @@ function start() {
   // the OS "reduce motion" setting on gets an instant jump instead of a three
   // second flight. That is the accessible behaviour and it is a real decision,
   // not an omission.
+  // GREAT-CIRCLE KILOMETRES between two lon/lat pairs. Haversine rather than the
+  // slerp used by the route, because this needs one scalar and not a path.
+  function kmBetween(lon1, lat1, lon2, lat2) {
+    var R = 6371, D = Math.PI / 180;
+    var dLat = (lat2 - lat1) * D, dLon = (lon2 - lon1) * D;
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+      + Math.cos(lat1 * D) * Math.cos(lat2 * D) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   function flyAirport(lon, lat) {
     cancelCamera();
-    map.flyTo({
+    // MEASURED FROM WHERE THE CAMERA IS, not from where it started or from home.
+    // Tapping a second airport near the first should be a short move even if
+    // both are far from wherever the session began.
+    var c = map.getCenter();
+    var km = kmBetween(c.lng, c.lat, lon, lat);
+    var far = km > ${AIRPORT_PULLBACK_KM};
+    post({ type: 'flyAirport', km: Math.round(km), far: far });
+    var opts = {
       center: [lon, lat],
       zoom: ${AIRPORT_ZOOM},
-      minZoom: ${GLOBE_APEX_ZOOM},
-      duration: ${AIRPORT_FLY_MS}
-    });
+      duration: far ? ${AIRPORT_FLY_MS} : ${AIRPORT_NEAR_MS}
+    };
+    // minZoom IS THE PULL-BACK, and omitting it is what makes the near case a
+    // plain move. With it, MapLibre derives the flight curvature from the apex
+    // and arcs out to the whole globe; without it, the default curve keeps the
+    // camera near the ground and simply travels.
+    if (far) opts.minZoom = ${GLOBE_APEX_ZOOM};
+    map.flyTo(opts);
   }
 
   // ── MOTION 2: ALONG THE GREAT CIRCLE ───────────────────────────────────────
@@ -738,7 +867,22 @@ function start() {
   var homeView = null;
 
   function applyHome(h, animate) {
+    var was = homeView;
     homeView = h;
+    // WHAT THE PAGE HELD BEFORE AND AFTER, and how many pin features it is about
+    // to draw. The page's homeView and its pin source live entirely inside this
+    // WebView: if React changes account and nothing calls in here, the old pin
+    // stays drawn whatever storage says, and no amount of key logging on the
+    // other side would show it.
+    post({
+      type: 'homeSet',
+      kind: h.kind,
+      was: was ? was.kind : 'none',
+      wasLon: was ? Math.round(was.lon * 100) / 100 : null,
+      lon: Math.round(h.lon * 100) / 100,
+      lat: Math.round(h.lat * 100) / 100,
+      pins: h.kind === 'position' ? 1 : 0
+    });
     // THE PIN IS THE POSITION AND NOTHING ELSE. A country derived from a
     // timezone is not a place the user is standing, so it gets no mark.
     map.getSource('pin').setData({
@@ -760,9 +904,19 @@ function start() {
     var z = h.kind === 'position' ? ${HOME_ZOOM_POSITION} : ${HOME_ZOOM_FALLBACK};
     if (dur === 0) {
       map.jumpTo({ center: [h.lon, h.lat], zoom: z });
-    } else {
-      map.flyTo({ center: [h.lon, h.lat], zoom: z, minZoom: ${GLOBE_APEX_ZOOM}, duration: dur });
+      return;
     }
+    // THE SAME GATE flyAirport USES, and for the same reason: pressing home from
+    // the next city over should not rise to the whole globe and turn it. The
+    // zone branch above needs no gate — fitBounds solves for a camera and never
+    // arcs out on its own.
+    var c = map.getCenter();
+    var km = kmBetween(c.lng, c.lat, h.lon, h.lat);
+    var far = km > ${AIRPORT_PULLBACK_KM};
+    post({ type: 'flyHome', km: Math.round(km), far: far });
+    var opts = { center: [h.lon, h.lat], zoom: z, duration: far ? dur : ${AIRPORT_NEAR_MS} };
+    if (far) opts.minZoom = ${GLOBE_APEX_ZOOM};
+    map.flyTo(opts);
   }
 
   // THE BUTTON'S CALL. cancelCamera first so pressing home during a route
@@ -770,16 +924,38 @@ function start() {
   // otherwise keep writing the centre underneath the new motion.
   function goHome() {
     cancelCamera();
+    // WHETHER THE PAGE KNOWS WHERE HOME IS, reported rather than silently
+    // skipped. homeView is null until React Native has called setHome, which it
+    // only does once the style has parsed AND the home has resolved; if either
+    // never happens this is a no-op and used to say nothing at all.
+    post({ type: 'homeGo', known: !!homeView });
     if (homeView) applyHome(homeView, true);
   }
 
   // THE ONLY WAY IN FROM REACT NATIVE. injectJavaScript calls these; the page
   // holds no other public surface.
+  // ASKS THE PAGE WHAT IT ACTUALLY HOLDS, rather than inferring it from what
+  // React believes it sent. The pin count is read back off the live source, so a
+  // pin that is still drawn after a scope change shows up here even if every
+  // storage key on the other side is correct.
+  function probe(tag) {
+    var src = map.getSource('pin');
+    var data = src && src._data ? src._data : null;
+    post({
+      type: 'probe',
+      tag: tag,
+      home: homeView ? homeView.kind : 'none',
+      homeLon: homeView ? Math.round(homeView.lon * 100) / 100 : null,
+      pins: data && data.features ? data.features.length : -1
+    });
+  }
+
   window.__cam = {
     airport: flyAirport,
     route: flyRoute,
     setHome: function (h) { applyHome(h, false); },
-    home: goHome
+    home: goHome,
+    probe: probe
   };
 
   var idled = false;
@@ -814,6 +990,10 @@ export type GlobeMapHandle = {
   setHome: (h: HomeView) => void;
   // The button. Takes nothing, because the page already knows.
   goHome: () => void;
+  // DIAGNOSTIC. Asks the page to report what it is actually holding, which is
+  // the one thing React cannot see: homeView and the pin source live in the
+  // WebView and survive anything that happens on this side.
+  probe: (tag: string) => void;
 };
 
 // FIRED WHEN THE STYLE HAS PARSED, which is BEFORE the first tiles arrive. That
@@ -850,10 +1030,19 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
         call(`window.__cam&&window.__cam.route(${a.lon},${a.lat},${b.lon},${b.lat})`);
       },
       setHome(h: HomeView) {
+        console.log(`[HOME] 4. injecting setHome (${h.kind}), webview=${webRef.current !== null}`);
         call(`window.__cam&&window.__cam.setHome(${JSON.stringify(h)})`);
       },
       goHome() {
+        // THE LAST THING REACT NATIVE CAN SEE. Past this the call is a string in
+        // another runtime, and if window.__cam is missing it evaluates to
+        // undefined and does nothing — silently, which is what made this hard.
+        // The page answers with homeGo, so the pair of lines brackets the bridge.
+        console.log(`[HOME] 6. injecting goHome, webview=${webRef.current !== null}`);
         call('window.__cam&&window.__cam.home()');
+      },
+      probe(tag: string) {
+        call(`window.__cam&&window.__cam.probe(${JSON.stringify(tag)})`);
       },
     }), [call]);
 
@@ -914,6 +1103,20 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           }
           if (m.type === 'ready') console.log('[MAP] tiles in, first idle');
           if (m.type === 'airport') console.log(`[MAP] dot tapped: ${m.iata}`);
+          if (m.type === 'flyAirport' || m.type === 'flyHome') {
+            console.log(`[MAP] ${m.type} ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
+          }
+          if (m.type === 'homeSet') {
+            console.log(`[HOME][PAGE] setHome ${m.was} -> ${m.kind} at ${m.lon},${m.lat} (pins now ${m.pins}, was at ${m.wasLon})`);
+          }
+          if (m.type === 'probe') {
+            console.log(`[HOME][PAGE] probe(${m.tag}): holds ${m.home} at ${m.homeLon}, pin features = ${m.pins}`);
+          }
+          if (m.type === 'homeGo') {
+            console.log(m.known
+              ? '[HOME] 7. page flying home'
+              : '[HOME] 7. FAILED - page reached but it has no home stored');
+          }
         }}
       />
     </View>

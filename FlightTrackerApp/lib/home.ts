@@ -106,18 +106,121 @@ export function timezoneHome(): HomeView {
   };
 }
 
-// ── PERSISTENCE ─────────────────────────────────────────────────────────────
+// ── PERSISTENCE, SCOPED TO AN ACCOUNT ───────────────────────────────────────
 //
-// TWO KEYS, AND THE SECOND IS NOT DERIVABLE FROM THE FIRST. "We have a home
-// view" and "we have already asked for location" are different facts: a user who
-// refused permission has no position but must never be asked again, and storing
+// TWO KEYS PER SCOPE, AND THE SECOND IS NOT DERIVABLE FROM THE FIRST. "We have a
+// home view" and "we have already asked for location" are different facts: a
+// user who refused has no position but must never be asked again, and storing
 // only the home would make that refusal look like a first run every launch.
-const KEY_HOME = 'map.home.v1';
-const KEY_ASKED = 'map.locationAsked.v1';
+//
+// THE SCOPE IS THE ACCOUNT, NOT THE DEVICE, and v1 got that wrong. Device
+// scoping meant one person's coordinates were the next person's opening view,
+// and it meant a second account could never be asked because the first had
+// already answered. Both fall out of the same mistake.
+//
+// THE SHAPE IS `prefix + scope` ON PURPOSE, so a settings screen can build the
+// key for the account it is showing and clear exactly that one — see
+// homeKeysFor. Nothing needs to enumerate storage or parse a blob.
+const KEY_HOME = 'map.home.v3:';
+const KEY_CONSENT = 'map.locationConsent.v3:';
 
-export async function loadHome(): Promise<HomeView | null> {
+// ── TWO INDEPENDENT FACTS, AND BOTH MUST BE TRUE ────────────────────────────
+//
+// THE OS GRANT IS DEVICE-WIDE and cannot express "this account agreed". Once one
+// person allows location on this phone, requestForegroundPermissionsAsync
+// returns granted for everyone afterwards, with no dialogue — so a second
+// account was silently given a position it never consented to. The OS is
+// answering a different question from the one we need answered.
+//
+// THIS CONSENT IS OURS AND IS PER ACCOUNT. It is not a record of whether we
+// ASKED — that was the v2 mistake, and it is why the flag could be satisfied
+// without anyone agreeing to anything. It is the answer itself.
+//
+// ABSENT MEANS UNDECIDED, which is a third state and not a falsy 'declined'. An
+// account that has never been asked gets the country view AND a prompt; one that
+// declined gets the country view and silence. Collapsing them would either nag
+// the decliner forever or never ask the newcomer.
+export type LocationConsent = 'granted' | 'declined';
+
+// SIGNED OUT IS A SCOPE OF ITS OWN rather than an absence of one. It gets the
+// same two keys and the same rules, which is what stops a signed-out session
+// inheriting whatever the last account had. '@' cannot begin an email local
+// part in any address this app will see, so it cannot collide with a real one.
+export const SIGNED_OUT_SCOPE = '@signedout';
+
+// What a settings screen needs to read or clear one account's location data.
+// Two keys, both derived from the scope, nothing to enumerate.
+export function homeKeysFor(scope: string): { home: string; consent: string } {
+  return { home: KEY_HOME + scope, consent: KEY_CONSENT + scope };
+}
+
+// ── v1 AND v2 ARE DISCARDED, NOT MIGRATED ───────────────────────────────────
+//
+// v1 WAS DEVICE-SCOPED. There is no way to know whose coordinates those were, so
+// attaching them to whoever is signed in now would be the very bug the scoping
+// exists to prevent.
+//
+// v2 IS DISCARDED FOR A DIFFERENT AND STRONGER REASON: its flag recorded that we
+// ASKED, not that anyone AGREED, and a stored v2 position was therefore acquired
+// without consent under the rules that now apply. Consent cannot be inferred
+// backwards from a record that never captured it, so the honest migration is to
+// forget both and ask once. Every account is asked exactly one more time.
+//
+// AND THEY ARE ACTIVELY DELETED rather than left to rot, or a position the user
+// believes was forgotten stays on disk. Once, at startup.
+// v1 IS TWO EXACT KEYS; v2 IS A FAMILY. v2 keys carry the scope as a suffix, so
+// they cannot be listed in advance — the store has to be enumerated and filtered
+// by prefix. That is the one place this module reads all of storage, and it
+// happens once per launch.
+const LEGACY_EXACT = ['map.home.v1', 'map.locationAsked.v1'];
+const LEGACY_PREFIXES = ['map.home.v2:', 'map.locationAsked.v2:'];
+
+// ── THE PURGE IS A GATE, NOT A STEP ─────────────────────────────────────────
+//
+// EVERY ACCESSOR IN THIS FILE AWAITS IT, so no caller can read or write a key
+// before the legacy sweep has finished. The guarantee lives in the module that
+// owns the keys rather than in the order two effects happen to be declared in a
+// screen — which is the kind of ordering that holds until someone moves a hook.
+//
+// MEMOISED, SO IT RUNS ONCE. The first accessor to arrive starts it; everyone
+// after awaits the same promise. Calling purgeLegacyHome() directly is therefore
+// free and only serves to start it early.
+//
+// TO BE CLEAR ABOUT WHAT THIS DOES AND DOES NOT FIX: today the key sets are
+// disjoint — the purge touches v1 and v2, the accessors touch v3 — so the race
+// could not have produced a wrong answer. This makes the ordering EXPLICIT so
+// that a future version which needs to migrate rather than discard cannot
+// silently depend on an accident.
+let purgePromise: Promise<void> | null = null;
+
+export function purgeLegacyHome(): Promise<void> {
+  if (purgePromise === null) purgePromise = runPurge();
+  return purgePromise;
+}
+
+async function runPurge(): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(KEY_HOME);
+    const all = await AsyncStorage.getAllKeys();
+    const doomed = all.filter((k) =>
+      LEGACY_EXACT.includes(k) || LEGACY_PREFIXES.some((p) => k.startsWith(p)));
+    if (doomed.length === 0) {
+      console.log('[HOME][KEY] purgeLegacy: nothing from v1 or v2 present');
+      return;
+    }
+    await AsyncStorage.multiRemove(doomed);
+    console.log(`[HOME][KEY] purgeLegacy: removed ${doomed.join(', ')}`);
+  } catch {
+    // Nothing reads them; a failure here costs a few bytes, not correctness.
+    console.log('[HOME][KEY] purgeLegacy: threw');
+  }
+}
+
+export async function loadHome(scope: string): Promise<HomeView | null> {
+  await purgeLegacyHome();
+  try {
+    const key = KEY_HOME + scope;
+    const raw = await AsyncStorage.getItem(key);
+    console.log(`[HOME][KEY] read  ${key} -> ${raw === null ? 'null' : raw.slice(0, 90)}`);
     if (raw === null) return null;
     const v = JSON.parse(raw);
     // VALIDATED RATHER THAN TRUSTED. This came off the disk, where a previous
@@ -139,63 +242,83 @@ export async function loadHome(): Promise<HomeView | null> {
   }
 }
 
-export async function saveHome(h: HomeView): Promise<void> {
+export async function saveHome(scope: string, h: HomeView): Promise<void> {
+  await purgeLegacyHome();
   try {
-    await AsyncStorage.setItem(KEY_HOME, JSON.stringify(h));
+    const key = KEY_HOME + scope;
+    console.log(`[HOME][KEY] write ${key} <- ${JSON.stringify(h)}`);
+    await AsyncStorage.setItem(key, JSON.stringify(h));
   } catch {
     // A HOME THAT WILL NOT PERSIST IS NOT AN ERROR THE USER SHOULD SEE. The map
     // still opens correctly this session; it just recomputes next launch.
   }
 }
 
-export async function hasAskedLocation(): Promise<boolean> {
+// null MEANS UNDECIDED, and every caller has to handle three cases.
+export async function loadConsent(scope: string): Promise<LocationConsent | null> {
+  await purgeLegacyHome();
   try {
-    return (await AsyncStorage.getItem(KEY_ASKED)) !== null;
+    const key = KEY_CONSENT + scope;
+    const v = await AsyncStorage.getItem(key);
+    console.log(`[HOME][KEY] read  ${key} -> ${v ?? 'null (undecided)'}`);
+    return v === 'granted' || v === 'declined' ? v : null;
   } catch {
-    // FAIL AS "ALREADY ASKED". If the flag cannot be read we cannot know we have
-    // not asked, and asking twice is worse than never asking again.
-    return true;
+    // FAIL AS DECLINED. If consent cannot be read we do not have it, and using a
+    // position we cannot show consent for is the one outcome worth avoiding.
+    // The cost of being wrong this way is a country view.
+    console.log('[HOME][KEY] read consent threw, treating as declined');
+    return 'declined';
   }
 }
 
-export async function markAskedLocation(): Promise<void> {
+export async function saveConsent(scope: string, c: LocationConsent): Promise<void> {
+  await purgeLegacyHome();
   try {
-    await AsyncStorage.setItem(KEY_ASKED, '1');
+    const key = KEY_CONSENT + scope;
+    console.log(`[HOME][KEY] write ${key} <- ${c}`);
+    await AsyncStorage.setItem(key, c);
   } catch {
-    // Same reasoning as saveHome: nothing to report.
+    // A DECLINE THAT WILL NOT PERSIST MEANS ASKING AGAIN NEXT LAUNCH, which is
+    // annoying rather than harmful. A grant that will not persist means the same
+    // prompt again. Neither is worth surfacing.
   }
 }
 
-// ── FORGETTING, WHICH IS A PRIVACY OPERATION AND NOT A TIDY-UP ──────────────
+// ── FORGETTING ONE SCOPE ────────────────────────────────────────────────────
 //
-// BOTH KEYS GO: map.home.v1 and map.locationAsked.v1.
+// BOTH OF THAT SCOPE'S KEYS GO, and no other scope is touched. That is the whole
+// difference the v2 shape buys: clearing the signed-out scope on logout no
+// longer destroys the account's own stored home, so signing back in brings the
+// pin back with no second prompt.
 //
-// THE HOME IS OBVIOUS — a stored `position` is the user's coordinates, and
-// leaving it behind means signing out and handing over the phone still shows
-// where they live.
-//
-// THE ASKED FLAG IS THE JUDGEMENT CALL, and it is cleared deliberately.
-//
-//   KEEPING IT would mean the next person to use this device is never asked, so
-//   they get the timezone view forever with no way to change it. Worse, the
-//   ORIGINAL user hits the same wall: log out once, log back in, and the feature
-//   is permanently gone with no control anywhere in the app to bring it back. A
-//   single reversible action would cause an irreversible degradation.
-//
-//   CLEARING IT returns the device to a genuine first-run state, which is what
-//   logging out is supposed to mean. It does not reintroduce nagging: the flag
-//   still guarantees at most one prompt per account, and an explicit logout is
-//   an event the user caused rather than a repeated ask they did not.
-//
-// It also leaks nothing either way — the flag is a boolean about this device,
-// not about the person. The deciding argument is recoverability, not privacy.
-export async function clearHome(): Promise<void> {
+// THE CONSENT GOES WITH IT, deliberately. Clearing a scope returns it to a
+// genuine undecided state — keeping a 'declined' would leave a scope that can
+// never be asked again and therefore can never recover its location, with no way
+// to undo it. A settings screen will call exactly this, for exactly one account,
+// and the account will be offered the choice again the next time it opens the
+// map.
+export async function clearHome(scope: string): Promise<void> {
+  await purgeLegacyHome();
+  const k = homeKeysFor(scope);
   try {
-    await AsyncStorage.multiRemove([KEY_HOME, KEY_ASKED]);
+    console.log(`[HOME][KEY] clear ${k.home} + ${k.consent}`);
+    await AsyncStorage.multiRemove([k.home, k.consent]);
   } catch {
     // A CLEAR THAT FAILS IS WORTH KNOWING ABOUT, unlike a save that fails: this
     // one is the difference between forgetting a location and only appearing to.
     // There is no user-facing surface for it, so it goes to the log.
-    console.warn('[HOME] could not clear the stored home view');
+    console.warn(`[HOME] could not clear the stored home view for ${scope}`);
   }
 }
+
+// ── THE FIX FOR A GPS THAT NEVER ANSWERS ────────────────────────────────────
+//
+// getCurrentPositionAsync HAS NO TIMEOUT AND CAN HANG FOREVER. A cold fix takes
+// tens of seconds; hardware that is off or blocked at the OS level may never
+// settle at all. A promise that never settles is not a rejection, so a catch
+// cannot see it — which is why the button simply never appeared.
+//
+// SIX SECONDS IS LONG ENOUGH FOR A WARM FIX and short enough that nobody is left
+// looking at a map with no control on it. A timeout is treated exactly as a
+// refusal: fall back to the timezone, which was already computed.
+export const LOCATION_TIMEOUT_MS = 6000;

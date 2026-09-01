@@ -102,7 +102,8 @@ import GlobeMap, { type GlobeMapHandle } from '../components/GlobeMap';
 // WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
-  timezoneHome, loadHome, saveHome, clearHome, hasAskedLocation, markAskedLocation,
+  timezoneHome, loadHome, saveHome, clearHome,
+  loadConsent, saveConsent, SIGNED_OUT_SCOPE, LOCATION_TIMEOUT_MS,
   type HomeView,
 } from '../lib/home';
 import * as Location from 'expo-location';
@@ -1606,63 +1607,212 @@ export default function Search() {
     mapRef.current?.flyRoute(flownFrom, flownTo);
   }, [flownFrom, flownTo]);
 
-  // ── THE HOME VIEW ─────────────────────────────────────────────────────────
+  // ── THE HOME VIEW, PER ACCOUNT ────────────────────────────────────────────
   //
-  // RESOLVED ONCE PER MOUNT, NOT PER FOCUS. The tabs navigator keeps this screen
-  // mounted when it loses focus, so "opening the search tab" a second time is
-  // not a remount — which is exactly what point 3 asks for. Coming back finds
-  // the camera where it was left, and nothing is recomputed or re-asked.
+  // KEYED ON THE ACCOUNT, WHICH IS WHAT FIXES TWO BUGS AT ONCE.
   //
-  // THE ORDER IS: STORED, THEN PERMISSION, THEN TIMEZONE.
-  //   1  a stored home is authoritative and costs one disk read
-  //   2  otherwise ask for location, exactly once, ever
+  // It used to be a mount-only effect with an empty dependency list, so it ran
+  // exactly once in the screen's life. A second account signing in was handled
+  // somewhere else entirely — by a watcher that substituted the timezone view
+  // directly — so resolution never re-ran and the second account was never
+  // asked for location. That watcher is gone; this effect replaces it, because
+  // "the account changed" and "work out where home is" were always the same
+  // event described twice.
+  //
+  // THE SCOPE IS THE DEPENDENCY. Signing in, signing out and switching accounts
+  // are all one thing to React: the scope string changed, so resolve again.
+  //
+  // THE ORDER WITHIN A SCOPE IS: STORED, THEN PERMISSION, THEN TIMEZONE.
+  //   1  a stored home for THIS account is authoritative and costs one disk read
+  //   2  otherwise ask for location, once per account, ever
   //   3  otherwise the timezone, which is free and always answers
   //
   // THE MAP HAS ALREADY OPENED ON THE TIMEZONE by the time any of this resolves,
   // because that answer is synchronous and baked into the page. What happens
   // here can only improve it.
+  const homeScope = email ?? SIGNED_OUT_SCOPE;
   const [home, setHome] = useState<HomeView | null>(null);
+  // WHETHER TO SHOW THE IN-APP PROMPT. True only while this scope's consent is
+  // undecided; both answers clear it and neither can come back without a
+  // deliberate clear from the profile page.
+  const [askConsent, setAskConsent] = useState(false);
   const homeSentRef = useRef(false);
+  const prevScopeRef = useRef<string | null>(null);
+
+  // ── THE OS SIDE, WHICH IS THE OTHER OF THE TWO FACTS ──────────────────────
+  //
+  // RETURNS A HomeView OR null, AND NEVER THROWS. Refusal, revocation, missing
+  // hardware and a fix that never lands all mean the same thing to the caller:
+  // there is no position, use the country view.
+  //
+  // THE TIMEOUT IS A RACE BECAUSE getCurrentPositionAsync TAKES NONE and cannot
+  // be cancelled. A cold fix runs for tens of seconds and hardware that is off
+  // may never settle — and a promise that never settles is not a rejection, so
+  // a catch cannot see it. The losing promise is abandoned rather than stopped;
+  // there is no abort signal to give it, and if a fix lands later it resolves
+  // into nothing.
+  const positionOrNull = useCallback(async (): Promise<HomeView | null> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log(`[HOME][OS] permission ${status}`);
+      if (status !== 'granted') return null;
+      console.log(`[HOME][OS] waiting up to ${LOCATION_TIMEOUT_MS}ms for a fix`);
+      const pos = await Promise.race([
+        Location.getCurrentPositionAsync({
+          // Balanced accuracy: this frames a country, and asking the device for
+          // metres would cost battery and time for digits nobody sees.
+          accuracy: Location.Accuracy.Balanced,
+        }),
+        new Promise<null>((r) => setTimeout(() => r(null), LOCATION_TIMEOUT_MS)),
+      ]);
+      if (pos === null) {
+        console.log('[HOME][OS] TIMED OUT');
+        return null;
+      }
+      console.log('[HOME][OS] got a fix');
+      return { kind: 'position', lon: pos.coords.longitude, lat: pos.coords.latitude };
+    } catch (e) {
+      console.log(`[HOME][OS] failed: ${String(e)}`);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const stored = await loadHome();
-      if (!alive) return;
-      if (stored !== null) { setHome(stored); return; }
+    const previous = prevScopeRef.current;
+    const switched = previous !== null && previous !== homeScope;
+    prevScopeRef.current = homeScope;
+    // A NEW SCOPE HAS NOT BEEN SENT TO THE MAP YET, whatever the old one did.
+    homeSentRef.current = false;
+    // EVERY RUN OF THIS EFFECT, WITH THE SCOPE IT RAN FOR. If the scope is not
+    // changing, this line is the proof: it prints once and never again.
+    console.log(`[HOME] === RUN === scope="${homeScope}" previous="${previous ?? 'none'}" switched=${switched} email=${email === null ? 'null' : email}`);
 
-      // ASKED ON OPEN, NOT ON A BUTTON, and asked at most once in the app's
-      // lifetime. A refusal is recorded before the result is even read, so a
-      // crash between the two cannot turn into a second prompt.
-      let resolved: HomeView = timezoneHome();
-      if (!(await hasAskedLocation())) {
-        await markAskedLocation();
-        try {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === 'granted') {
-            // Balanced accuracy: this frames a country, and asking the device
-            // for metres would cost battery and time for digits nobody sees.
-            const pos = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-            });
-            resolved = {
-              kind: 'position',
-              lon: pos.coords.longitude,
-              lat: pos.coords.latitude,
-            };
-          }
-        } catch {
-          // REFUSED, UNAVAILABLE, OR TIMED OUT ARE ONE CASE HERE, and none of
-          // them is an error the user should see. The timezone answer already
-          // in `resolved` is the fallback for all three.
-        }
+    (async () => {
+      // ── FORGET THE PREVIOUS ACCOUNT FIRST, BEFORE ANYTHING ASYNC ───────────
+      //
+      // The old home is dropped from state immediately, which hides the button
+      // and stops the previous person's view being the one on screen while the
+      // new scope resolves. The map is told the timezone view in the same pass,
+      // which empties the pin source — see applyHome, where the pin and the
+      // camera move together so there is no frame with one and not the other.
+      //
+      // NOT ON FIRST MOUNT. There is no previous account to forget, and forcing
+      // the timezone here would throw away a stored position before it had a
+      // chance to load.
+      if (switched) {
+        console.log(`[HOME] 0b. scope ${previous} -> ${homeScope}, forgetting`);
+        // WHAT THE PAGE HELD BEFORE WE TOUCHED IT. If this reports a position
+        // and a pin after a logout, the page was never told — and the storage
+        // keys are innocent.
+        mapRef.current?.probe(`before forget (${previous} -> ${homeScope})`);
+        setHome(null);
+        mapRef.current?.setHome(timezoneHome());
+        mapRef.current?.probe('after forget');
+        // SIGNING OUT WIPES THE SIGNED-OUT SCOPE, so a session that follows a
+        // logout never inherits anything from the one before it. An ACCOUNT's
+        // own scope is deliberately left alone: that is what lets signing back
+        // in restore the pin without a second prompt.
+        if (homeScope === SIGNED_OUT_SCOPE) await clearHome(SIGNED_OUT_SCOPE);
       }
       if (!alive) return;
-      setHome(resolved);
-      void saveHome(resolved);
+
+      console.log(`[HOME] 1. resolving for ${homeScope}`);
+      const stored = await loadHome(homeScope);
+      if (!alive) return;
+      if (stored !== null) {
+        console.log(`[HOME] 2. from disk (${stored.kind})`);
+        setHome(stored);
+        return;
+      }
+
+      // ── THE COUNTRY VIEW IS THE ANSWER UNTIL CONSENT SAYS OTHERWISE ────────
+      //
+      // Resolved first and used unless everything below agrees to replace it, so
+      // there is no path on which an unconsented position reaches the map.
+      const country = timezoneHome();
+      const consent = await loadConsent(homeScope);
+      if (!alive) return;
+      console.log(`[HOME] 2. nothing on disk; consent=${consent ?? 'undecided'}`);
+
+      if (consent === 'declined') {
+        // NEVER ASKED AGAIN, AND NO ERROR. The country view is not a degraded
+        // state, it is the answer this account chose.
+        console.log('[HOME] 3. declined previously, country view');
+        setHome(country);
+        void saveHome(homeScope, country);
+        return;
+      }
+
+      if (consent === null) {
+        // UNDECIDED. Country view now, and raise the in-app prompt — the OS
+        // cannot be trusted to ask, because on a device where permission is
+        // already granted it returns granted with no dialogue at all. That was
+        // the whole bug: a second account silently inheriting a position.
+        console.log('[HOME] 3. undecided, country view + asking in-app');
+        setHome(country);
+        setAskConsent(true);
+        return;
+      }
+
+      // CONSENT IS 'granted'. That is OUR fact; the OS grant is a SECOND and
+      // independent one, and both have to be true. A user who allowed it here
+      // and later revoked it in Settings gets the country view, not an error.
+      const pos = await positionOrNull();
+      if (!alive) return;
+      if (pos === null) {
+        console.log('[HOME] 3. consented but no position available, country view');
+        setHome(country);
+        void saveHome(homeScope, country);
+        return;
+      }
+      console.log('[HOME] 3. consented and located');
+      setHome(pos);
+      void saveHome(homeScope, pos);
     })();
+
     return () => { alive = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeScope]);
+
+  // ── THE TWO ANSWERS ───────────────────────────────────────────────────────
+  //
+  // BOTH RECORD BEFORE THEY ACT, so a crash between the answer and its
+  // consequence cannot lose the decision and ask again.
+  //
+  // ACCEPTING IS NOT THE SAME AS HAVING A POSITION. The user agrees here; the OS
+  // is then asked separately, and may refuse, or may grant and never produce a
+  // fix. Consent is still recorded as granted in that case — they said yes, and
+  // re-asking them because their GPS was cold would be asking the wrong
+  // question. The country view stands until a later launch finds a fix.
+  const acceptLocation = useCallback(async () => {
+    console.log('[HOME] consent: accepted');
+    setAskConsent(false);
+    await saveConsent(homeScope, 'granted');
+    const pos = await positionOrNull();
+    if (pos === null) {
+      console.log('[HOME] consent: accepted but no position; country view stands');
+      return;
+    }
+    setHome(pos);
+    homeSentRef.current = false;
+    void saveHome(homeScope, pos);
+  }, [homeScope, positionOrNull]);
+
+  // A DECLINE IS FINAL FOR THIS SCOPE and produces no error, no toast and no
+  // second chance from the map. The profile control is where it can be undone.
+  const declineLocation = useCallback(() => {
+    console.log('[HOME] consent: declined');
+    setAskConsent(false);
+    void saveConsent(homeScope, 'declined');
+  }, [homeScope]);
+
+  // THERE IS NO PURGE EFFECT HERE, AND THAT IS THE POINT. Discarding the v1 and
+  // v2 keys used to be its own useEffect beside this one, which meant the order
+  // the two async bodies interleaved decided whether a read could see a legacy
+  // key — an ordering that held only until someone moved a hook. lib/home.ts now
+  // awaits the purge inside every accessor, so a read cannot happen before it
+  // whatever this screen does. See the note at purgeLegacyHome.
 
   // SENT WHEN BOTH SIDES ARE READY, whichever arrives last — the map's style may
   // parse before or after the disk read returns, and this must not depend on
@@ -1703,40 +1853,13 @@ export default function Search() {
     }, []),
   );
 
-  // ── LOGGING OUT FORGETS WHERE THE USER IS ─────────────────────────────────
-  //
-  // A PRIVACY FIX, NOT A TIDY-UP. A stored `position` home is the user's actual
-  // coordinates with a pin drawn on them, so without this, signing out and
-  // handing someone the phone still shows where they live.
-  //
-  // THE SAME SIGNAL THE RESULTS WATCH, for the same reason given up there: the
-  // logout handler lives in home's profile modal, home cannot reach this screen,
-  // and `email` off the saved store is the one thing logout actually changes.
-  // A separate effect rather than an extra job inside that one, so each sits
-  // beside the state it owns.
-  //
-  // ON ANY ACCOUNT CHANGE, NOT ONLY ON LOGOUT. A different person signing in must
-  // not inherit the previous one's location either, and "the account changed" is
-  // the only signal covering both. Clearing when a returning user signs back in
-  // costs them one permission prompt; the alternative costs someone else their
-  // privacy.
-  const lastHomeEmail = useRef(email);
-  useEffect(() => {
-    if (lastHomeEmail.current === email) return;
-    lastHomeEmail.current = email;
-    // THE DISK FIRST, then the pin and the camera together. setHome with a fresh
-    // timezone view empties the pin source and reframes in the one call — see
-    // applyHome — so there is no frame in which the pin is still drawn over a
-    // camera that has already moved.
-    void clearHome();
-    const fresh = timezoneHome();
-    setHome(fresh);
-    // Already sent, so the ready effect above does not later overwrite this with
-    // the home it was holding.
-    homeSentRef.current = true;
-    mapRef.current?.setHome(fresh);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email]);
+  // FORGETTING ON LOGOUT IS NOT A SEPARATE EFFECT ANY MORE. It used to be one,
+  // watching `email` and substituting the timezone view directly — which is
+  // exactly why a second account was never prompted: the substitution WAS the
+  // resolution, so the real resolution never ran again. The scope-keyed effect
+  // above now covers signing in, signing out and switching, because all three
+  // are the same event: the scope changed.
+
 
   // The heading's words. Read back from the dataset rather than carried in
   // state, so a re-run from the date control or the picker cannot leave a stale
@@ -2728,76 +2851,6 @@ export default function Search() {
           happened to carry the same route, and it could not express "fly now"
           distinctly from "a route exists". The effect above decides WHEN. */}
       <GlobeMap ref={mapRef} onReady={() => setMapReady(true)} />
-      {/* ── HOME ──
-          TOP RIGHT, AND IT IS THE ONE CORNER NOTHING ELSE WANTS. The content
-          below is left-aligned inside 20px of padding, the floating tab bar owns
-          the bottom, and the left side is reserved for the place heading that
-          comes next. Sitting it here means it never overlaps a control and never
-          fights the bar.
-
-          A GLASS CIRCLE IN THE BAR'S MATERIAL BUT SMALLER THAN ITS CIRCLE. The
-          recipe is the bar's — blur, then a fill over it, then a hairline over
-          that — so the two are the same family; the size is 40 against the bar's
-          56 so they are not the same OBJECT. See HOME_BTN_SIZE for why that gap
-          is deliberate.
-
-          RENDERED ONLY ONCE HOME IS KNOWN. A button that returns you nowhere is
-          worse than no button, and until the disk read or the timezone resolves
-          there is nothing to return to. */}
-      {home !== null && (
-        <Pressable
-          style={[hm.btn, { top: insets.top + 12 }]}
-          onPress={() => mapRef.current?.goHome()}
-          hitSlop={10}
-        >
-          {/* THE MATERIAL, IN THE ORDER THE TAB BAR BUILDS IT. The blur samples
-              what is behind the surface; the fill is a SIBLING AFTER it, so it
-              tints the blur rather than being something the blur samples. Get
-              that order wrong and the fill goes into the sample and the whole
-              thing turns grey.
-
-              THE HAIRLINE IS ITS OWN VIEW AND NEVER A borderColor ON THE BLUR.
-              A border on a rounded BlurView leaves artefacts at the corners
-              where the border and the blur's own clip disagree; a sibling with
-              its own borderRadius has no such seam.
-
-              overflow hidden ON THE PRESSABLE is what clips the blur to the
-              circle — a BlurView does not round itself. */}
-          <BlurView
-            intensity={HOME_BTN_BLUR}
-            tint="systemChromeMaterialDark"
-            experimentalBlurMethod="dimezisBlurView"
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-          <View style={[StyleSheet.absoluteFill, hm.fill]} pointerEvents="none" />
-          <View style={[StyleSheet.absoluteFill, hm.edge]} pointerEvents="none" />
-          {/* THE GLYPH IS THE MAP'S PIN, RESTATED AT BUTTON SIZE. The pin out
-              there is a translucent halo with a solid dot in it; here the halo
-              is a stroked RING rather than a filled disc, because a 7% fill at
-              this size is nothing at all. Both say the same thing — this point,
-              marked — which is what makes the control and the thing it returns
-              you to read as one idea rather than two.
-
-              NOT A HOUSE. A house would mean the Home TAB, which is a different
-              destination reached by a different control at the other end of
-              this screen. */}
-          {/* THE STROKE IS SET IN VIEWBOX UNITS, so it has to be widened as the
-              glyph shrinks: 1.8 in a 24 box drawn at 18 renders 1.35 real pixels,
-              which is what the ring was at the larger size. Leaving it at 1.5
-              would have thinned the ring to 1.1 and made it the faintest mark on
-              the screen. */}
-          <Svg width={HOME_BTN_GLYPH} height={HOME_BTN_GLYPH} viewBox="0 0 24 24">
-            <SvgCircle
-              cx={12} cy={12} r={7.5}
-              fill="none"
-              stroke={HOME_BTN_INK_RING}
-              strokeWidth={1.8}
-            />
-            <SvgCircle cx={12} cy={12} r={3.2} fill={HOME_BTN_INK_DOT} />
-          </Svg>
-        </Pressable>
-      )}
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
@@ -3335,6 +3388,145 @@ export default function Search() {
 
         </ScrollView>
       </KeyboardAvoidingView>
+      {/* ── HOME ──
+          LAST CHILD OF s.root, AND THAT IS A FIX RATHER THAN A TIDY-UP. It used
+          to sit directly after the map, before the KeyboardAvoidingView — and it
+          was completely dead, because the ScrollView's content container renders
+          after it and is a hit target over its own bounds. See the note at that
+          ScrollView: box-none stops the two full-screen boxes taking touches,
+          but the CONTENT CONTAINER is a child and children are unaffected. It is
+          full width, starts at the same insets.top + 12 this button does, and
+          has paddingBottom, so it has height even with no results. The button
+          was underneath it and never saw a press.
+
+          MAKING THE CONTAINER box-none WOULD HAVE FIXED IT AND BROKEN SCROLLING.
+          That container is a hit target on purpose, so a drag beginning on a
+          result card is hit-tested to it and the pan recogniser fires. Turning
+          that off puts dead zones between the cards. Moving one element in the
+          tree costs nothing and changes nothing else.
+
+          TOP RIGHT, AND IT IS THE ONE CORNER NOTHING ELSE WANTS. The content
+          below is left-aligned inside 20px of padding, the floating tab bar owns
+          the bottom, and the left side is reserved for the place heading that
+          comes next. Sitting it here means it never overlaps a control and never
+          fights the bar.
+
+          A GLASS CIRCLE IN THE BAR'S MATERIAL BUT SMALLER THAN ITS CIRCLE. The
+          recipe is the bar's — blur, then a fill over it, then a hairline over
+          that — so the two are the same family; the size is 40 against the bar's
+          56 so they are not the same OBJECT. See HOME_BTN_SIZE for why that gap
+          is deliberate.
+
+          RENDERED ONLY ONCE HOME IS KNOWN. A button that returns you nowhere is
+          worse than no button, and until the disk read or the timezone resolves
+          there is nothing to return to. */}
+      {/* ── THE LOCATION CONSENT PROMPT ──
+          NOT A MODAL, AND THAT IS THE WHOLE TREATMENT. A dialogue over the map
+          would stop the thing it is asking about being visible, and it would
+          demand an answer before the user has any reason to care. This is a
+          strip: the map keeps its whole surface, every gesture still works, and
+          the question can be ignored indefinitely.
+
+          IT SITS OPPOSITE THE HOME BUTTON, at the same y, running from the left
+          margin to just clear of it. That is the only horizontal space on this
+          screen that is reliably empty, and it puts the question at the top
+          where a status line belongs rather than over the results.
+
+          THE SAME GLASS AS THE BUTTON, so it reads as part of the map's own
+          furniture rather than as something the app threw on top.
+
+          TERMINAL, NOT A CARD. A prompt line beginning with > , the question in
+          plain words, and two verbs. `allow` is green because green in this app
+          means live and actionable and this is the only actionable thing on the
+          map; `no` is at label ink because a refusal should not be styled as a
+          lesser choice, only a quieter one.
+
+          LAST CHILD, LIKE THE BUTTON, for the reason given there — anything
+          rendered before the ScrollView is underneath its content container and
+          cannot be pressed. */}
+      {askConsent && (
+        <View style={[cs.wrap, { top: insets.top + 12 }]} pointerEvents="box-none">
+          <BlurView
+            intensity={HOME_BTN_BLUR}
+            tint="systemChromeMaterialDark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={[StyleSheet.absoluteFill, cs.fill]} pointerEvents="none" />
+          <View style={[StyleSheet.absoluteFill, cs.edge]} pointerEvents="none" />
+          <Text style={cs.q} numberOfLines={1}>{'> show your location'}</Text>
+          <Pressable onPress={acceptLocation} hitSlop={10}>
+            <Text style={cs.yes}>{'allow'}</Text>
+          </Pressable>
+          <Pressable onPress={declineLocation} hitSlop={10}>
+            <Text style={cs.no}>{'no'}</Text>
+          </Pressable>
+        </View>
+      )}
+      {home !== null && (
+        <Pressable
+          style={[hm.btn, { top: insets.top + 12 }]}
+          // THE FIRST STAGE, AND THE ONE MOST LIKELY TO BE MISSING. If pressing
+          // the button prints nothing at all, the touch never reached this
+          // Pressable and every later stage is irrelevant — see the report on
+          // the ScrollView's content container, which is drawn after this and is
+          // a hit target over its own bounds.
+          onPressIn={() => console.log('[HOME] 0. pressIn reached the Pressable')}
+          onPress={() => {
+            console.log('[HOME] 6a. onPress fired');
+            mapRef.current?.goHome();
+          }}
+          hitSlop={10}
+        >
+          {/* THE MATERIAL, IN THE ORDER THE TAB BAR BUILDS IT. The blur samples
+              what is behind the surface; the fill is a SIBLING AFTER it, so it
+              tints the blur rather than being something the blur samples. Get
+              that order wrong and the fill goes into the sample and the whole
+              thing turns grey.
+
+              THE HAIRLINE IS ITS OWN VIEW AND NEVER A borderColor ON THE BLUR.
+              A border on a rounded BlurView leaves artefacts at the corners
+              where the border and the blur's own clip disagree; a sibling with
+              its own borderRadius has no such seam.
+
+              overflow hidden ON THE PRESSABLE is what clips the blur to the
+              circle — a BlurView does not round itself. */}
+          <BlurView
+            intensity={HOME_BTN_BLUR}
+            tint="systemChromeMaterialDark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={[StyleSheet.absoluteFill, hm.fill]} pointerEvents="none" />
+          <View style={[StyleSheet.absoluteFill, hm.edge]} pointerEvents="none" />
+          {/* THE GLYPH IS THE MAP'S PIN, RESTATED AT BUTTON SIZE. The pin out
+              there is a translucent halo with a solid dot in it; here the halo
+              is a stroked RING rather than a filled disc, because a 7% fill at
+              this size is nothing at all. Both say the same thing — this point,
+              marked — which is what makes the control and the thing it returns
+              you to read as one idea rather than two.
+
+              NOT A HOUSE. A house would mean the Home TAB, which is a different
+              destination reached by a different control at the other end of
+              this screen. */}
+          {/* THE STROKE IS SET IN VIEWBOX UNITS, so it has to be widened as the
+              glyph shrinks: 1.8 in a 24 box drawn at 18 renders 1.35 real pixels,
+              which is what the ring was at the larger size. Leaving it at 1.5
+              would have thinned the ring to 1.1 and made it the faintest mark on
+              the screen. */}
+          <Svg width={HOME_BTN_GLYPH} height={HOME_BTN_GLYPH} viewBox="0 0 24 24">
+            <SvgCircle
+              cx={12} cy={12} r={7.5}
+              fill="none"
+              stroke={HOME_BTN_INK_RING}
+              strokeWidth={1.8}
+            />
+            <SvgCircle cx={12} cy={12} r={3.2} fill={HOME_BTN_INK_DOT} />
+          </Svg>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -3378,6 +3570,51 @@ const HOME_BTN_EDGE = 'rgba(255,255,255,0.08)';
 // needs, so the button and the mark it returns you to are the same colour.
 const HOME_BTN_INK_RING = 'rgba(226,226,226,0.5)';
 const HOME_BTN_INK_DOT = 'rgba(226,226,226,0.85)';
+
+// THE CONSENT STRIP. Same material as the button, laid out as a row: it runs
+// from the left margin to just clear of the button's 40px plus its 20px gutter
+// plus 10 of air, so the two never touch on any width.
+const cs = StyleSheet.create({
+  wrap: {
+    position: 'absolute',
+    left: 20,
+    right: 20 + HOME_BTN_SIZE + 10,
+    height: HOME_BTN_SIZE,
+    borderRadius: HOME_BTN_SIZE / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    gap: 12,
+    overflow: 'hidden',
+  },
+  fill: { backgroundColor: HOME_BTN_FILL },
+  edge: {
+    borderWidth: 1,
+    borderColor: HOME_BTN_EDGE,
+    borderRadius: HOME_BTN_SIZE / 2,
+  },
+  // flexShrink so a narrow screen truncates the question rather than pushing the
+  // two answers off the end. The verbs are the part that must survive.
+  q: {
+    flexShrink: 1,
+    fontFamily: MONO,
+    fontSize: 11,
+    color: 'rgba(226,226,226,0.62)',
+    letterSpacing: 0.3,
+  },
+  yes: {
+    fontFamily: MONO,
+    fontSize: 11,
+    color: '#4ade80',
+    letterSpacing: 0.3,
+  },
+  no: {
+    fontFamily: MONO,
+    fontSize: 11,
+    color: 'rgba(226,226,226,0.45)',
+    letterSpacing: 0.3,
+  },
+});
 
 const hm = StyleSheet.create({
   btn: {
