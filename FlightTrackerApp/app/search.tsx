@@ -117,6 +117,7 @@ import {
   Airport,
   airportByCode,
   cityAirports,
+  nearestAirport,
   resolveAirportName,
   isKnownPlace,
   normalizeTerm,
@@ -795,6 +796,38 @@ function parseRouteQuery(q: string): RouteParse {
   // what lets the router offer it upwards instead of stopping on it.
   if (orphan !== null) return { kind: 'error', message: `no airport matches "${orphan}"`, soft: true };
   return null;
+}
+
+// ── ONE AIRPORT ON ITS OWN ──────────────────────────────────────────────────
+//
+// NOTHING ABOVE CAN PRODUCE THIS, and that is why it needed its own rung rather
+// than a patch. parseRouteQuery has exactly two ways to return `ok`: routeCodes,
+// whose regex wants two codes, and routeSplits, which for a one-word query
+// returns no splits at all. Both hand back null for "BOM", so the router fell
+// past the free rungs into the paid ones -- one word to /chat, two words naming
+// a place to /parse, which came back with no origin and produced "I did not
+// catch where you are flying from". A unit spent to be told the input was fine.
+//
+// SO: RESOLVE THE WHOLE LINE AS ONE PLACE, on the device, before anything is
+// spent. A hit is not a route and never becomes one; it flies the camera and
+// opens the panel, which is exactly what tapping the dot already does.
+//
+// THE SAME GUARD THE ORPHAN TEST USES, and deliberately the same one: at most
+// three words, none of them a word that is never a place. That is what keeps
+// "flight to Mumbai" a question -- "flight" and "to" are both in NOT_A_PLACE --
+// while leaving "Mumbai", "BOM" and "New York" as answers. Without it any
+// sentence whose full text happened to fuzzy-match an airport would be
+// swallowed by the map instead of reaching the model.
+//
+// resolveRouteEnd, NOT resolveAirportName, so a bare code resolves as a CODE
+// first: "GOA" is Genoa here for exactly the reason it is Genoa in a route.
+function singleAirportQuery(q: string): Airport | null {
+  const t = q.trim().replace(/\s+/g, ' ');
+  if (t === '') return null;
+  const words = t.toLowerCase().split(' ');
+  if (words.length > 3 || words.some(w => NOT_A_PLACE.has(w))) return null;
+  const end = resolveRouteEnd(t);
+  return end === null ? null : end.airport;
 }
 
 // Decoration the provider puts on board names that the airport dataset does
@@ -1482,6 +1515,24 @@ export default function Search() {
       await runRouteLookup(
         routeCandidate.from.airport.iata, routeCandidate.to.airport.iata,
         mods.date ?? routeDate);
+      return;
+    }
+
+    // ── ONE AIRPORT, AND IT COSTS NOTHING ───────────────────────────────
+    //
+    // AFTER THE ROUTE RUNGS AND BEFORE THE PAID ONES. After, because "BLR DEL"
+    // must stay a route and a hard route error must still stop here. Before,
+    // because the whole point is that a single airport never reaches a provider:
+    // this is the rung that used to be missing, and its absence is what sent a
+    // perfectly good input off to be misread.
+    //
+    // THE SAME THING A DOT TAP DOES, through the same function, so the two
+    // cannot come to differ: openAirport flies the camera and opens the panel.
+    // Nothing is fetched, nothing is stored, and no error is raised -- the
+    // answer to "BOM" is the map showing you BOM.
+    const single = singleAirportQuery(query);
+    if (single !== null) {
+      openAirport(single.iata);
       return;
     }
 
@@ -2181,6 +2232,22 @@ export default function Search() {
     return Math.round(2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   }, [panelAirport, home]);
 
+  // ── WHERE A FLIGHT SEARCH WOULD START FROM ────────────────────────────────
+  //
+  // THE AIRPORT NEAREST THE PIN, and the pin is the only thing that may answer
+  // this. home.kind is 'position' only when the user consented AND a fix
+  // actually landed; a timezone view is a COUNTRY, and the nearest airport to
+  // the centroid of a country is a guess dressed as a fact.
+  //
+  // null IS THE HONEST ANSWER FOR A GUEST OR A REFUSAL, and the control it
+  // feeds is omitted rather than disabled or filled with a plausible default.
+  // Offering to search "flights from DEL" to someone who never said where they
+  // are would be inventing an origin and then charging them for it.
+  const panelOrigin = useMemo(
+    () => (home === null || home.kind !== 'position' ? null : nearestAirport(home.lon, home.lat)),
+    [home],
+  );
+
   // THE OTHER AIRPORTS SERVING THIS CITY. cityAirports resolves the curated list
   // where there is one — "new york" is JFK, EWR, LGA in that order — and falls
   // back to every row with the same city name. One entry means the row is a
@@ -2395,6 +2462,48 @@ export default function Search() {
     if (panelTyping) { setPanelSkipped(true); return; }
     setPanelIata(null);
   }, [panelIata, panelTyping]);
+
+  // ── THE PANEL'S ONE PAID ACTION ───────────────────────────────────────────
+  //
+  // THIS SPENDS UNITS, so everything about it is arranged so that it cannot
+  // happen by accident:
+  //
+  //   IT IS A PRESSABLE, not a tap anywhere on the panel. The panel's other
+  //   text carries no handler at all -- taps fall through the box-none wrapper
+  //   to the map -- so this is the only thing in here that can be pressed
+  //   except the sibling codes, which are free.
+  //
+  //   IT IS NOT MOUNTED WHILE THE PANEL IS TYPING. A tap during the type-on
+  //   means "finish it", and a control that appeared under a finger already
+  //   travelling would turn that into a board fetch. See panelTyping.
+  //
+  //   IT IS NOT MOUNTED WITHOUT A PIN. No origin, no control -- see
+  //   panelOrigin.
+  //
+  // THE PANEL CLOSES ON THE WAY OUT, because the result replaces it: the camera
+  // flies to the route and the panel would be describing one end of a journey
+  // that is now the subject of the screen.
+  //
+  // A PLAIN FUNCTION, not a useCallback, and that is what every other action on
+  // this screen is. runRouteLookup and routeResetControls_forSearch are both
+  // rebuilt each render and close over this render’s filter state; memoising
+  // the thing that calls them would pin an old pair of them behind a stale
+  // dependency list, which is a wrong board rather than a slow one.
+  const searchFromPin = async (origin: Airport, dest: Airport) => {
+    leaveAirport();
+    // A SEARCH FROM SCRATCH, exactly as a typed route is. runRouteLookup cannot
+    // do this itself -- its other callers refine a list that is already on
+    // screen -- so the reset belongs to the callers that mean "start again".
+    // The helper is the whole reset: bands, sort, and nothing this needs to
+    // restate.
+    routeResetControls_forSearch();
+    // THE SAME SHAPE A TYPED CODE PRODUCES. routeCodes hands the picker a
+    // one-element list per end, because a code names exactly one airport; this
+    // names exactly one at each end too, so the picker offers the same thing it
+    // would offer for "BOM DEL" typed by hand.
+    setRoutePick({ from: [origin], to: [dest] });
+    await runRouteLookup(origin.iata, dest.iata, routeDate);
+  };
 
   const openAirport = useCallback((iata: string) => {
     // A NEW AIRPORT TYPES ITSELF IN AGAIN. Switching while one panel is finished
@@ -4117,6 +4226,51 @@ export default function Search() {
               })}
             </View>
           )}
+
+          {/* ── FLIGHTS FROM WHERE YOU ARE ──
+              THE ONLY THING IN THIS PANEL THAT COSTS ANYTHING, and it reads as
+              a control rather than as another line of the readout: a bordered
+              pill with a green verb, where everything above it is unbordered
+              monospace at label ink. Nothing else on this panel has an edge, so
+              having one is what says this one does something.
+
+              "flights from BOM" AND NOT "search". The sentence names the origin
+              it would use, so the unit is spent on a question the user has
+              already read in full -- there is no second screen where the origin
+              turns out to be somewhere they did not expect.
+
+              THREE CONDITIONS, AND EACH REMOVES A DIFFERENT ACCIDENT:
+
+                panelOrigin !== null   no pin, no origin, no control. A guest or
+                                       a refusal sees nothing here rather than a
+                                       guess. See panelOrigin.
+
+                !panelTyping           a tap during the type-on means "finish
+                                       it". If this were mounted then, that tap
+                                       would land on a button and buy a board.
+
+                different airports     "flights from BOM" while looking at BOM
+                                       is not a search anyone means, and the
+                                       route parser rejects the same pair with
+                                       the same reasoning.
+
+              hitSlop IS DELIBERATELY ABSENT. The sibling codes above carry 10
+              because they are small, free and easy to miss; this is large,
+              paid, and should be hit only where it is drawn. */}
+          {panelOrigin !== null && !panelTyping
+            && panelOrigin.iata !== panelAirport.iata && (
+            <Pressable
+              style={ap.searchBtn}
+              onPress={() => { void searchFromPin(panelOrigin, panelAirport); }}
+              accessibilityRole="button"
+              accessibilityLabel={`search flights from ${panelOrigin.iata} to ${panelAirport.iata}`}
+            >
+              <Text style={ap.searchTxt}>
+                {'flights from '}
+                <Text style={ap.searchCode}>{panelOrigin.iata}</Text>
+              </Text>
+            </Pressable>
+          )}
         </View>
       )}
       {/* ── THE LOCATION CONSENT PROMPT ──
@@ -4388,6 +4542,40 @@ const ap = StyleSheet.create({
     textShadowRadius: 6,
   },
   codes: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 11 },
+  // THE ONE EDGE IN THE PANEL. Everything above is text laid on the globe with
+  // a shadow behind it; this is a shape, because it is the only thing here that
+  // can be pressed and a control on a map has to say so.
+  //
+  // 14 ABOVE, one more than the codes row's 11, so it reads as a separate
+  // thing rather than as a fourth code. alignSelf so the pill is as wide as its
+  // own sentence rather than as wide as the panel's 210pt cap.
+  //
+  // THE FILL IS THE PAGE AT 0.82, the same value the home button and the
+  // consent strip use. No blur: those two are 40pt of glass sitting in open
+  // space, and a BlurView behind a line of text inside a text panel would be a
+  // second material for one control.
+  searchBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(5,5,5,0.82)',
+  },
+  // Mono, because the panel below the rule is machine data and this is a
+  // command in that register. Label ink for the words, so the code is what the
+  // eye lands on.
+  searchTxt: {
+    fontFamily: MONO,
+    fontSize: 12,
+    color: 'rgba(226,226,226,0.62)',
+  },
+  // GREEN, which in this app means live and actionable, and it is the same
+  // green the current airport's own code carries two lines above. The origin is
+  // the part of this sentence the user has to agree with.
+  searchCode: { color: '#4ade80' },
   code: {
     fontFamily: MONO,
     fontSize: 12,

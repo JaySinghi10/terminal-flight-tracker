@@ -1626,3 +1626,34 @@ export function resolveAirportName(term: string): { airport: Airport; options: A
     rank: best,
   };
 }
+
+// THE AIRPORT NEAREST A POSITION.
+//
+// A DATASET QUESTION, SO IT LIVES WITH THE DATASET. The panel already measures
+// the distance from the user to ONE airport; this asks the opposite question of
+// all 1,223, and putting it in the screen would be a second copy of the
+// great-circle formula in a file that has no business owning one.
+//
+// FULL HAVERSINE RATHER THAN A CHEAPER RANKING. An equirectangular
+// approximation would order these correctly almost everywhere and misorder them
+// near the poles and across the date line, which are precisely the cases nobody
+// would ever check. 1,223 iterations of this run once per position, behind a
+// memo, and cost nothing worth trading a caveat for.
+//
+// NULL ONLY IF THE DATASET IS EMPTY, which it cannot be -- it is baked in. The
+// signature says null anyway so the caller cannot forget that "nearest" is
+// undefined over an empty set.
+export function nearestAirport(lon: number, lat: number): Airport | null {
+  const R = 6371, D = Math.PI / 180;
+  let best: Airport | null = null;
+  let bestKm = Infinity;
+  for (const a of allAirports()) {
+    const dLat = (a.lat - lat) * D;
+    const dLon = (a.lon - lon) * D;
+    const h = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat * D) * Math.cos(a.lat * D) * Math.sin(dLon / 2) ** 2;
+    const km = 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    if (km < bestKm) { bestKm = km; best = a; }
+  }
+  return best;
+}

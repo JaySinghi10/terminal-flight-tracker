@@ -1293,6 +1293,37 @@ export function FlightCard({
   const mapMenuAnim = useRef(new Animated.Value(0)).current;
   const mapMenuScrimAnim = useRef(new Animated.Value(0)).current;
 
+  // ── THE ROUTE CARD UNDER A FINGER ─────────────────────────────────────────
+  //
+  // 0 AT REST, 1 HELD DOWN. The dim was doing this alone and it was not enough:
+  // TouchableOpacity fades the instant a finger lands and then holds that fade
+  // for the whole 500ms of the long press, so the card looked the same at 20ms
+  // as at 480ms and nothing said the hold was going anywhere.
+  //
+  // A SCALE IS THE ONLY NEW PART, and it is built from what this file already
+  // uses: an Animated.Value, EASE_OUT and EASE_IN, and the panel timings from
+  // lib/glass. The dim stays exactly as it was at activeOpacity 0.7, because
+  // that is the app's press state everywhere and this is not a different kind
+  // of press -- it is the same press with a second thing to say.
+  const routePress = useRef(new Animated.Value(0)).current;
+  const routePressStyle = {
+    transform: [{
+      // 0.97 rather than anything deeper. The card is nearly the full width of
+      // the screen, so three per cent is about five points of travel at its
+      // edges -- clearly felt, and far short of the shrink that would read as
+      // the card being dragged away rather than pushed.
+      scale: routePress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.97] }),
+    }],
+  };
+  const routePressTo = (to: number, duration: number, easing: typeof EASE_OUT) =>
+    Animated.timing(routePress, { toValue: to, duration, easing, useNativeDriver: true }).start();
+
+  // DOWN FAST, so the card is already moving before the finger has settled.
+  const onRoutePressIn = () => routePressTo(1, 110, EASE_OUT);
+  // AND BACK ON RELEASE. This also fires after a completed long press, on the
+  // same value the lift below already sent it to, so the two cannot fight.
+  const onRoutePressOut = () => routePressTo(0, 160, EASE_IN);
+
   // THE OVERLAY'S TIMINGS, NOT THE SHEET'S. PANEL_IN_MS and OVERLAY_RISE are
   // what the app's small floating panels use; CAL_IN_MS and CAL_RISE belong to a
   // full sheet growing out of a card, and this grows out of nothing and covers
@@ -1317,6 +1348,12 @@ export function FlightCard({
   const openMapMenu = () => {
     if (flightRecord === null) return;
     EXPAND_HAPTIC();
+    // THE LIFT, ON THE MENU'S OWN TIMING. The card comes back up over exactly
+    // the PANEL_IN_MS the menu takes to rise, so the two read as one movement:
+    // the thing you were pressing hands what it was holding to the thing that
+    // arrives. Releasing it instantly instead would have the card snap back
+    // before the menu had started.
+    routePressTo(0, PANEL_IN_MS, EASE_OUT);
     setMapMenuOpen(true);
   };
 
@@ -2005,39 +2042,6 @@ export function FlightCard({
                   belt={flight.baggage}
                   desk={flight.checkinDesk}
                 />
-
-                {/* WHEN THIS WAS LAST ASKED FOR, and it is the last line of the
-                    card now rather than the last line of the result.
-
-                    IT FOLLOWS ITS SUBJECT. This is metadata about the RECORD --
-                    when the lookup ran -- and the record is what this card
-                    shows. It sat under the route block only because the route
-                    block used to be part of the same undifferentiated stack;
-                    with the route on a surface of its own, a line about the
-                    fetch floating between two cards would belong to neither.
-
-                    LAST, AND UNDER THE TILES, because it is the least of what is
-                    here and the only thing on the card that is about the app
-                    rather than about the flight.
-
-                    hideStatus AND hideAbsolute ARE UNCHANGED and both notes
-                    still hold: the word is in the heading directly above, and
-                    the tail's departure time would repeat one the route card
-                    prints in full a few points below.
-
-                    NO STYLE. s.routeStatus existed to buy clearance from
-                    whatever floated above it on the page; inside the card,
-                    airportCard's own gap of 14 spaces it from the tiles exactly
-                    as it spaces every other block in here. */}
-                {flightRecord !== null && (
-                  <StatusLine
-                    f={flightRecord}
-                    now={now}
-                    hideStatus
-                    hideAbsolute
-                    numberOfLines={1}
-                  />
-                )}
               </View>
               </TouchableOpacity>
             </ReanimatedSwipeable>
@@ -2102,9 +2106,17 @@ export function FlightCard({
               <TouchableOpacity
                 activeOpacity={0.7}
                 onLongPress={openMapMenu}
+                onPressIn={onRoutePressIn}
+                onPressOut={onRoutePressOut}
                 disabled={flightRecord === null}
                 onLayout={e => { routeW.value = e.nativeEvent.layout.width; }}
               >
+              {/* THE SCALE IS INSIDE THE TOUCHABLE, not on it. The touchable is
+                  what the Swipeable measures for routeW and what the pan reads
+                  for its own geometry; transforming it would make both of those
+                  read a card that is momentarily 3% narrower than it lays out
+                  as. This wraps only what is drawn. */}
+              <Animated.View style={routePressStyle}>
               <View style={s.routeCard}>
                 <View style={s.routeRow}>
                   <View style={s.routeLeft}>
@@ -2131,8 +2143,37 @@ export function FlightCard({
                   />
                 )}
               </View>
+              </Animated.View>
               </TouchableOpacity>
             </ReanimatedSwipeable>
+
+            {/* WHEN THIS WAS LAST ASKED FOR, AND IT BELONGS TO NEITHER CARD.
+                It spent a round inside the flight card, under the tiles, on the
+                argument that it is metadata about the record and the card shows
+                the record. That was half right and it read wrong: sitting on a
+                surface made it look like one of the card's facts, alongside the
+                gate and the belt, when it is not about the flight at all -- it
+                is about when this app last asked. The gate is true of the world;
+                this is true of the lookup.
+
+                SO IT SITS ON THE PAGE, BELOW EVERYTHING. Last child of the
+                result, under both cards, on no surface -- which is what says it
+                describes the whole result rather than any part of it. The
+                scroll's own paddingBottom is what holds it clear of the tab bar.
+
+                hideStatus AND hideAbsolute ARE UNCHANGED and both notes still
+                hold: the word is in the card's heading, and the tail's departure
+                time would repeat one the route card prints in full above. */}
+            {flightRecord !== null && (
+              <StatusLine
+                f={flightRecord}
+                now={now}
+                hideStatus
+                hideAbsolute
+                numberOfLines={1}
+                style={s.routeStatus}
+              />
+            )}
             </Reanimated.View>
     </>
   );
@@ -2180,6 +2221,10 @@ const s = StyleSheet.create({
   // into, since the track itself is 3pt and the glyph is 20. The card's
   // CARD_PAD sits under it.
   routeProgress: { marginTop: 14, marginBottom: 0 },
+  // 8 ON TOP OF resultWrap's GAP OF 10, so this line sits 18 below the route
+  // card. At the bare 10 it read as a third card that had lost its surface
+  // rather than as a note under the pair of them.
+  routeStatus: { marginTop: 8 },
   // THE ROUTE'S SURFACE. The app's card, in the app's constants: CARD_FILL is
   // the same 3% white every other card is painted with and CARD_RADIUS the same
   // 12, so this reads as one of the family rather than as a rectangle that
