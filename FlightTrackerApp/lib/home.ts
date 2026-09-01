@@ -142,11 +142,21 @@ const KEY_CONSENT = 'map.locationConsent.v3:';
 // the decliner forever or never ask the newcomer.
 export type LocationConsent = 'granted' | 'declined';
 
-// SIGNED OUT IS A SCOPE OF ITS OWN rather than an absence of one. It gets the
-// same two keys and the same rules, which is what stops a signed-out session
-// inheriting whatever the last account had. '@' cannot begin an email local
-// part in any address this app will see, so it cannot collide with a real one.
-export const SIGNED_OUT_SCOPE = '@signedout';
+// ── THERE IS NO SIGNED-OUT SCOPE, AND THAT IS DELIBERATE ────────────────────
+//
+// It used to be '@signedout', a scope like any other, on the reasoning that a
+// signed-out session needed somewhere to keep its own answer. That was wrong:
+// CONSENT BELONGS TO AN ACCOUNT. There is nobody to ask when nobody is signed
+// in, and a guest agreeing to something binds no one — the next guest is a
+// different person on the same device.
+//
+// SO SIGNED OUT IS NOT A SCOPE WITH DIFFERENT DATA. It is the absence of the
+// question: the country view, no prompt, no pin, and nothing written to disk.
+// Every accessor in this file takes a scope and every scope is an account.
+//
+// THE OLD KEYS ARE PURGED, not left to sit under a name nothing will ask for
+// again — see LEGACY_PREFIXES.
+const SIGNED_OUT_LEGACY = ['map.home.v3:@signedout', 'map.locationConsent.v3:@signedout'];
 
 // What a settings screen needs to read or clear one account's location data.
 // Two keys, both derived from the scope, nothing to enumerate.
@@ -172,7 +182,9 @@ export function homeKeysFor(scope: string): { home: string; consent: string } {
 // they cannot be listed in advance — the store has to be enumerated and filtered
 // by prefix. That is the one place this module reads all of storage, and it
 // happens once per launch.
-const LEGACY_EXACT = ['map.home.v1', 'map.locationAsked.v1'];
+// v3's @signedout pair joins the list: the scope no longer exists, so its keys
+// are as dead as v1's and hold a position no account ever consented to.
+const LEGACY_EXACT = ['map.home.v1', 'map.locationAsked.v1', ...SIGNED_OUT_LEGACY];
 const LEGACY_PREFIXES = ['map.home.v2:', 'map.locationAsked.v2:'];
 
 // ── THE PURGE IS A GATE, NOT A STEP ─────────────────────────────────────────

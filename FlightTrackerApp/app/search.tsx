@@ -33,7 +33,7 @@
 //      and clears itself when the account actually changes.
 //   4  detailsTitle and headingRow read as `c.*`. They are two entries both
 //      screens need, and they are in lib/cards.ts now.
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 // COMING BACK TO THIS TAB IS A FOCUS EVENT, NOT A MOUNT. The tabs navigator keeps
 // this screen mounted when it loses focus, so nothing else can see the return.
 import { useFocusEffect } from "expo-router";
@@ -103,7 +103,7 @@ import GlobeMap, { type GlobeMapHandle } from '../components/GlobeMap';
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
   timezoneHome, loadHome, saveHome, clearHome,
-  loadConsent, saveConsent, SIGNED_OUT_SCOPE, LOCATION_TIMEOUT_MS,
+  loadConsent, saveConsent, LOCATION_TIMEOUT_MS,
   type HomeView,
 } from '../lib/home';
 import * as Location from 'expo-location';
@@ -113,6 +113,7 @@ import { useAccount } from '../lib/account';
 import {
   Airport,
   airportByCode,
+  cityAirports,
   resolveAirportName,
   isKnownPlace,
   normalizeTerm,
@@ -120,7 +121,23 @@ import {
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
+
+// THE AIRPORT PANEL'S TYPE-ON, in milliseconds per character.
+//
+// 26 IS ABOUT 38 CHARACTERS A SECOND. Slower and a long city name outstays the
+// camera flight that opened the panel; faster and it stops reading as typing and
+// becomes a flicker. "NEW DELHI" lands in 234ms and "SAN FRANCISCO" in 338ms,
+// both comfortably inside the 1.4s the shortest flight takes — so the name is
+// always finished before the map has settled under it.
+//
+// NOT NAMED PANEL_* deliberately: that prefix already belongs to the anchored
+// filter panel's animation timings and the two have nothing to do with each
+// other.
+const CITY_TYPE_MS = 26;
 const SANS = 'Inter_400Regular';
+// The semibold face, loaded in _layout with the rest. Only the airport panel's
+// city name uses it on this screen: it is the one heading the map owns.
+const SANS_SEMI = 'Inter_600SemiBold';
 
 const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
 // Three letters, an optional single separator, three letters. "BLR DEL",
@@ -1140,7 +1157,7 @@ export default function Search() {
 
   // The hook, not Dimensions.get: this has to re-render on rotation, or the
   // labels would keep the width they were built for.
-  const { width: routeWinWidth } = useWindowDimensions();
+  const { width: routeWinWidth, height: winHeight } = useWindowDimensions();
   const btnScale = useRef(new Animated.Value(1)).current;
 
   // Four values, not two: each overlay drives its content and its scrim
@@ -1630,7 +1647,10 @@ export default function Search() {
   // THE MAP HAS ALREADY OPENED ON THE TIMEZONE by the time any of this resolves,
   // because that answer is synchronous and baked into the page. What happens
   // here can only improve it.
-  const homeScope = email ?? SIGNED_OUT_SCOPE;
+  // NULL MEANS SIGNED OUT, AND SIGNED OUT IS NOT A SCOPE. There is nobody to ask
+  // for consent and nobody it would bind, so a guest gets the country view and
+  // nothing else: no prompt, no pin, nothing written. See the note in lib/home.
+  const homeScope = email;
   const [home, setHome] = useState<HomeView | null>(null);
   // WHETHER TO SHOW THE IN-APP PROMPT. True only while this scope's consent is
   // undecided; both answers clear it and neither can come back without a
@@ -1709,13 +1729,27 @@ export default function Search() {
         setHome(null);
         mapRef.current?.setHome(timezoneHome());
         mapRef.current?.probe('after forget');
-        // SIGNING OUT WIPES THE SIGNED-OUT SCOPE, so a session that follows a
-        // logout never inherits anything from the one before it. An ACCOUNT's
-        // own scope is deliberately left alone: that is what lets signing back
-        // in restore the pin without a second prompt.
-        if (homeScope === SIGNED_OUT_SCOPE) await clearHome(SIGNED_OUT_SCOPE);
+        // AN ACCOUNT'S OWN SCOPE IS DELIBERATELY LEFT ALONE on a switch: that is
+        // what lets signing back in restore the pin without a second prompt.
+        // There is nothing to clear for a guest, because a guest stores nothing.
       }
       if (!alive) return;
+
+      // ── SIGNED OUT ENDS HERE ──────────────────────────────────────────────
+      //
+      // NO SCOPE, SO NO QUESTION. A guest is not an account: there is nobody to
+      // ask for consent and nobody it would bind. The country view is the whole
+      // answer, and it is not written anywhere — recomputing a timezone lookup
+      // costs nothing and storing it would mean a guest leaving a trace.
+      //
+      // askConsent IS CLEARED RATHER THAN LEFT, so a prompt raised for the
+      // account that just signed out does not survive into the guest session.
+      if (homeScope === null) {
+        console.log('[HOME] 1. signed out - country view, no prompt, nothing stored');
+        setAskConsent(false);
+        setHome(timezoneHome());
+        return;
+      }
 
       console.log(`[HOME] 1. resolving for ${homeScope}`);
       const stored = await loadHome(homeScope);
@@ -1786,6 +1820,7 @@ export default function Search() {
   // re-asking them because their GPS was cold would be asking the wrong
   // question. The country view stands until a later launch finds a fix.
   const acceptLocation = useCallback(async () => {
+    if (homeScope === null) return;
     console.log('[HOME] consent: accepted');
     setAskConsent(false);
     await saveConsent(homeScope, 'granted');
@@ -1802,6 +1837,7 @@ export default function Search() {
   // A DECLINE IS FINAL FOR THIS SCOPE and produces no error, no toast and no
   // second chance from the map. The profile control is where it can be undone.
   const declineLocation = useCallback(() => {
+    if (homeScope === null) return;
     console.log('[HOME] consent: declined');
     setAskConsent(false);
     void saveConsent(homeScope, 'declined');
@@ -1823,6 +1859,96 @@ export default function Search() {
     homeSentRef.current = true;
     mapRef.current?.setHome(home);
   }, [mapReady, home]);
+
+  // ── THE AIRPORT PANEL ─────────────────────────────────────────────────────
+  //
+  // THE MAP POSTS A CODE, NOT A PLACE. The page knows only what is in its
+  // GeoJSON — an IATA string — and everything else is looked up here through the
+  // same lib/airports the search uses, so the panel cannot describe a different
+  // Delhi from the one the results list found.
+  const [panelIata, setPanelIata] = useState<string | null>(null);
+  const panelAirport = panelIata === null ? null : airportByCode(panelIata);
+
+  // ── THE TYPE-ON ───────────────────────────────────────────────────────────
+  //
+  // 26ms A CHARACTER, WHICH IS ABOUT 38 A SECOND. Slower than that and a long
+  // name outstays the camera flight that opened the panel; faster and it stops
+  // reading as typing and becomes a flicker. "NEW DELHI" lands in 234ms and
+  // "SAN FRANCISCO" in 338ms — under the 1.4s the shortest flight takes, so the
+  // name is always finished before the map has settled.
+  //
+  // A COUNT OF CHARACTERS, NOT A STRING. Storing the substring would mean the
+  // interval owned the text and a change of airport mid-type could interleave
+  // two names; a count is meaningless without the current name and cannot.
+  const [typed, setTyped] = useState(0);
+  const panelCity = panelAirport === null ? '' : panelAirport.city.toUpperCase();
+
+  useEffect(() => {
+    if (panelCity === '') { setTyped(0); return; }
+    setTyped(0);
+    let n = 0;
+    const id = setInterval(() => {
+      n += 1;
+      setTyped(n);
+      if (n >= panelCity.length) clearInterval(id);
+    }, CITY_TYPE_MS);
+    return () => clearInterval(id);
+  }, [panelCity]);
+
+  const typingDone = panelCity !== '' && typed >= panelCity.length;
+
+  // ── THE LOCAL TIME AT THAT AIRPORT ────────────────────────────────────────
+  //
+  // FROM THE tz COLUMN, VIA Intl, and in a try because a bad zone string throws
+  // rather than falling back. `now` already ticks for the flight card, so the
+  // clock costs no timer of its own.
+  const panelClock = useMemo(() => {
+    if (panelAirport === null) return '';
+    try {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: panelAirport.tz,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(now));
+    } catch {
+      return '';
+    }
+  }, [panelAirport, now]);
+
+  // 28.5556 N 77.0952 E — hemispheres as letters rather than signs, because a
+  // minus sign in front of a latitude is a thing you have to decode and a S is
+  // a thing you read.
+  const panelCoords = panelAirport === null ? '' : (
+    `${Math.abs(panelAirport.lat).toFixed(4)} ${panelAirport.lat >= 0 ? 'N' : 'S'}`
+    + `  ${Math.abs(panelAirport.lon).toFixed(4)} ${panelAirport.lon >= 0 ? 'E' : 'W'}`
+  );
+
+  // OMITTED ENTIRELY WHEN THERE IS NO POSITION, rather than shown empty or as a
+  // dash. A placeholder is a promise that something will arrive; this line
+  // simply does not apply to a user who has not consented, and the panel should
+  // not carry a hole where their privacy is.
+  const panelDistanceKm = useMemo(() => {
+    if (panelAirport === null || home === null || home.kind !== 'position') return null;
+    const R = 6371, D = Math.PI / 180;
+    const dLat = (panelAirport.lat - home.lat) * D;
+    const dLon = (panelAirport.lon - home.lon) * D;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(home.lat * D) * Math.cos(panelAirport.lat * D) * Math.sin(dLon / 2) ** 2;
+    return Math.round(2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  }, [panelAirport, home]);
+
+  // THE OTHER AIRPORTS SERVING THIS CITY. cityAirports resolves the curated list
+  // where there is one — "new york" is JFK, EWR, LGA in that order — and falls
+  // back to every row with the same city name. One entry means the row is a
+  // label rather than a choice, and it still shows: the code belongs on the
+  // panel whether or not there is an alternative to it.
+  const panelSiblings = panelAirport === null ? [] : cityAirports(panelAirport.city);
+
+  const openAirport = useCallback((iata: string) => {
+    setPanelIata(iata);
+    mapRef.current?.flyToAirport(iata);
+  }, []);
 
   // ── COMING BACK TO THE TAB RETURNS TO HOME ────────────────────────────────
   //
@@ -2850,7 +2976,17 @@ export default function Search() {
           flight a function of render — it would re-fire on any re-render that
           happened to carry the same route, and it could not express "fly now"
           distinctly from "a route exists". The effect above decides WHEN. */}
-      <GlobeMap ref={mapRef} onReady={() => setMapReady(true)} />
+      {/* THE MAP DRIVES THE PANEL, NOT THE OTHER WAY ROUND. onAirport carries
+          the code the page resolved as NEAREST to the touch — not merely one of
+          the overlapping candidates — and onMapTap is the separate event for a
+          tap that hit nothing, which is what closes the panel. The camera is
+          moved by the page itself, so this only has to decide what to show. */}
+      <GlobeMap
+        ref={mapRef}
+        onReady={() => setMapReady(true)}
+        onAirport={setPanelIata}
+        onMapTap={() => setPanelIata(null)}
+      />
       {/* ── ANCHORED FILTER PANEL ──
           A Modal, not an inline block. Inline it pushed the results list down on
           open and pulled it back on close, so everything below jumped. Floating
@@ -3420,6 +3556,71 @@ export default function Search() {
           RENDERED ONLY ONCE HOME IS KNOWN. A button that returns you nowhere is
           worse than no button, and until the disk read or the timezone resolves
           there is nothing to return to. */}
+      {/* ── THE AIRPORT PANEL ──
+          NO SURFACE, AND THAT IS THE TREATMENT. Every other floating thing on
+          this screen — the home button, the consent strip — is glass, because
+          each is a CONTROL and needs an edge to be pressed. This is a READOUT:
+          it sits on the map the way the country labels do, as type on the world
+          rather than a card over it. Giving it a plate would make the left third
+          of the map opaque for information the user asked for by tapping a dot
+          they can no longer see.
+
+          LEFT AND VERTICALLY CENTRED-ISH. 26% down puts the city name near the
+          optical centre while leaving the top clear of the home button and the
+          consent strip, and the bottom clear of the tab bar even when the
+          sibling list runs to four codes.
+
+          box-none ON THE WRAPPER, so the panel occupies none of the map's touch
+          surface. Only the sibling codes are Pressables and only they take a
+          touch; a drag that begins anywhere else in this box reaches the globe.
+          That is the same rule the screen already applies to its two full-screen
+          layers, applied to a small one.
+
+          LAST CHILDREN OF s.root, with the button and the strip, for the reason
+          found earlier: anything rendered before the ScrollView is underneath
+          its content container and cannot be pressed. */}
+      {panelAirport !== null && (
+        <View style={[ap.wrap, { top: winHeight * 0.26 }]} pointerEvents="box-none">
+          {/* THE CITY, TYPED. The cursor rides the end of the text while it runs
+              and goes when it lands — a block that stayed would read as an input
+              waiting for more, which this is not. */}
+          <Text style={ap.city} numberOfLines={2}>
+            {panelCity.slice(0, typed)}
+            {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
+          </Text>
+
+          {/* EVERYTHING BELOW WAITS FOR THE NAME TO LAND. Rendering it during
+              the type-on would put four static lines under a moving one, which
+              reads as the panel being half-drawn rather than as it arriving. */}
+          {typingDone && (
+            <>
+              <Text style={ap.country} numberOfLines={1}>{panelAirport.country}</Text>
+              <View style={ap.rule} />
+              <Text style={ap.mono}>{panelAirport.iata}</Text>
+              {panelClock !== '' && <Text style={ap.mono}>{`${panelClock} local`}</Text>}
+              <Text style={ap.monoDim}>{panelCoords}</Text>
+              {/* OMITTED, NOT BLANKED, when there is no position to measure
+                  from. See panelDistanceKm. */}
+              {panelDistanceKm !== null && (
+                <Text style={ap.monoDim}>{`${panelDistanceKm.toLocaleString()} km away`}</Text>
+              )}
+              {/* THE CITY'S OTHER AIRPORTS. The current one is green because
+                  green is this app's live-and-actionable colour and it is the
+                  one the camera is on; the rest are label ink and are the only
+                  touchable things in this panel. */}
+              <View style={ap.codes} pointerEvents="box-none">
+                {panelSiblings.map((a) => (
+                  <Pressable key={a.iata} onPress={() => openAirport(a.iata)} hitSlop={10}>
+                    <Text style={a.iata === panelAirport.iata ? ap.codeOn : ap.code}>
+                      {a.iata}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+      )}
       {/* ── THE LOCATION CONSENT PROMPT ──
           NOT A MODAL, AND THAT IS THE WHOLE TREATMENT. A dialogue over the map
           would stop the thing it is asking about being visible, and it would
@@ -3455,7 +3656,13 @@ export default function Search() {
           />
           <View style={[StyleSheet.absoluteFill, cs.fill]} pointerEvents="none" />
           <View style={[StyleSheet.absoluteFill, cs.edge]} pointerEvents="none" />
-          <Text style={cs.q} numberOfLines={1}>{'> show your location'}</Text>
+          {/* "show your location" WAS WRONG AND NOT ONLY CLUMSY. It presupposes
+              we have it and are offering to display it, which inverts what is
+              being asked: the answer is what decides whether we ever get it.
+              "locate you" names the act being consented to — going and finding
+              out — and "on the map" says where the result goes and implies
+              nowhere else. */}
+          <Text style={cs.q} numberOfLines={1}>{'> locate you on the map'}</Text>
           <Pressable onPress={acceptLocation} hitSlop={10}>
             <Text style={cs.yes}>{'allow'}</Text>
           </Pressable>
@@ -3570,6 +3777,80 @@ const HOME_BTN_EDGE = 'rgba(255,255,255,0.08)';
 // needs, so the button and the mark it returns you to are the same colour.
 const HOME_BTN_INK_RING = 'rgba(226,226,226,0.5)';
 const HOME_BTN_INK_DOT = 'rgba(226,226,226,0.85)';
+
+// ── THE AIRPORT PANEL'S STYLES ──────────────────────────────────────────────
+//
+// NO backgroundColor ANYWHERE. This is type on the map, not a card: see the note
+// at the panel itself for why a readout is treated differently from a control.
+// The halo on the city name is what keeps it legible over a coastline instead.
+const ap = StyleSheet.create({
+  wrap: { position: 'absolute', left: 20, maxWidth: 210 },
+  // Inter, because a place name is language. Uppercase and tracked so it reads
+  // as a heading rather than as a label, at the weight the map's own country
+  // names use one size down.
+  city: {
+    fontFamily: SANS_SEMI,
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: 1,
+    color: 'rgba(226,226,226,0.95)',
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  caret: { color: '#4ade80', fontSize: 20 },
+  country: {
+    fontFamily: SANS,
+    fontSize: 12,
+    color: 'rgba(226,226,226,0.5)',
+    marginTop: 2,
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  // A short rule rather than a full-width one: it separates the name from the
+  // data without drawing a box the panel does not have.
+  rule: {
+    height: 1,
+    width: 28,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginTop: 10,
+    marginBottom: 9,
+  },
+  // JetBrains Mono for everything below the rule, because all of it is machine
+  // data: a code, a clock, coordinates and a distance.
+  mono: {
+    fontFamily: MONO,
+    fontSize: 12,
+    lineHeight: 18,
+    color: 'rgba(226,226,226,0.72)',
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  monoDim: {
+    fontFamily: MONO,
+    fontSize: 11,
+    lineHeight: 17,
+    color: 'rgba(226,226,226,0.45)',
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  codes: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 11 },
+  code: {
+    fontFamily: MONO,
+    fontSize: 12,
+    letterSpacing: 1,
+    color: 'rgba(226,226,226,0.45)',
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+  codeOn: {
+    fontFamily: MONO,
+    fontSize: 12,
+    letterSpacing: 1,
+    color: '#4ade80',
+    textShadowColor: '#050505',
+    textShadowRadius: 6,
+  },
+});
 
 // THE CONSENT STRIP. Same material as the button, laid out as a row: it runs
 // from the left margin to just clear of the button's 40px plus its 20px gutter

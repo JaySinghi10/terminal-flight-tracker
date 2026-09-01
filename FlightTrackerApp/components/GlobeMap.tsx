@@ -101,6 +101,9 @@ const FONT = ['Noto Sans Regular'];
 // threshold almost exactly, and the band is put around it: nothing below z4.5,
 // full ink by z6.
 const AIRPORT_MIN_ZOOM = 4.5;
+// The invisible tap target, in screen pixels at every zoom. 22 is a 44px
+// diameter, the usual floor for something a finger has to hit.
+const AIRPORT_HIT_R = 22;
 const AIRPORT_FULL_ZOOM = 6;
 
 // ── THE ROAD NETWORK ────────────────────────────────────────────────────────
@@ -248,6 +251,10 @@ const AIRPORT_FLY_MS = 3000;
 // motion there, whatever the distance — see flyRoute, which is untouched.
 const AIRPORT_PULLBACK_KM = 1500;
 const AIRPORT_NEAR_MS = 1400;
+// The ceiling on a direct airport flight. Delhi to New York is 11,700km, which
+// would otherwise run to 2.6s; this holds the longest move to roughly what the
+// pull-back used to cost without the pull-back's theatre.
+const AIRPORT_FAR_MS = 2400;
 
 // ROUTE: follow the great circle from origin to destination.
 //
@@ -479,6 +486,49 @@ const STYLE = {
         'circle-color': AIRPORT_INK,
         'circle-opacity': ['interpolate', ['linear'], ['zoom'],
           AIRPORT_MIN_ZOOM, 0, AIRPORT_FULL_ZOOM, 1],
+      },
+    },
+    // ── THE TAP TARGET, INVISIBLE AND A CONSTANT SIZE ────────────────────────
+    //
+    // A SECOND LAYER RATHER THAN A BIGGER DOT, because the two have different
+    // jobs. The visible dot is 2.2px at z5 growing to 4.5 at z10 — correct as a
+    // data point and hopeless as a target, since a finger covers about 44px and
+    // the dot it is aiming at is two. Taps missed at exactly the zoom where the
+    // airports first appear.
+    //
+    // 22px AT EVERY ZOOM. circle-radius is already in SCREEN pixels, so a plain
+    // number is a constant on-screen size regardless of how far out the camera
+    // is — the zoom interpolation on the visible dot was the only reason its
+    // target ever changed. 22 gives a 44px diameter, which is the standard
+    // minimum touch target, centred on the dot.
+    //
+    // circle-opacity 0 STILL ANSWERS A QUERY, AND THIS WAS READ RATHER THAN
+    // ASSUMED — it is load-bearing, because if a transparent circle were skipped
+    // the dots would stop being tappable altogether rather than degrading.
+    // Verified in maplibre-gl 5.24.0's source:
+    //
+    //   CircleStyleLayer.queryIntersectsFeature reads circle-radius,
+    //   circle-stroke-width, circle-translate and the two pitch properties.
+    //   It never consults circle-opacity.
+    //
+    //   StyleLayer.isHidden returns true only for the minzoom/maxzoom bounds and
+    //   visibility === 'none'. No paint property can hide a layer from a query.
+    //
+    //   The query pipeline itself filters by the spatial grid, the layer's own
+    //   `filter`, and the requested layer list, and applies no opacity gate.
+    //
+    // The same reading also confirms why the handler below sorts by distance:
+    // the pipeline ends in matching.sort(topDownFeatureComparator), so results
+    // arrive in RENDER order and features[0] is the topmost, not the nearest.
+    {
+      id: 'airport-hit',
+      type: 'circle',
+      source: 'airports',
+      minzoom: AIRPORT_MIN_ZOOM,
+      paint: {
+        'circle-radius': AIRPORT_HIT_R,
+        'circle-color': AIRPORT_INK,
+        'circle-opacity': 0,
       },
     },
     // THE PIN, ABOVE EVEN THE AIRPORTS, and drawn at EVERY zoom — unlike the
@@ -759,26 +809,33 @@ function start() {
     return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // ── AN AIRPORT FLIGHT NEVER PULLS BACK, AT ANY DISTANCE ────────────────────
+  //
+  // THE PULL-BACK ANSWERS A QUESTION THE USER HAS ALREADY ANSWERED. Rising to
+  // the globe and turning it exists to say "here is where that is, relative to
+  // everything else" — and someone who just tapped a dot can see where it is.
+  // They pointed at it. Showing them the planet first is the app explaining
+  // something they demonstrated they already knew.
+  //
+  // THE GATE STAYS WHERE IT IS EARNED: goHome, where the target is off screen by
+  // definition, and the route arc, where travelling the great circle IS the
+  // motion. See applyHome and flyRoute.
+  //
+  // THE DURATION STILL SCALES, because a direct move is not a teleport: crossing
+  // an ocean should take longer than crossing a city, or the distance stops
+  // being legible. Clamped so the shortest hop is not instant and the longest
+  // does not outstay the pull-back it replaced.
   function flyAirport(lon, lat) {
     cancelCamera();
-    // MEASURED FROM WHERE THE CAMERA IS, not from where it started or from home.
-    // Tapping a second airport near the first should be a short move even if
-    // both are far from wherever the session began.
     var c = map.getCenter();
     var km = kmBetween(c.lng, c.lat, lon, lat);
-    var far = km > ${AIRPORT_PULLBACK_KM};
-    post({ type: 'flyAirport', km: Math.round(km), far: far });
-    var opts = {
-      center: [lon, lat],
-      zoom: ${AIRPORT_ZOOM},
-      duration: far ? ${AIRPORT_FLY_MS} : ${AIRPORT_NEAR_MS}
-    };
-    // minZoom IS THE PULL-BACK, and omitting it is what makes the near case a
-    // plain move. With it, MapLibre derives the flight curvature from the apex
-    // and arcs out to the whole globe; without it, the default curve keeps the
-    // camera near the ground and simply travels.
-    if (far) opts.minZoom = ${GLOBE_APEX_ZOOM};
-    map.flyTo(opts);
+    var dur = ${AIRPORT_NEAR_MS} + km * 0.1;
+    if (dur > ${AIRPORT_FAR_MS}) dur = ${AIRPORT_FAR_MS};
+    post({ type: 'flyAirport', km: Math.round(km), ms: Math.round(dur) });
+    // NO minZoom, EVER, AND THAT IS THE WHOLE MECHANISM. With it MapLibre
+    // derives the flight curvature from the apex and arcs out to the globe;
+    // without it the default curve keeps the camera low and simply travels.
+    map.flyTo({ center: [lon, lat], zoom: ${AIRPORT_ZOOM}, duration: dur });
   }
 
   // ── MOTION 2: ALONG THE GREAT CIRCLE ───────────────────────────────────────
@@ -844,15 +901,50 @@ function start() {
     tok.raf = requestAnimationFrame(step);
   }
 
-  // TAPPING A DOT IS MOTION 1. The grab handler above has already cancelled
-  // whatever was running by the time this fires, so a tap during a flight
-  // redirects it rather than queueing behind it.
-  map.on('click', 'airports', function (e) {
-    if (!e.features || !e.features.length) return;
-    var f = e.features[0];
-    var c = f.geometry.coordinates;
-    flyAirport(c[0], c[1]);
-    post({ type: 'airport', iata: f.properties.iata });
+  // ── EVERY TAP ON THE MAP, IN ONE HANDLER ───────────────────────────────────
+  //
+  // ONE GLOBAL LISTENER RATHER THAN A LAYER-SCOPED ONE, because a tap on empty
+  // map has to be an event too — it is what dismisses the panel. A layer-scoped
+  // handler only ever fires on a hit, so "the user tapped nothing" would be
+  // unobservable and the panel could never be closed by the map.
+  //
+  // THE NEAREST DOT WINS, AND THAT MATTERS AT LOW ZOOM. With a 22px target,
+  // Delhi and its neighbours overlap well before z6, and queryRenderedFeatures
+  // returns everything under the point in RENDER order — which is the order the
+  // features happen to sit in the source, not the order a person would expect.
+  // Taking features[0] therefore picked an arbitrary one of the overlapping
+  // dots, and the same tap could select a different airport at a different zoom.
+  //
+  // SO EACH CANDIDATE IS PROJECTED BACK TO THE SCREEN and the one closest to the
+  // touch point is chosen. That is the dot the user was aiming at, by
+  // definition, and it is stable: the same tap always resolves to the same
+  // airport.
+  map.on('click', function (e) {
+    var hits = map.queryRenderedFeatures(e.point, { layers: ['airport-hit'] });
+    if (!hits || hits.length === 0) {
+      post({ type: 'mapTap' });
+      return;
+    }
+    var best = null;
+    var bestD = Infinity;
+    for (var i = 0; i < hits.length; i++) {
+      var c = hits[i].geometry.coordinates;
+      var p = map.project(c);
+      var dx = p.x - e.point.x, dy = p.y - e.point.y;
+      var d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = hits[i]; }
+    }
+    if (best === null) { post({ type: 'mapTap' }); return; }
+    // THE GRAB HANDLER HAS ALREADY CANCELLED whatever was running by the time
+    // this fires, so a tap during a flight redirects it rather than queueing.
+    var bc = best.geometry.coordinates;
+    flyAirport(bc[0], bc[1]);
+    post({
+      type: 'airport',
+      iata: best.properties.iata,
+      candidates: hits.length,
+      px: Math.round(Math.sqrt(bestD))
+    });
   });
 
   // ── HOME ───────────────────────────────────────────────────────────────────
@@ -1000,10 +1092,19 @@ export type GlobeMapHandle = {
 // is the moment home can be applied without anything visibly moving: the camera
 // is set while the map is still blank, so the user's first painted frame is
 // already the right one.
-type GlobeMapProps = { onReady?: () => void };
+type GlobeMapProps = {
+  onReady?: () => void;
+  // A DOT WAS TAPPED, and this is the airport it resolved to — the nearest to
+  // the touch point, not merely one of the overlapping candidates.
+  onAirport?: (iata: string) => void;
+  // THE MAP WAS TAPPED AND NOTHING WAS THERE. Distinct from onAirport rather
+  // than inferred from its absence, because "nothing was hit" is the event that
+  // dismisses the panel and it has to be observable.
+  onMapTap?: () => void;
+};
 
 const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
-  function GlobeMap({ onReady }, ref) {
+  function GlobeMap({ onReady, onAirport, onMapTap }, ref) {
     const webRef = useRef<WebView>(null);
 
     // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
@@ -1102,9 +1203,14 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
             onReady?.();
           }
           if (m.type === 'ready') console.log('[MAP] tiles in, first idle');
-          if (m.type === 'airport') console.log(`[MAP] dot tapped: ${m.iata}`);
-          if (m.type === 'flyAirport' || m.type === 'flyHome') {
-            console.log(`[MAP] ${m.type} ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
+          if (m.type === 'airport') {
+            console.log(`[MAP] dot tapped: ${m.iata} (nearest of ${m.candidates}, ${m.px}px from touch)`);
+            onAirport?.(String(m.iata));
+          }
+          if (m.type === 'mapTap') onMapTap?.();
+          if (m.type === 'flyAirport') console.log(`[MAP] flyAirport ${m.km}km direct, ${m.ms}ms`);
+          if (m.type === 'flyHome') {
+            console.log(`[MAP] flyHome ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
           }
           if (m.type === 'homeSet') {
             console.log(`[HOME][PAGE] setHome ${m.was} -> ${m.kind} at ${m.lon},${m.lat} (pins now ${m.pins}, was at ${m.wasLon})`);
