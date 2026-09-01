@@ -862,6 +862,30 @@ const HTML = `<!DOCTYPE html>
 // its own success or its own failure, so the next thing that breaks says what it
 // was rather than what happened afterwards.
 var STAGE = 'boot';
+
+// -- WHICH LOAD OF THIS PAGE THIS IS ----------------------------------------
+//
+// GENERATED ONCE, WHEN THE SCRIPT FIRST RUNS, and never again for the life of
+// the document. A new value is therefore the definition of "this page is new":
+// it changes when and only when the WebView has thrown away everything it was
+// holding and started over.
+//
+// WHY THAT NEEDS SAYING OUT LOUD. Everything the page knows that React Native
+// told it -- where home is, which routes to draw, whether past arcs are hidden
+// -- lives in JavaScript variables in here and dies with the document. React
+// Native's own state does NOT die with it: the screen stays mounted, its state
+// and its refs survive, and it goes on believing it has already said all of
+// those things. A reload silently unteaches the page and nothing on the other
+// side notices.
+//
+// ANDROID RECREATES WEBVIEWS UNDER MEMORY PRESSURE, so this is not a
+// development-time curiosity. It is the ordinary case on a busy device.
+//
+// THE CLOCK PLUS A RANDOM TAIL. The clock alone would collide if a page were
+// recreated inside the same millisecond, which is exactly the case a fast
+// reload produces. Neither half is meaningful on its own and nothing parses
+// this -- it is compared for equality and nothing else.
+var LOAD_ID = String(Date.now()) + '.' + Math.random().toString(36).slice(2, 8);
 function post(o) {
   try { window.ReactNativeWebView.postMessage(JSON.stringify(o)); } catch (e) {}
 }
@@ -1015,9 +1039,6 @@ function start() {
     if (reported === 1) diagnose();
   });
 
-  // ON style.load AND NOT ON load. setProjection needs a style to attach to, and
-  // 'load' also waits for the first tiles — which would leave the map flat for
-  // as long as the network takes and then snap it into a sphere.
   // ── THE AIRCRAFT ICON, RASTERISED ONCE ─────────────────────────────────────
   //
   // A CANVAS, BECAUSE THE STYLE HAS NO SPRITE. Every other mark on this map is a
@@ -1074,6 +1095,9 @@ function start() {
     if (e && e.id === 'aircraft') addPlaneImage();
   });
 
+  // ON style.load AND NOT ON load. setProjection needs a style to attach to, and
+  // 'load' also waits for the first tiles — which would leave the map flat for
+  // as long as the network takes and then snap it into a sphere.
   map.on('style.load', function () {
     STAGE = 'projection';
     try {
@@ -1083,7 +1107,12 @@ function start() {
     }
     addPlaneImage();
     STAGE = 'tiles';
-    post({ type: 'style' });
+    // THE LOAD ID RIDES THE MESSAGE THAT ALREADY MEANS "READY", rather than
+    // arriving in one of its own. This is the first moment the page can be told
+    // anything -- the style has parsed, so getSource and setFilter will answer
+    // -- and it is already the signal React Native waits on. A separate message
+    // would be a second thing that could arrive in the wrong order.
+    post({ type: 'style', load: LOAD_ID });
   });
 
   // ── CAMERA MOTIONS ─────────────────────────────────────────────────────────
@@ -1301,6 +1330,24 @@ function start() {
     // WebView: if React changes account and nothing calls in here, the old pin
     // stays drawn whatever storage says, and no amount of key logging on the
     // other side would show it.
+    // THE PIN IS THE POSITION AND NOTHING ELSE. A country derived from a
+    // timezone is not a place the user is standing, so it gets no mark.
+    var pinFeatures = h.kind === 'position'
+      ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [h.lon, h.lat] } }]
+      : [];
+    var pinSrc = map.getSource('pin');
+    if (pinSrc) pinSrc.setData({ type: 'FeatureCollection', features: pinFeatures });
+
+    // READ BACK OFF THE SOURCE, NOT COMPUTED FROM THE INTENT.
+    //
+    // This line used to report h.kind === 'position' ? 1 : 0 -- which is what
+    // the code MEANT to write, restated. It could not have told us whether the
+    // write happened, whether the source existed to be written to, or whether a
+    // pin is on the map; it would have said "pins now 1" with equal confidence
+    // in all three cases. What it reports now is what the source actually holds
+    // afterwards, plus whether the source was there at all.
+    var held = pinSrc && pinSrc._data && pinSrc._data.features
+      ? pinSrc._data.features.length : -1;
     post({
       type: 'homeSet',
       kind: h.kind,
@@ -1308,15 +1355,9 @@ function start() {
       wasLon: was ? Math.round(was.lon * 100) / 100 : null,
       lon: Math.round(h.lon * 100) / 100,
       lat: Math.round(h.lat * 100) / 100,
-      pins: h.kind === 'position' ? 1 : 0
-    });
-    // THE PIN IS THE POSITION AND NOTHING ELSE. A country derived from a
-    // timezone is not a place the user is standing, so it gets no mark.
-    map.getSource('pin').setData({
-      type: 'FeatureCollection',
-      features: h.kind === 'position'
-        ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [h.lon, h.lat] } }]
-        : []
+      wanted: pinFeatures.length,
+      pins: held,
+      src: pinSrc ? 'yes' : 'MISSING'
     });
     var dur = animate ? ${HOME_FLY_MS} : 0;
     if (h.kind === 'zone') {
@@ -1632,10 +1673,62 @@ function start() {
     home: function () { goHome(true); },
     homeNow: function () { goHome(false); },
     probe: probe,
+    pin: pinReport,
     flights: setFlights,
     tick: tick,
     past: setShowPast
   };
+
+  // ── WHAT THE PIN IS ACTUALLY DOING, ONCE THE MAP HAS SETTLED ───────────────
+  //
+  // THREE DIFFERENT FAILURES LOOK IDENTICAL FROM REACT NATIVE, and until this
+  // ran there was no way to tell them apart without guessing:
+  //
+  //   THE SOURCE IS EMPTY. Nothing ever called setHome, or it was called with a
+  //   zone or a fallback, which correctly draws no pin. 'feats' says so.
+  //
+  //   THE SOURCE IS FULL AND NOTHING IS DRAWN. The data is there and the
+  //   renderer is not putting it on screen -- a layer order, a paint or a
+  //   projection problem. 'rendered' is what catches this, because
+  //   queryRenderedFeatures asks the RENDERER what it painted rather than
+  //   asking the source what it holds.
+  //
+  //   IT IS DRAWN AND OFF SCREEN. Both counts disagree honestly and the camera
+  //   is simply somewhere else. 'inView' settles it.
+  //
+  // ON FIRST IDLE, because idle is the first moment every tile and every layer
+  // has been through a full render pass; asking earlier would report a map that
+  // has not finished drawing yet and would be a different kind of lie.
+  function pinReport() {
+    var src = map.getSource('pin');
+    var data = src && src._data ? src._data : null;
+    var feats = data && data.features ? data.features.length : -1;
+    var rendered = -1;
+    try {
+      rendered = map.queryRenderedFeatures({ layers: ['pin-halo', 'pin-dot'] }).length;
+    } catch (e) {
+      rendered = -2;
+    }
+    var inView = 'n/a';
+    if (feats > 0) {
+      var c = data.features[0].geometry.coordinates;
+      try {
+        inView = map.getBounds().contains({ lng: c[0], lat: c[1] }) ? 'yes' : 'no';
+      } catch (e2) {
+        inView = 'unknown';
+      }
+    }
+    post({
+      type: 'pin',
+      feats: feats,
+      rendered: rendered,
+      inView: inView,
+      halo: map.getLayer('pin-halo') ? 'yes' : 'MISSING',
+      dot: map.getLayer('pin-dot') ? 'yes' : 'MISSING',
+      home: homeView ? homeView.kind : 'none',
+      hasPlaneImage: map.hasImage('aircraft') ? 'yes' : 'no'
+    });
+  }
 
   var idled = false;
   map.on('idle', function () {
@@ -1643,6 +1736,7 @@ function start() {
     idled = true;
     STAGE = 'idle';
     post({ type: 'ready' });
+    pinReport();
   });
 }
 
@@ -1722,7 +1816,16 @@ export type GlobeMapHandle = {
 // is set while the map is still blank, so the user's first painted frame is
 // already the right one.
 type GlobeMapProps = {
-  onReady?: () => void;
+  // FIRED ON EVERY LOAD OF THE PAGE, not once per mount of this component, and
+  // the argument is what makes the difference usable. The page generates an
+  // identity when its script runs and hands it over here; a new value means the
+  // WebView has been recreated and has forgotten everything it was ever told.
+  //
+  // THE CALLER'S JOB IS TO KEY ON IT. Anything sent to the page exactly once
+  // must depend on this value, or it will not be sent again after a reload --
+  // which is the failure this argument exists to make impossible to write. See
+  // the effects in app/search.tsx that carry mapLoad in their dependencies.
+  onReady?: (load: string) => void;
   // A DOT WAS TAPPED, and this is the airport it resolved to — the nearest to
   // the touch point, not merely one of the overlapping candidates.
   onAirport?: (iata: string) => void;
@@ -1858,10 +1961,16 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           if (m.type === 'probe') console.warn(`[MAP] probe ${m.what}: ${m.status}`);
           if (m.type === 'cdn') console.log(`[MAP] library from ${m.host} (v${m.version})`);
           if (m.type === 'style') {
-            console.log('[MAP] style parsed, globe attached');
+            console.log(`[MAP] style parsed, globe attached (load ${m.load})`);
             // BEFORE THE FIRST TILE. Applying home here means the camera is set
             // while the map is still blank, so nothing is seen to move.
-            onReady?.();
+            //
+            // THE LOAD ID IS THE ARGUMENT, and that is the whole of the contract
+            // change. A bare call said "ready" once and could never say it
+            // again, because ready is not a thing that stops being true; an
+            // identity says WHICH page is ready, and a caller that keys on it
+            // gets a change to react to every time the page is replaced.
+            onReady?.(String(m.load));
           }
           if (m.type === 'ready') console.log('[MAP] tiles in, first idle');
           if (m.type === 'airport') {
@@ -1873,8 +1982,14 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           if (m.type === 'flyHome') {
             console.log(`[MAP] flyHome ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
           }
+          if (m.type === 'pin') {
+            console.log(
+              `[PIN] source holds ${m.feats} feature(s), renderer painted ${m.rendered}, ` +
+              `in view: ${m.inView} | layers halo=${m.halo} dot=${m.dot} | ` +
+              `home=${m.home} | aircraft image=${m.hasPlaneImage}`);
+          }
           if (m.type === 'homeSet') {
-            console.log(`[HOME][PAGE] setHome ${m.was} -> ${m.kind} at ${m.lon},${m.lat} (pins now ${m.pins}, was at ${m.wasLon})`);
+            console.log(`[HOME][PAGE] setHome ${m.was} -> ${m.kind} at ${m.lon},${m.lat} (wanted ${m.wanted}, source now holds ${m.pins}, source=${m.src}, was at ${m.wasLon})`);
           }
           if (m.type === 'probe') {
             console.log(`[HOME][PAGE] probe(${m.tag}): holds ${m.home} at ${m.homeLon}, pin features = ${m.pins}`);

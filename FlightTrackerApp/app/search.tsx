@@ -1746,7 +1746,6 @@ export default function Search() {
   // undecided; both answers clear it and neither can come back without a
   // deliberate clear from the profile page.
   const [askConsent, setAskConsent] = useState(false);
-  const homeSentRef = useRef(false);
   const prevScopeRef = useRef<string | null>(null);
 
   // ── THE OS SIDE, WHICH IS THE OTHER OF THE TWO FACTS ──────────────────────
@@ -1792,8 +1791,6 @@ export default function Search() {
     const previous = prevScopeRef.current;
     const switched = previous !== null && previous !== homeScope;
     prevScopeRef.current = homeScope;
-    // A NEW SCOPE HAS NOT BEEN SENT TO THE MAP YET, whatever the old one did.
-    homeSentRef.current = false;
     // EVERY RUN OF THIS EFFECT, WITH THE SCOPE IT RAN FOR. If the scope is not
     // changing, this line is the proof: it prints once and never again.
     console.log(`[HOME] === RUN === scope="${homeScope}" previous="${previous ?? 'none'}" switched=${switched} email=${email === null ? 'null' : email}`);
@@ -1818,7 +1815,16 @@ export default function Search() {
         mapRef.current?.probe(`before forget (${previous} -> ${homeScope})`);
         setHome(null);
         // 2 of 5. A logout or an account switch throws the camera back to the
-        // country view; the previous account's chosen airport goes with it.
+        // country view; the previous account’s chosen airport goes with it.
+        //
+        // THE ONE SEND NOT KEYED ON mapLoad, AND DELIBERATELY SO. Everything
+        // else this screen tells the page is a fact it should still be holding
+        // after a reload, so it is re-sent when the page is new. This is not a
+        // fact, it is an ERASURE — wipe the previous account off the map now,
+        // before anything async runs. It is superseded within the same effect
+        // run: every terminal branch below writes React state, and the
+        // mapLoad-keyed effect sends THAT. A reloaded page therefore gets the
+        // resolved home, never this placeholder, which is the correct outcome.
         leaveAirport();
         mapRef.current?.setHome(timezoneHome());
         mapRef.current?.probe('after forget');
@@ -1916,7 +1922,6 @@ export default function Search() {
     if (homeScope === null) return;
     console.log('[HOME] consent: accepted');
     setAskConsent(false);
-    homeSentRef.current = false;
     await saveConsent(homeScope, 'granted');
     const pos = await positionOrNull();
     if (pos === null) {
@@ -1943,19 +1948,48 @@ export default function Search() {
   // awaits the purge inside every accessor, so a read cannot happen before it
   // whatever this screen does. See the note at purgeLegacyHome.
 
+  // ── WHICH LOAD OF THE PAGE WE ARE TALKING TO ──────────────────────────────
+  //
+  // AN IDENTITY, NOT A BOOLEAN, AND THAT IS THE FIX FOR A WHOLE CLASS OF BUG.
+  //
+  // This was `mapReady`, a flag that went true once and stayed true. It could
+  // not distinguish "the map is ready" from "the map is ready AGAIN", and the
+  // difference matters because the second one means the page has thrown away
+  // everything it was ever told. The WebView reloads without this screen
+  // remounting — a Fast Refresh of GlobeMap.tsx in development, Android
+  // reclaiming the view under memory pressure in production — and afterwards
+  // React Native still believed it had sent home, the routes and the past-arc
+  // preference, because on this side nothing had changed.
+  //
+  // THE PAGE NAMES ITSELF NOW. It generates an id when its script first runs and
+  // sends it with the ready message; a NEW value is the page saying "I have
+  // forgotten everything". Every effect that tells the page something carries
+  // this in its dependencies, so a reload re-runs all of them by the ordinary
+  // rules rather than by anyone remembering to.
+  //
+  // null MEANS NO PAGE YET, and it is the only "not ready" test left.
+  const [mapLoad, setMapLoad] = useState<string | null>(null);
+
   // SENT WHEN BOTH SIDES ARE READY, whichever arrives last — the map's style may
   // parse before or after the disk read returns, and this must not depend on
-  // which. The ref makes it exactly once.
-  const [mapReady, setMapReady] = useState(false);
+  // which.
+  //
+  // NO LATCH ANY MORE. There was a homeSentRef here that made this "exactly
+  // once", and it was the bug: it held a fact about the PAGE while living on
+  // this screen, so a reload left it closed forever and home was never re-sent.
+  // The dependencies already say exactly when a send is warranted — a new page,
+  // a new home, or a new leaveAirport — and none of the three can fire
+  // spuriously: `home` changes only when the resolution effect settles it, and
+  // leaveAirport is a useCallback with an empty dependency list.
   useEffect(() => {
-    if (!mapReady || home === null || homeSentRef.current) return;
-    homeSentRef.current = true;
+    if (mapLoad === null || home === null) return;
     // 3 of 5. Usually the first placement, when no panel can be open — but this
-    // also re-fires after a scope change and after consent is granted, and both
-    // of those jump the camera somewhere the panel is not describing.
+    // also re-fires after a scope change, after consent is granted, and after
+    // the page reloads, and all three jump the camera somewhere the panel is
+    // not describing.
     leaveAirport();
     mapRef.current?.setHome(home);
-  }, [mapReady, home, leaveAirport]);
+  }, [mapLoad, home, leaveAirport]);
 
   // ── THE ROUTES THE USER PUT ON THE MAP ────────────────────────────────────
   //
@@ -1992,14 +2026,20 @@ export default function Search() {
     .map(f => `${f.a[0]},${f.a[1]},${f.b[0]},${f.b[1]},${f.dep},${f.arr}`)
     .join('|');
 
-  // GATED ON hydrated AS WELL AS mapReady. Before the first read lands the list
+  // GATED ON hydrated AS WELL AS THE PAGE. Before the first read lands the list
   // is empty, and pushing that would draw nothing and then fill in — which reads
   // as the routes being removed and put back on every app start.
+  //
+  // mapLoad, NOT A READY FLAG. This effect had no latch and still went stale for
+  // the same reason the home one did: all three of its dependencies were frozen
+  // after the first run, so a page reload left the arcs undrawn until something
+  // unrelated changed the route list. Keying on the load identity is what makes
+  // "the page is new" one of the things that re-runs it.
   useEffect(() => {
-    if (!mapReady || !routesHydrated) return;
+    if (mapLoad === null || !routesHydrated) return;
     mapRef.current?.setFlights(mapFlights);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapFlightsKey, mapReady, routesHydrated]);
+  }, [mapFlightsKey, mapLoad, routesHydrated]);
 
   // WHETHER PAST ARCS ARE DRAWN. A layer filter on the page, so this is a
   // boolean across the bridge and nothing else — see setShowPast in GlobeMap.
@@ -2008,9 +2048,9 @@ export default function Search() {
   // default before the read lands would show one frame of the previous
   // account's answer.
   useEffect(() => {
-    if (!mapReady || !routesHydrated) return;
+    if (mapLoad === null || !routesHydrated) return;
     mapRef.current?.setShowPast(showPast);
-  }, [showPast, mapReady, routesHydrated]);
+  }, [showPast, mapLoad, routesHydrated]);
 
   // IS THERE ANYTHING TO HIDE. The control is not drawn unless at least one
   // route on the map has actually flown — a switch for nothing is furniture on
@@ -2031,10 +2071,17 @@ export default function Search() {
   // that would wake the device on its own schedule. A minute is the right grain
   // for both an aircraft crossing an ocean and a terminator sweeping 0.25 of a
   // degree, and it costs one number across the bridge.
+  //
+  // ON mapLoad TOO, THOUGH THIS ONE WOULD HAVE HEALED ITSELF. `now` advances
+  // every sixty seconds whatever else happens, so a reloaded page would have got
+  // its clock back within the minute — but it would have spent up to a minute
+  // drawing the terminator for whenever the page happened to load, and "wrong
+  // for under a minute" is still wrong. The same key on all four senders is
+  // also one rule rather than three and an exception.
   useEffect(() => {
-    if (!mapReady) return;
+    if (mapLoad === null) return;
     mapRef.current?.tick(now);
-  }, [mapReady, now]);
+  }, [mapLoad, now]);
 
   // ── THE AIRPORT PANEL ─────────────────────────────────────────────────────
   //
@@ -3399,7 +3446,7 @@ export default function Search() {
           moved by the page itself, so this only has to decide what to show. */}
       <GlobeMap
         ref={mapRef}
-        onReady={() => setMapReady(true)}
+        onReady={setMapLoad}
         onAirport={showAirport}
         onMapTap={handleMapTap}
       />
