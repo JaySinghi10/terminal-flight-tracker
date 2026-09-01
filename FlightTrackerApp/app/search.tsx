@@ -134,6 +134,42 @@ const MONO_BOLD = 'JetBrainsMono_700Bold';
 // filter panel's animation timings and the two have nothing to do with each
 // other.
 const CITY_TYPE_MS = 26;
+
+// ── THE BODY TYPES FASTER THAN THE CITY, AND THAT IS A DECLARED TRADE ───────
+//
+// 26ms A CHARACTER CANNOT FIT THE WHOLE PANEL INTO 1,400ms. The arithmetic, worst
+// realistic case: SAN FRANCISCO (13) + United States (13) + SFO (3) + a clock
+// (11) + coordinates (20) + a distance (13) + a flight time (14) is 87
+// characters, which at 26ms is 2,262ms before a single gap between lines. Even a
+// short one - NEW DELHI, India - is 75 characters and 1,950ms. The constraint and
+// the speed are simply in conflict.
+//
+// SO THE HEADLINE KEEPS 26 AND THE BODY RUNS AT 10. That is not a silent speed-up
+// but a decision about what the typing is FOR: the city name is the thing being
+// announced and wants to be read as it lands, while the lines under it are a
+// readout printing. A terminal does exactly this - a prompt types at human speed
+// and its output scrolls faster than you can follow.
+//
+// THE BUDGET, WORST CASE: 338ms of city, 740ms of body at 10ms, and six 40ms
+// gaps is 1,318ms. Typical is nearer 1,100ms. Both land before the shortest
+// camera flight settles.
+//
+// IF THIS READS AS TOO FAST, the lever is FLIGHT time, not this: raising the
+// 1,400ms floor on a camera move would let the body slow down without the panel
+// outstaying the motion that opened it.
+const BODY_TYPE_MS = 10;
+// The beat between one line finishing and the next starting. Also the beat the
+// city codes arrive on, since a three-letter code typed at any speed is a
+// flicker rather than a type-on.
+const PANEL_LINE_GAP_MS = 40;
+
+// ── THE FLIGHT TIME ESTIMATE ────────────────────────────────────────────────
+//
+// A realistic ground speed at altitude, and a fixed allowance for the parts of a
+// flight that happen at no speed at all. See panelFlightTime for what these
+// produce against real block times.
+const CRUISE_KMH = 850;
+const FLIGHT_OVERHEAD_MIN = 30;
 const SANS = 'Inter_400Regular';
 // The semibold face, loaded in _layout with the rest. Only the airport panel's
 // city name uses it on this screen: it is the one heading the map owns.
@@ -1617,12 +1653,40 @@ export default function Search() {
   // object would fly the camera back to the route every time the results list
   // was touched, undoing any pan the user had made since it arrived.
   const mapRef = useRef<GlobeMapHandle>(null);
+
+  // ── WHICH AIRPORT THE PANEL IS DESCRIBING ─────────────────────────────────
+  //
+  // DECLARED HERE, WITH mapRef, rather than beside the panel's own derived
+  // values further down — because it is not really the panel's state. It is a
+  // fact about what the CAMERA is looking at, and every place that moves the
+  // camera has to be able to reach it.
+  const [panelIata, setPanelIata] = useState<string | null>(null);
+
+  // ── THE PANEL DESCRIBES WHERE THE CAMERA IS, SO MOVING AWAY CLOSES IT ─────
+  //
+  // THE BUG THIS FIXES: tapping a dot opened the panel, pressing home flew the
+  // camera to the other side of the world, and the panel stayed — describing an
+  // airport that was no longer on screen, with a live local time for a place the
+  // user could not see. Only a tap on empty map cleared it.
+  //
+  // ONE NAMED CALL RATHER THAN setPanelIata(null) SPRINKLED AROUND. Every camera
+  // motion that is not itself a selection has to do this, and there are five of
+  // them in this file; a name makes the rule greppable and makes a sixth one
+  // obvious when it is added.
+  //
+  // THE ONE EXCEPTION IS openAirport, which moves the camera BECAUSE an airport
+  // was chosen. Clearing there would close the panel the tap just opened.
+  const leaveAirport = useCallback(() => setPanelIata(null), []);
+
   const flownFrom = routeResult === null ? null : routeResult.origin;
   const flownTo = routeResult === null ? null : routeResult.destination;
   useEffect(() => {
     if (flownFrom === null || flownTo === null) return;
+    // 1 of 5. A route frames two endpoints; whatever single airport the panel
+    // was describing is not what the camera is showing any more.
+    leaveAirport();
     mapRef.current?.flyRoute(flownFrom, flownTo);
-  }, [flownFrom, flownTo]);
+  }, [flownFrom, flownTo, leaveAirport]);
 
   // ── THE HOME VIEW, PER ACCOUNT ────────────────────────────────────────────
   //
@@ -1727,6 +1791,9 @@ export default function Search() {
         // keys are innocent.
         mapRef.current?.probe(`before forget (${previous} -> ${homeScope})`);
         setHome(null);
+        // 2 of 5. A logout or an account switch throws the camera back to the
+        // country view; the previous account's chosen airport goes with it.
+        leaveAirport();
         mapRef.current?.setHome(timezoneHome());
         mapRef.current?.probe('after forget');
         // AN ACCOUNT'S OWN SCOPE IS DELIBERATELY LEFT ALONE on a switch: that is
@@ -1857,8 +1924,12 @@ export default function Search() {
   useEffect(() => {
     if (!mapReady || home === null || homeSentRef.current) return;
     homeSentRef.current = true;
+    // 3 of 5. Usually the first placement, when no panel can be open — but this
+    // also re-fires after a scope change and after consent is granted, and both
+    // of those jump the camera somewhere the panel is not describing.
+    leaveAirport();
     mapRef.current?.setHome(home);
-  }, [mapReady, home]);
+  }, [mapReady, home, leaveAirport]);
 
   // ── THE AIRPORT PANEL ─────────────────────────────────────────────────────
   //
@@ -1866,7 +1937,8 @@ export default function Search() {
   // GeoJSON — an IATA string — and everything else is looked up here through the
   // same lib/airports the search uses, so the panel cannot describe a different
   // Delhi from the one the results list found.
-  const [panelIata, setPanelIata] = useState<string | null>(null);
+  // panelIata is declared up with mapRef - see the note there for why it lives
+  // with the camera rather than with the panel it feeds.
   const panelAirport = panelIata === null ? null : airportByCode(panelIata);
 
   // ── THE TYPE-ON ───────────────────────────────────────────────────────────
@@ -1945,6 +2017,141 @@ export default function Search() {
   // panel whether or not there is an alternative to it.
   const panelSiblings = panelAirport === null ? [] : cityAirports(panelAirport.city);
 
+  // ── AN ESTIMATED FLIGHT TIME, AND IT READS AS AN ESTIMATE ─────────────────
+  //
+  // DISTANCE OVER A CRUISE SPEED, PLUS A FIXED OVERHEAD. 850km/h is a realistic
+  // ground speed for a narrow or wide body at altitude; the 30 minutes covers
+  // taxi, climb and descent, which no cruise speed can account for and which
+  // dominate a short hop. Delhi to Mumbai comes out near 1h55 against a real
+  // block time of about 2h05, and Delhi to New York near 14h20 against about
+  // 15h. Close enough to be useful and never presented as more than that.
+  //
+  // ROUNDED TO FIVE MINUTES AND PREFIXED WITH A TILDE, because a figure like
+  // "1h 53m" claims a precision this arithmetic does not have. The rounding is
+  // the honesty: it says out loud that the last digit is not meant.
+  //
+  // GREAT CIRCLE, NOT A ROUTE. Real aircraft fly airways, hold, and take off
+  // into the wind, all of which add. This is the floor, and it is the same floor
+  // the distance line above it is quoting.
+  const panelFlightTime = useMemo(() => {
+    if (panelDistanceKm === null) return null;
+    const mins = Math.round((panelDistanceKm / CRUISE_KMH) * 60) + FLIGHT_OVERHEAD_MIN;
+    const rounded = Math.round(mins / 5) * 5;
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return h === 0 ? `~${m}m flight` : `~${h}h ${String(m).padStart(2, '0')}m flight`;
+  }, [panelDistanceKm]);
+
+  // ── THE PANEL'S BODY, AS AN ORDERED LIST OF THINGS TO TYPE ────────────────
+  //
+  // A LIST RATHER THAN SEVEN CONDITIONAL BLOCKS IN THE JSX, because the sequence
+  // is the feature: each line has to know its own position so it can wait for
+  // the ones above it. Lines that do not apply are absent from the array rather
+  // than present and empty, so the distance and flight time simply are not steps
+  // when there is no position — no gap, no pause where a line would have been.
+  //
+  // THE CODES ARE STEPS TOO, one per code, revealed whole rather than typed. A
+  // three-letter code typed at any speed is a flicker, and they are Pressables
+  // rather than text — so they arrive as tokens, on the same beat.
+  type PanelStep =
+    | { kind: 'text'; key: string; text: string; dim: boolean }
+    | { kind: 'code'; key: string; iata: string };
+
+  const panelSteps = useMemo<PanelStep[]>(() => {
+    if (panelAirport === null) return [];
+    const out: PanelStep[] = [
+      { kind: 'text', key: 'country', text: panelAirport.country, dim: false },
+      { kind: 'text', key: 'iata', text: panelAirport.iata, dim: false },
+    ];
+    if (panelClock !== '') {
+      out.push({ kind: 'text', key: 'clock', text: `${panelClock} local`, dim: false });
+    }
+    out.push({ kind: 'text', key: 'coords', text: panelCoords, dim: true });
+    if (panelDistanceKm !== null) {
+      out.push({ kind: 'text', key: 'dist', text: `${panelDistanceKm.toLocaleString()} km away`, dim: true });
+    }
+    if (panelFlightTime !== null) {
+      out.push({ kind: 'text', key: 'time', text: panelFlightTime, dim: true });
+    }
+    for (const a of panelSiblings) {
+      out.push({ kind: 'code', key: `c-${a.iata}`, iata: a.iata });
+    }
+    return out;
+  }, [panelAirport, panelClock, panelCoords, panelDistanceKm, panelFlightTime, panelSiblings]);
+
+  // ── THE SEQUENCER ─────────────────────────────────────────────────────────
+  //
+  // ONE CHAINED TIMEOUT RATHER THAN AN INTERVAL PER LINE. An interval per line
+  // would need clearing per line and would drift against the others; a chain has
+  // exactly one timer alive at a time and cannot leave a stray behind.
+  //
+  // TWO COUNTERS AND NOTHING ELSE: which step is currently arriving, and how many
+  // characters of it have landed. Everything before `stepAt` is complete,
+  // everything after is not yet rendered. As with the city, the counters are
+  // numbers rather than strings — a substring would mean the timer owned the
+  // text, and switching airport mid-sequence could interleave two panels.
+  //
+  // IT STARTS ONLY WHEN THE CITY HAS LANDED, which is what makes the whole panel
+  // one motion rather than two racing each other.
+  const [stepAt, setStepAt] = useState(0);
+  const [stepTyped, setStepTyped] = useState(0);
+
+  useEffect(() => {
+    if (!typingDone) { setStepAt(0); setStepTyped(0); return; }
+    let step = 0;
+    let ch = 0;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      if (cancelled || step >= panelSteps.length) return;
+      const s = panelSteps[step];
+      // A CODE IS ONE TICK. A text line is one tick per character.
+      const len = s.kind === 'code' ? 1 : s.text.length;
+      if (ch < len) {
+        ch += 1;
+        setStepTyped(ch);
+        timer = setTimeout(tick, s.kind === 'code' ? PANEL_LINE_GAP_MS : BODY_TYPE_MS);
+        return;
+      }
+      step += 1;
+      ch = 0;
+      setStepAt(step);
+      setStepTyped(0);
+      if (step < panelSteps.length) timer = setTimeout(tick, PANEL_LINE_GAP_MS);
+    };
+    timer = setTimeout(tick, PANEL_LINE_GAP_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [typingDone, panelSteps]);
+
+  // ── AIRPORTS THIS USER HAS FLOWN THROUGH ──────────────────────────────────
+  //
+  // BOTH ENDS OF EVERY SAVED FLIGHT, ARCHIVED INCLUDED. The provider keeps one
+  // list and archiving is a field on a record rather than a separate collection,
+  // so "including archived" needs no filter — it needs the absence of one. A
+  // flight taken last year is exactly as visited as one taken yesterday.
+  //
+  // SORTED, WHICH IS NOT COSMETIC. This memo feeds an effect that pushes into
+  // the WebView; a Set's iteration order follows insertion, so the same airports
+  // arriving in a different order would produce a different string and re-send
+  // identical data on every list change. Sorting makes the value stable.
+  const visitedCodes = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of savedFlights) {
+      if (f.from?.iata) set.add(f.from.iata);
+      if (f.to?.iata) set.add(f.to.iata);
+    }
+    return Array.from(set).sort();
+  }, [savedFlights]);
+
+  // KEYED ON THE JOINED STRING, not the array, whose identity changes on every
+  // render of the provider. The map is only told when the SET actually differs.
+  const visitedKey = visitedCodes.join(',');
+  useEffect(() => {
+    if (!mapReady) return;
+    mapRef.current?.setVisited(visitedCodes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitedKey, mapReady]);
+
   const openAirport = useCallback((iata: string) => {
     setPanelIata(iata);
     mapRef.current?.flyToAirport(iata);
@@ -1973,10 +2180,13 @@ export default function Search() {
         firstFocusRef.current = false;
         return;
       }
+      // 4 of 5. Coming back to the tab flies home, so a panel left open from
+      // before the user navigated away is describing the wrong place.
+      leaveAirport();
       // A no-op until the page has been told where home is, which is what we
       // want: there is nothing to return to yet.
       mapRef.current?.goHome();
-    }, []),
+    }, [leaveAirport]),
   );
 
   // FORGETTING ON LOGOUT IS NOT A SEPARATE EFFECT ANY MORE. It used to be one,
@@ -3589,35 +3799,58 @@ export default function Search() {
             {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
           </Text>
 
-          {/* EVERYTHING BELOW WAITS FOR THE NAME TO LAND. Rendering it during
-              the type-on would put four static lines under a moving one, which
-              reads as the panel being half-drawn rather than as it arriving. */}
-          {typingDone && (
-            <>
-              <Text style={ap.country} numberOfLines={1}>{panelAirport.country}</Text>
-              <View style={ap.rule} />
-              <Text style={ap.mono}>{panelAirport.iata}</Text>
-              {panelClock !== '' && <Text style={ap.mono}>{`${panelClock} local`}</Text>}
-              <Text style={ap.monoDim}>{panelCoords}</Text>
-              {/* OMITTED, NOT BLANKED, when there is no position to measure
-                  from. See panelDistanceKm. */}
-              {panelDistanceKm !== null && (
-                <Text style={ap.monoDim}>{`${panelDistanceKm.toLocaleString()} km away`}</Text>
-              )}
-              {/* THE CITY'S OTHER AIRPORTS. The current one is green because
-                  green is this app's live-and-actionable colour and it is the
-                  one the camera is on; the rest are label ink and are the only
-                  touchable things in this panel. */}
-              <View style={ap.codes} pointerEvents="box-none">
-                {panelSiblings.map((a) => (
-                  <Pressable key={a.iata} onPress={() => openAirport(a.iata)} hitSlop={10}>
-                    <Text style={a.iata === panelAirport.iata ? ap.codeOn : ap.code}>
-                      {a.iata}
+          {/* THE BODY, ONE STEP AT A TIME. Steps before stepAt are finished and
+              render whole; the step AT stepAt is mid-arrival and renders sliced;
+              anything after has not started and renders nothing at all — not an
+              empty line, which would reserve height and make the panel jump as
+              each one filled.
+
+              THE RULE APPEARS WITH THE FIRST STEP, so it is the seam the body
+              prints below rather than a mark floating under a name. */}
+          {typingDone && <View style={ap.rule} />}
+          {panelSteps.map((s, i) => {
+            if (i > stepAt) return null;
+            const done = i < stepAt;
+            if (s.kind === 'code') {
+              // A CODE ARRIVES WHOLE. Rendered inside the row below rather than
+              // here, so the codes wrap as a group; this branch only decides
+              // whether it has arrived yet.
+              return null;
+            }
+            const shown = done ? s.text : s.text.slice(0, stepTyped);
+            if (shown === '') return null;
+            return (
+              <Text
+                key={s.key}
+                style={s.key === 'country' ? ap.country : (s.dim ? ap.monoDim : ap.mono)}
+                numberOfLines={s.key === 'country' ? 1 : undefined}
+              >
+                {shown}
+              </Text>
+            );
+          })}
+
+          {/* THE CITY'S OTHER AIRPORTS, on the same beat as the lines above but
+              revealed as tokens. The current one is green because green is this
+              app's live-and-actionable colour and it is the one the camera is
+              on; the rest are label ink and are the only touchable things in
+              this panel.
+
+              THE ROW IS ONLY MOUNTED ONCE A CODE HAS ARRIVED, so it reserves no
+              height while the text lines are still printing. */}
+          {panelSteps.some((s, i) => s.kind === 'code' && i <= stepAt) && (
+            <View style={ap.codes} pointerEvents="box-none">
+              {panelSteps.map((s, i) => {
+                if (s.kind !== 'code' || i > stepAt) return null;
+                return (
+                  <Pressable key={s.key} onPress={() => openAirport(s.iata)} hitSlop={10}>
+                    <Text style={s.iata === panelAirport.iata ? ap.codeOn : ap.code}>
+                      {s.iata}
                     </Text>
                   </Pressable>
-                ))}
-              </View>
-            </>
+                );
+              })}
+            </View>
           )}
         </View>
       )}
@@ -3682,6 +3915,9 @@ export default function Search() {
           onPressIn={() => console.log('[HOME] 0. pressIn reached the Pressable')}
           onPress={() => {
             console.log('[HOME] 6a. onPress fired');
+            // 5 of 5. The reported bug: this flew the camera home and left the
+            // panel behind describing an airport no longer on screen.
+            leaveAirport();
             mapRef.current?.goHome();
           }}
           hitSlop={10}

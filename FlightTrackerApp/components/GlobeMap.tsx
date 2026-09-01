@@ -321,6 +321,16 @@ const STYLE = {
     // the pin appears by setting data, with no addLayer at runtime and no
     // question about paint order.
     pin: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+    // THE AIRPORTS THIS USER HAS ACTUALLY FLOWN THROUGH. Empty until React
+    // Native reads the saved flights and sends them; declared here for the same
+    // reason the pin is — the layer exists from the first frame, paint order is
+    // fixed, and marking one is a setData rather than an addLayer at runtime.
+    //
+    // A SECOND SOURCE RATHER THAN A FLAG ON THE FIRST. The airports source is
+    // 1,223 features baked into the page as a constant; adding a `visited`
+    // property would mean rebuilding and re-sending all of it every time a
+    // flight is saved. This one carries only the handful that have been visited.
+    visited: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   },
   // ── THE SKY CONTRIBUTES NOTHING, ON PURPOSE ───────────────────────────────
   //
@@ -473,6 +483,58 @@ const STYLE = {
         'text-color': LABEL_CITY,
         'text-halo-color': LABEL_HALO,
         'text-halo-width': 1,
+      },
+    },
+    // ── VISITED: A RING, NOT A BIGGER DOT ────────────────────────────────────
+    //
+    // SIZE MEANS IMPORTANCE AND MUST KEEP MEANING IT. Every airport on this map
+    // is the same 2.2-to-4.5px dot because they are all the same KIND of thing;
+    // growing the ones this user has flown through would say Heathrow matters
+    // more than Gatwick to the map, which is not what is being recorded. History
+    // is a different axis from importance and needs a different mark.
+    //
+    // SO: THE SAME GREEN, DRAWN AS AN ORBIT. A hairline ring three pixels clear
+    // of the dot, at 45% of the dot's own alpha. The dot underneath is
+    // untouched — same position, same size, same colour — and the ring reads as
+    // an annotation on it rather than as a change to it. At a glance the visited
+    // airports are the ones with something around them; at rest it is quiet
+    // enough not to turn a well-travelled map into a field of targets.
+    //
+    // UNDER THE DOTS, so the solid centre always wins its own pixels and the
+    // ring cannot make the dot look hollow.
+    {
+      id: 'airport-visited',
+      type: 'circle',
+      source: 'visited',
+      minzoom: AIRPORT_MIN_ZOOM,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5.2, 10, 7.5],
+        // A circle layer always fills; the fill is made invisible and the mark
+        // is entirely the stroke, which is what makes this a ring.
+        //
+        // THE STROKE SURVIVES A ZERO FILL, AND THIS WAS READ RATHER THAN
+        // ASSUMED — the whole layer depends on it, and if a zero fill opacity
+        // suppressed the stroke the rings would be invisible with no error.
+        // maplibre-gl 5.24.0's circle fragment shader ends:
+        //
+        //   fragColor = v_visibility * opacity_t
+        //             * mix(color*opacity, stroke_color*stroke_opacity, color_t)
+        //
+        // and mix(a,b,t) is a*(1-t) + b*t. In the stroke band color_t goes to 1,
+        // so the fragment IS stroke_color*stroke_opacity and the fill's opacity
+        // is weighted to nothing. The two terms never multiply.
+        //
+        // The shader forces color_t to 0 only when stroke_width < 0.01, and the
+        // trailing discard fires only when all four channels are under 0.5/255 —
+        // true of the transparent interior, false of a green stroke at 0.45. So
+        // the middle is thrown away and the ring is kept, which is the intent.
+        'circle-opacity': 0,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': AIRPORT_INK,
+        // Fades in on the same ramp as the dots, so a ring never arrives before
+        // the thing it is annotating.
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'],
+          AIRPORT_MIN_ZOOM, 0, AIRPORT_FULL_ZOOM, 0.45],
       },
     },
     // THE AIRPORTS, ON TOP OF THE GEOGRAPHY. The only green on the map.
@@ -1042,12 +1104,23 @@ function start() {
     });
   }
 
+  // THE VISITED SET, REPLACED WHOLE. React Native sends the features rather than
+  // a list of codes, because the page has no index from IATA to coordinates —
+  // its airport data is one baked GeoJSON blob, and searching 1,223 features per
+  // update to rebuild something React Native already knows would be work done
+  // twice in the slower place.
+  function setVisited(features) {
+    map.getSource('visited').setData({ type: 'FeatureCollection', features: features });
+    post({ type: 'visited', n: features.length });
+  }
+
   window.__cam = {
     airport: flyAirport,
     route: flyRoute,
     setHome: function (h) { applyHome(h, false); },
     home: goHome,
-    probe: probe
+    probe: probe,
+    visited: setVisited
   };
 
   var idled = false;
@@ -1086,6 +1159,10 @@ export type GlobeMapHandle = {
   // the one thing React cannot see: homeView and the pin source live in the
   // WebView and survive anything that happens on this side.
   probe: (tag: string) => void;
+  // THE AIRPORTS THIS USER HAS FLOWN THROUGH. Replaced whole on every change,
+  // because the set is small and a diff would be more code than the work it
+  // saves.
+  setVisited: (iatas: string[]) => void;
 };
 
 // FIRED WHEN THE STYLE HAS PARSED, which is BEFORE the first tiles arrive. That
@@ -1144,6 +1221,22 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
       },
       probe(tag: string) {
         call(`window.__cam&&window.__cam.probe(${JSON.stringify(tag)})`);
+      },
+      setVisited(iatas: string[]) {
+        // RESOLVED HERE, NOT IN THE PAGE. airportByCode is the same lookup the
+        // search and the panel use, so a visited ring cannot land on a different
+        // airport from the one the saved flight names. Unknown codes are dropped
+        // silently: a saved flight can carry an IATA this dataset does not have,
+        // and a missing ring is the right outcome for one.
+        const features = iatas
+          .map((c) => airportByCode(c))
+          .filter((a): a is NonNullable<typeof a> => a !== null)
+          .map((a) => ({
+            type: 'Feature',
+            properties: { iata: a.iata },
+            geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+          }));
+        call(`window.__cam&&window.__cam.visited(${JSON.stringify(features)})`);
       },
     }), [call]);
 
@@ -1208,6 +1301,7 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
             onAirport?.(String(m.iata));
           }
           if (m.type === 'mapTap') onMapTap?.();
+          if (m.type === 'visited') console.log(`[MAP] visited airports: ${m.n}`);
           if (m.type === 'flyAirport') console.log(`[MAP] flyAirport ${m.km}km direct, ${m.ms}ms`);
           if (m.type === 'flyHome') {
             console.log(`[MAP] flyHome ${m.km}km -> ${m.far ? 'pull back to globe' : 'direct move'}`);
