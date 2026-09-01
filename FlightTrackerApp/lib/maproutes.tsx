@@ -24,6 +24,8 @@ import {
   getMapRoutes,
   addMapRoute,
   removeMapRoute,
+  getMapPastShown,
+  setMapPastShown,
 } from './storage';
 // THE ACCOUNT COMES FROM THE SAVED STORE, which already owns it: it reads the
 // email out of SecureStore on boot and every screen in the app takes it from
@@ -45,6 +47,12 @@ type MapRoutesContextValue = {
   isOnMap: (id: string) => boolean;
   addRoute: (route: MapRoute) => Promise<AddRouteOutcome>;
   removeRoute: (id: string) => Promise<void>;
+  // WHETHER THE ARCS OF FLIGHTS THAT HAVE LANDED ARE DRAWN. A preference about
+  // the overlay rather than about any one route, and it rides here because it is
+  // scoped to the same account and hydrated in the same read -- a second
+  // provider for one boolean would be a second thing to keep in step.
+  showPast: boolean;
+  setShowPast: (on: boolean) => void;
 };
 
 const MapRoutesContext = createContext<MapRoutesContextValue | null>(null);
@@ -58,6 +66,9 @@ export function useMapRoutes(): MapRoutesContextValue {
 export function MapRoutesProvider({ children }: { children: ReactNode }) {
   const { email } = useSaved();
   const [routes, setRoutes] = useState<MapRoute[]>([]);
+  // TRUE BEFORE THE FIRST READ, matching storage's own default. The optimistic
+  // side is the one that cannot hide something the user put there.
+  const [showPast, setShowPastState] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
   // RE-READ ON EVERY ACCOUNT CHANGE, and that is the whole of the sign-out
@@ -71,9 +82,14 @@ export function MapRoutesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     setHydrated(false);
-    getMapRoutes(email).then(list => {
+    // BOTH READS BEHIND ONE FLAG. They are two keys but one answer to "what
+    // should this account's map look like", and hydrating them separately would
+    // let the map draw the right routes under the previous account's preference
+    // for however long the second read took.
+    Promise.all([getMapRoutes(email), getMapPastShown(email)]).then(([list, past]) => {
       if (cancelled) return;
       setRoutes(list);
+      setShowPastState(past);
       setHydrated(true);
     });
     return () => { cancelled = true; };
@@ -93,6 +109,16 @@ export function MapRoutesProvider({ children }: { children: ReactNode }) {
     setRoutes(await removeMapRoute(email, id));
   }, [email]);
 
+  // SET FIRST, PERSISTED AFTER, and this one is the exception to the rule the
+  // two above follow. They take their next state from what storage returned
+  // because a write can be REJECTED -- the cap. This cannot fail in a way that
+  // changes the answer, and a toggle that waited on a disk write before moving
+  // would feel broken on the press.
+  const setShowPast = useCallback((on: boolean) => {
+    setShowPastState(on);
+    setMapPastShown(email, on);
+  }, [email]);
+
   // A SET RATHER THAN A SCAN. isOnMap is called on every render of the card and
   // there is exactly one card, so the scan would be cheap — but the identity of
   // this function is a dependency of the card's swipe renderers, and rebuilding
@@ -101,8 +127,8 @@ export function MapRoutesProvider({ children }: { children: ReactNode }) {
   const isOnMap = useCallback((id: string) => ids.has(id), [ids]);
 
   const value = useMemo(
-    () => ({ routes, hydrated, isOnMap, addRoute, removeRoute }),
-    [routes, hydrated, isOnMap, addRoute, removeRoute],
+    () => ({ routes, hydrated, isOnMap, addRoute, removeRoute, showPast, setShowPast }),
+    [routes, hydrated, isOnMap, addRoute, removeRoute, showPast, setShowPast],
   );
 
   return <MapRoutesContext.Provider value={value}>{children}</MapRoutesContext.Provider>;

@@ -1126,7 +1126,7 @@ export default function Search() {
   } = useFlightCardHost();
   // THE OVERLAY'S LIST. This screen is the only one that draws it; the card that
   // adds and removes is on two screens and owns none of it. See lib/maproutes.
-  const { routes, hydrated: routesHydrated } = useMapRoutes();
+  const { routes, hydrated: routesHydrated, showPast, setShowPast } = useMapRoutes();
   const insets = useSafeAreaInsets();
 
   const [chatResponse, setChatResponse] = useState<string | null>(null);
@@ -1916,6 +1916,7 @@ export default function Search() {
     if (homeScope === null) return;
     console.log('[HOME] consent: accepted');
     setAskConsent(false);
+    homeSentRef.current = false;
     await saveConsent(homeScope, 'granted');
     const pos = await positionOrNull();
     if (pos === null) {
@@ -1923,7 +1924,6 @@ export default function Search() {
       return;
     }
     setHome(pos);
-    homeSentRef.current = false;
     void saveHome(homeScope, pos);
   }, [homeScope, positionOrNull]);
 
@@ -1995,14 +1995,36 @@ export default function Search() {
   // GATED ON hydrated AS WELL AS mapReady. Before the first read lands the list
   // is empty, and pushing that would draw nothing and then fill in — which reads
   // as the routes being removed and put back on every app start.
-  //
-  // SENT ONCE, WHEN THE STYLE HAS PARSED. The list never changes, so there is
-  // nothing to key on but the map becoming ready.
   useEffect(() => {
     if (!mapReady || !routesHydrated) return;
     mapRef.current?.setFlights(mapFlights);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapFlightsKey, mapReady, routesHydrated]);
+
+  // WHETHER PAST ARCS ARE DRAWN. A layer filter on the page, so this is a
+  // boolean across the bridge and nothing else — see setShowPast in GlobeMap.
+  //
+  // GATED ON hydrated FOR THE SAME REASON THE LIST IS. Pushing the optimistic
+  // default before the read lands would show one frame of the previous
+  // account's answer.
+  useEffect(() => {
+    if (!mapReady || !routesHydrated) return;
+    mapRef.current?.setShowPast(showPast);
+  }, [showPast, mapReady, routesHydrated]);
+
+  // IS THERE ANYTHING TO HIDE. The control is not drawn unless at least one
+  // route on the map has actually flown — a switch for nothing is furniture on
+  // a map whose whole design is about not having any, and its absence is also
+  // the honest answer to "why is nothing greyed out".
+  //
+  // THE SAME TEST THE PAGE MAKES, spelled once on each side because they are
+  // asking it of different things: the page asks it of an arc it is about to
+  // draw, this asks it of the list as a whole. A null arrival is not past here
+  // either.
+  const hasPastRoute = useMemo(
+    () => routes.some(r => r.arr !== null && now > r.arr),
+    [routes, now],
+  );
 
   // THE MINUTE TICK, FORWARDED. `now` already advances once a minute for the
   // flight card; the map rides the same one rather than starting a second timer
@@ -4100,6 +4122,59 @@ export default function Search() {
           </Pressable>
         </View>
       )}
+      {/* ── PAST ARCS, ON OR OFF ──
+          WHERE: the right-hand column, directly under the home button, at the
+          same 20pt margin and 10 below it. That column is the only place on this
+          screen that is reliably free — the consent strip runs along the top to
+          just clear of the button, and the airport panel starts a quarter of the
+          way down on the LEFT at a 210pt cap, so on the narrowest screen this
+          app supports the two never meet. Under the button rather than beside it
+          because these are both controls FOR the map, and a column of two reads
+          as a set where a scattered pair reads as leftovers.
+
+          TREATMENT: the same glass as the button and the strip — blur, fill,
+          hairline — so it is the map's furniture rather than something laid on
+          top. What is inside it is Terminal: a 10pt monospace word in caps, and
+          a 12pt rule beside it drawn in ARC_PAST's own
+          rgba(255,255,255,0.16).
+
+          THE RULE IS THE THING IT CONTROLS. It is the past arc's colour at the
+          past arc's weight, so the control is a sample of what the switch turns
+          off; when the arcs are hidden the rule goes to 0.05 and the word dims
+          with it, and the button shows its own state by showing the absence.
+          Nothing here needs a checkbox, a switch or the word "hide".
+
+          NOT A CIRCLE. The home button is a 40pt glass circle and the tab bar
+          has another; a third would read as a third destination. A pill with a
+          word in it reads as a setting.
+
+          ONLY WHEN THERE IS SOMETHING TO HIDE. See hasPastRoute.
+
+          LAST CHILDREN, LIKE THE BUTTON AND THE STRIP, for the reason given
+          there — anything rendered before the ScrollView is underneath its
+          content container and cannot be pressed. */}
+      {hasPastRoute && (
+        <Pressable
+          style={[pt.btn, { top: insets.top + 12 + HOME_BTN_SIZE + 10 }]}
+          onPress={() => setShowPast(!showPast)}
+          hitSlop={8}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: showPast }}
+          accessibilityLabel="past flights on the map"
+        >
+          <BlurView
+            intensity={HOME_BTN_BLUR}
+            tint="systemChromeMaterialDark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={[StyleSheet.absoluteFill, pt.fill]} pointerEvents="none" />
+          <View style={[StyleSheet.absoluteFill, pt.edge]} pointerEvents="none" />
+          <View style={[pt.rule, !showPast && pt.ruleOff]} />
+          <Text style={[pt.label, !showPast && pt.labelOff]}>{'PAST'}</Text>
+        </Pressable>
+      )}
       {home !== null && (
         <Pressable
           style={[hm.btn, { top: insets.top + 12 }]}
@@ -4327,6 +4402,54 @@ const cs = StyleSheet.create({
     color: 'rgba(226,226,226,0.45)',
     letterSpacing: 0.3,
   },
+});
+
+// THE PAST-ARC SWITCH. 26 rather than the button's 40: it is a setting and not a
+// destination, and a control that matched the button's height would read as its
+// equal. Short enough to sit under it without crowding the airport panel's top,
+// which is a quarter of the way down the window.
+const PAST_BTN_H = 26;
+// The sample of the arc, at the arc's own colour. 12 long and 1 thick, which is
+// what a past arc looks like at the zoom this map opens on.
+const PAST_RULE_W = 12;
+const PAST_RULE_ON = 'rgba(255,255,255,0.16)';
+// NOT TRANSPARENT WHEN OFF. A rule that vanished would leave the pill looking
+// mis-laid-out rather than switched off; this is the same hairline with the
+// light taken out of it, which reads as unlit rather than missing.
+const PAST_RULE_OFF = 'rgba(255,255,255,0.05)';
+const PAST_INK_ON = 'rgba(226,226,226,0.62)';
+const PAST_INK_OFF = 'rgba(226,226,226,0.28)';
+
+const pt = StyleSheet.create({
+  btn: {
+    position: 'absolute',
+    right: 20,
+    height: PAST_BTN_H,
+    borderRadius: PAST_BTN_H / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 8,
+    // Clips the blur to the pill, exactly as the button and the strip do.
+    overflow: 'hidden',
+  },
+  fill: { backgroundColor: HOME_BTN_FILL },
+  edge: {
+    borderWidth: 1,
+    borderColor: HOME_BTN_EDGE,
+    borderRadius: PAST_BTN_H / 2,
+  },
+  rule: { width: PAST_RULE_W, height: 1, backgroundColor: PAST_RULE_ON },
+  ruleOff: { backgroundColor: PAST_RULE_OFF },
+  // The consent strip's voice one step smaller: mono, tracked, quiet. 10 rather
+  // than 11 because this is a label on a control and the strip is a sentence.
+  label: {
+    fontFamily: MONO,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: PAST_INK_ON,
+  },
+  labelOff: { color: PAST_INK_OFF },
 });
 
 const hm = StyleSheet.create({

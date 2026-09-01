@@ -57,10 +57,57 @@ const AIRPORT_INK = '#4ade80';
 // them and a flight that has not left yet does not. Colour carries the
 // distinction so weight does not have to shout it.
 const ARC_LIVE = '#4ade80';
-// DELIBERATELY BELOW A COUNTRY BORDER'S 0.20. A planned flight is the faintest
-// mark on the map -- quieter than the coastline it crosses -- because it is a
-// note about the future rather than a thing that exists.
-const ARC_PLANNED = 'rgba(255,255,255,0.16)';
+// DELIBERATELY BELOW A COUNTRY BORDER'S 0.20. A flight that has already landed
+// is the faintest mark on the map -- quieter than the coastline it crosses --
+// because it is a record rather than a thing that is happening.
+//
+// RENAMED FROM ARC_PLANNED, and the rename is the point. Grey used to mean "not
+// airborne", which put a flight scheduled for next week in the same ink as one
+// that flew last month. It now means one thing: this is over.
+const ARC_PAST = 'rgba(255,255,255,0.16)';
+
+// ── THE AIRCRAFT, AS A DRAWN SHAPE ───────────────────────────────────────────
+//
+// A PATH RATHER THAN A FONT GLYPH OR AN IMAGE FILE. The page has no sprite sheet
+// and no asset pipeline -- the whole style is authored in this file -- so an
+// icon has to arrive as something the page can build for itself. A path filled
+// onto a canvas is that, and it costs one rasterisation for the life of the
+// page rather than a request that can fail silently.
+//
+// 64 UNITS, NOSE UP, CENTRED ON (32,32). Nose up is what makes icon-rotate the
+// compass bearing directly rather than the bearing plus an offset nobody would
+// remember; centred is what makes icon-anchor 'center' put the aircraft's own
+// middle on the point, which is where the position actually is.
+//
+// THREE SIMPLE SUBPATHS -- FUSELAGE, WING, TAILPLANE -- AND NOT ONE OUTLINE.
+// This was a single closed path first and it came out full of holes, which is
+// worth writing down because the failure is not obvious. A swept wing's
+// trailing edge runs FORWARD as it goes inboard, so any outline that traces
+// one doubles back on itself in y; the fill rule then counts an odd number of
+// crossings through the notches between the fuselage and the tailplane and
+// leaves them empty. Three convex-enough pieces have no notches to get wrong.
+//
+// THEY ALL WIND THE SAME WAY -- clockwise, verified as three positive signed
+// areas -- which is what lets canvas's default nonzero fill UNION them. Reverse
+// one and it would punch itself out of the other two. The roots deliberately
+// overlap the fuselage by a unit either side so the union has no hairline seam
+// where a wing meets the body.
+//
+// SYMMETRIC ABOUT x=32 BY CONSTRUCTION: every x has a twin adding to 64, in
+// every subpath. A silhouette a degree off centre reads as a bank, and a mark
+// that appears to bank is claiming an attitude this knows nothing about.
+const PLANE_PATH =
+  'M32 3 L34 26 L34 58 L32 63 L30 58 L30 26 Z ' +
+  'M35 25 L57 41 L57 45 L35 40 L29 40 L7 45 L7 41 L29 25 Z ' +
+  'M35 49 L43 59 L43 62 L35 56 L29 56 L21 62 L21 59 L29 49 Z';
+// The icon's natural size in CSS pixels -- what icon-size 1 draws. 20 sits where
+// the old soft circle did (7 to 11px across) plus the room a silhouette needs to
+// be read as one: a plane at 11px is a smudge.
+const PLANE_PX = 20;
+// Device pixels per CSS pixel in the raster. 3 covers every phone this runs on;
+// MapLibre is told the ratio, so the icon is drawn at its CSS size and the extra
+// samples are what keep the wing edges hard. This is the whole of "crisp".
+const PLANE_DPR = 3;
 // BLACK, NOT A DARK COLOUR. Night is the absence of light, so the bands are the
 // page's own background laid over the geography at a low alpha; anything with a
 // hue would tint the land rather than darken it.
@@ -567,11 +614,26 @@ const STYLE = {
     },
     // -- SAVED FLIGHTS, ONE LAYER AT TWO WEIGHTS -----------------------------
     //
+    // GREEN MEANS THE FLIGHT IS STILL AHEAD OF YOU OR IN THE AIR; GREY MEANS IT
+    // IS OVER. The line used to be drawn at whether the aircraft was airborne
+    // right now, which made a flight scheduled for next week look exactly like
+    // one that landed last month -- and of the two, the one you are about to
+    // take is obviously the live thing on the map. Green is this app's word for
+    // live everywhere else, and a booked flight is live.
+    //
+    // SO THE PROPERTY IS `past`, NOT `live`. It answers one question -- has the
+    // arrival time gone by -- and the colour, the width and the opacity all read
+    // the same answer, which is what stops them from ever disagreeing.
+    //
+    // AN UNKNOWN ARRIVAL IS NOT PAST. A route whose record carried no ISO time
+    // cannot be shown to be over, and the honest default for "we do not know" is
+    // the same one an unflown flight gets. See rebuild.
+    //
     // ONE LAYER RATHER THAN TWO, with the difference expressed as a data-driven
-    // paint on a live property. Two layers would fix the paint order between
-    // them for all time -- planned always over live, or the reverse -- when
-    // what should decide which arc wins a shared pixel is nothing at all, since
-    // they are the same class of object. One layer lets them interleave.
+    // paint. Two layers would fix the paint order between them for all time --
+    // past always over current, or the reverse -- when what should decide which
+    // arc wins a shared pixel is nothing at all, since they are the same class
+    // of object. One layer lets them interleave.
     //
     // UNDER THE AIRPORT DOTS, so an arc terminates behind its endpoint rather
     // than crossing it. Above the labels, because the flight overlay is one
@@ -583,15 +645,16 @@ const STYLE = {
       source: 'arcs',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': ['case', ['==', ['get', 'live'], 1], ARC_LIVE, ARC_PLANNED],
-        // LIVE IS WIDER AS WELL AS GREENER. At z1 a hairline is near the limit
-        // of what a phone screen resolves, so hue alone would not separate the
-        // two when zoomed out -- the weight carries the distinction before the
-        // colour is even readable.
+        'line-color': ['case', ['==', ['get', 'past'], 1], ARC_PAST, ARC_LIVE],
+        // THE WEIGHT READS THE SAME RULE AS THE COLOUR, which is the whole of
+        // this change: whatever is green is also the wider of the two. At z1 a
+        // hairline is near the limit of what a phone screen resolves, so hue
+        // alone would not separate them when zoomed out -- the weight carries
+        // the distinction before the colour is even readable.
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          1, ['case', ['==', ['get', 'live'], 1], 1.0, 0.6],
-          6, ['case', ['==', ['get', 'live'], 1], 1.8, 1.0]],
-        'line-opacity': ['case', ['==', ['get', 'live'], 1], 0.85, 1],
+          1, ['case', ['==', ['get', 'past'], 1], 0.6, 1.0],
+          6, ['case', ['==', ['get', 'past'], 1], 1.0, 1.8]],
+        'line-opacity': ['case', ['==', ['get', 'past'], 1], 1, 0.85],
       },
     },
     // THE AIRPORTS, ON TOP OF THE GEOGRAPHY. The only green on the map.
@@ -652,27 +715,53 @@ const STYLE = {
     },
     // -- THE AIRCRAFT --------------------------------------------------------
     //
-    // circle-blur: 0.6 IS THE HONESTY. The position is interpolated linearly
-    // along a great circle between two scheduled times -- it is not a fix, and
-    // a crisp dot would claim that it was. A soft edge says "about here" in the
-    // mark itself, so the drawing and the data agree without needing a caption.
+    // A DRAWN AEROPLANE, HARD-EDGED, POINTING WHERE IT IS GOING. It was a soft
+    // circle, and the blur was defended as honesty about an interpolated
+    // position. That argument does not survive the rest of the map: every other
+    // mark here -- a 2.2px airport dot, a 0.6px border, a hairline arc -- is
+    // drawn crisply and none of them is more certain than this. A blur among
+    // them read as a rendering fault rather than as a claim about precision,
+    // and the uncertainty is a fact about the DATA, which is not something a
+    // fuzzy edge can say and a caption can.
     //
-    // NO HEADING AND NO SILHOUETTE. A triangle or an aeroplane glyph has to
-    // point somewhere, and pointing along the great circle would assert a track
-    // this knows nothing about. A circle has no orientation to be wrong.
+    // THE HEADING IS NOT INVENTED. It is the bearing between the arc samples
+    // either side of the aircraft's own index, so the nose follows the same
+    // great circle the line under it is drawn from -- see rebuild. Nothing is
+    // asserted that the arc does not already assert.
+    //
+    // icon-rotation-alignment 'map' TIES THE ROTATION TO THE WORLD. The default
+    // for a rotatable icon is 'viewport', which would hold the nose at a fixed
+    // angle on the screen while the globe turned underneath it.
+    //
+    // ALLOW-OVERLAP AND IGNORE-PLACEMENT, BOTH TRUE. Symbol layers run a
+    // collision pass and drop what does not fit; an aircraft is a position
+    // rather than a label, and one silently omitted because a city name got
+    // there first would be a flight missing from the map with no error.
     //
     // ABOVE THE AIRPORTS, BELOW THE PIN. The aircraft is the one moving thing
     // on the map and must not be occluded by a static dot it happens to
     // overfly; the user's own location still outranks it.
     {
       id: 'planes',
-      type: 'circle',
+      type: 'symbol',
       source: 'planes',
+      layout: {
+        'icon-image': 'aircraft',
+        // 0.7 to 1.1 of PLANE_PX, so 14px zoomed out to 22px close in. The old
+        // circle ran 7 to 11px across; a silhouette needs about twice a dot's
+        // width before the wings and the tail separate at all.
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.7, 8, 1.1],
+        'icon-rotate': ['get', 'heading'],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-anchor': 'center',
+      },
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 3.5, 8, 5.5],
-        'circle-color': ARC_LIVE,
-        'circle-blur': 0.6,
-        'circle-opacity': 0.9,
+        // 0.9, THE SAME VALUE THE SOFT CIRCLE CARRIED. The colour itself is
+        // baked into the raster -- an ordinary (non-SDF) image cannot be tinted
+        // by icon-color -- so this is the only paint left on the layer.
+        'icon-opacity': 0.9,
       },
     },
     // THE PIN, ABOVE EVEN THE AIRPORTS, and drawn at EVERY zoom — unlike the
@@ -804,6 +893,22 @@ window.addEventListener('error', function (e) {
   }
   err(STAGE, 'uncaught: ' + parts.join(' | '));
 });
+// -- THE FOUR VALUES THE PAGE IS HANDED --------------------------------------
+//
+// DELIBERATE INTERPOLATIONS, and the only ones in this script besides the style
+// itself. The aircraft is drawn in here but DESIGNED up there, alongside every
+// other colour and size decision in this file; spelling its green a second time
+// as a literal is how the arcs and the aircraft would come apart the first time
+// one of them changed.
+//
+// JSON.stringify RATHER THAN QUOTES AROUND THE VALUE, and that is what makes the
+// interpolation safe: a colour or a path that happened to contain a quote would
+// otherwise end the string it was pasted into, silently, at build time.
+var PLANE_PATH = ${JSON.stringify(PLANE_PATH)};
+var PLANE_INK = ${JSON.stringify(ARC_LIVE)};
+var PLANE_PX = ${PLANE_PX};
+var PLANE_DPR = ${PLANE_DPR};
+
 // THE SAME TREATMENT FOR REJECTIONS. A failed tile fetch is a rejected promise
 // before it is anything else, and String(reason) throws away the stack that says
 // which stage of the pipeline dropped it.
@@ -913,6 +1018,62 @@ function start() {
   // ON style.load AND NOT ON load. setProjection needs a style to attach to, and
   // 'load' also waits for the first tiles — which would leave the map flat for
   // as long as the network takes and then snap it into a sphere.
+  // ── THE AIRCRAFT ICON, RASTERISED ONCE ─────────────────────────────────────
+  //
+  // A CANVAS, BECAUSE THE STYLE HAS NO SPRITE. Every other mark on this map is a
+  // circle or a line, which MapLibre draws from the style directly; a symbol
+  // layer needs a bitmap in the image registry, and this page ships no sprite
+  // sheet and fetches nothing. So the shape is filled onto an offscreen canvas
+  // and handed over as pixels.
+  //
+  // THREE DEVICE PIXELS PER CSS PIXEL, DECLARED AS pixelRatio. The bitmap is 60
+  // square and MapLibre is told it represents a 20pt icon, so it draws at 20pt
+  // with three samples per pixel to draw it from. Getting the ratio wrong here
+  // is the one way this comes out soft: the same 60px bitmap declared at ratio 1
+  // would be drawn at 60pt and be three times too large, and declared without a
+  // ratio at all would be scaled down by the renderer with no extra detail to
+  // show for it.
+  //
+  // ON style.load AND NOT ON load, for the same reason setProjection is: the
+  // image registry belongs to the style, and a style reload would take the image
+  // with it. hasImage guards the re-entry.
+  //
+  // A FAILURE HERE IS REPORTED, NOT SWALLOWED. Without the image the symbol
+  // layer draws nothing at all and MapLibre says so only in its own console, so
+  // an aircraft that silently stopped appearing would look like a data problem.
+  function addPlaneImage() {
+    try {
+      if (map.hasImage('aircraft')) return;
+      var n = PLANE_PX * PLANE_DPR;
+      var cv = document.createElement('canvas');
+      cv.width = n;
+      cv.height = n;
+      var cx = cv.getContext('2d');
+      // The path is authored in a 64-unit box; this maps that box onto the
+      // bitmap, so the shape's own coordinates never have to know the raster
+      // size and PLANE_PX can change without touching the path.
+      cx.scale(n / 64, n / 64);
+      cx.fillStyle = PLANE_INK;
+      // 'nonzero' SPELLED OUT, though it is the default. It is what unions the
+      // three subpaths into one silhouette; 'evenodd' would cut the wings and
+      // the tailplane out of the fuselage where they overlap it.
+      cx.fill(new Path2D(PLANE_PATH), 'nonzero');
+      map.addImage('aircraft', cx.getImageData(0, 0, n, n), { pixelRatio: PLANE_DPR });
+    } catch (e) {
+      err('icon', 'aircraft image failed: ' + (e && e.message ? e.message : String(e)));
+    }
+  }
+
+  // AND THE BELT TO THAT BRACES. MapLibre fires styleimagemissing when a symbol
+  // layer asks for an image the registry does not have, which is exactly the
+  // failure mode the eager call above exists to avoid -- and if the ordering
+  // ever changes under us, this is what keeps the aircraft on the map instead of
+  // leaving a warning in a console nobody is reading. hasImage makes it a no-op
+  // in the ordinary case.
+  map.on('styleimagemissing', function (e) {
+    if (e && e.id === 'aircraft') addPlaneImage();
+  });
+
   map.on('style.load', function () {
     STAGE = 'projection';
     try {
@@ -920,6 +1081,7 @@ function start() {
     } catch (e) {
       err('projection', 'setProjection failed: ' + (e && e.message ? e.message : String(e)));
     }
+    addPlaneImage();
     STAGE = 'tiles';
     post({ type: 'style' });
   });
@@ -1279,6 +1441,30 @@ function start() {
     return out;
   }
 
+  // ── WHICH WAY IS IT POINTING ───────────────────────────────────────────────
+  //
+  // THE INITIAL BEARING FROM a TO b, in degrees clockwise from north, which is
+  // exactly what icon-rotate wants for an icon drawn nose-up.
+  //
+  // A GREAT CIRCLE'S BEARING CHANGES ALONG IT, which is the whole reason this is
+  // computed per position rather than once per flight: a London-to-Tokyo track
+  // leaves on one heading and arrives on a very different one, and an aircraft
+  // holding the departure bearing would visibly disagree with the curve drawn
+  // underneath it. Taking the bearing between the two samples either side of the
+  // aircraft is the tangent to that curve at the point it is standing on.
+  //
+  // THE ANTIMERIDIAN NEEDS NO SPECIAL CASE HERE. dlo can come out near a full
+  // turn when the pair straddles 180, and sin and cos do not care -- they are
+  // periodic, so sin(-359 degrees) is sin(1 degree). The line splitting below
+  // exists because a RENDERER joins vertices in a straight line; trigonometry
+  // has no such problem.
+  function bearing(a, b) {
+    var la1 = a[1] * RAD, la2 = b[1] * RAD, dlo = (b[0] - a[0]) * RAD;
+    var y = Math.sin(dlo) * Math.cos(la2);
+    var x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dlo);
+    return (Math.atan2(y, x) / RAD + 360) % 360;
+  }
+
   // ── THE ANTIMERIDIAN ───────────────────────────────────────────────────────
   //
   // A LINE THAT CROSSES 180 HAS TO BE CUT. Longitudes wrap, so consecutive
@@ -1360,31 +1546,50 @@ function start() {
 
   // ── REBUILD, ON A FLIGHT LIST CHANGE OR A MINUTE TICK ──────────────────────
   //
-  // LIVENESS IS READ FROM THE CLOCK, not sent as a flag. A flag would be true
-  // for as long as it took the next tick to arrive and would need re-sending on
-  // every one; the departure and arrival instants do not move, so the page can
-  // answer "is it in the air" itself and the arc, the aircraft and the tick all
+  // BOTH QUESTIONS ARE READ FROM THE CLOCK, not sent as flags. A flag would be
+  // true for as long as it took the next tick to arrive and would need
+  // re-sending on every one; the departure and arrival instants do not move, so
+  // the page can answer for itself and the arc, the aircraft and the tick all
   // agree by construction rather than by being kept in step.
+  //
+  // TWO QUESTIONS, NOT ONE, AND THEY ARE NOT OPPOSITES. 'past' decides how the
+  // ARC is drawn -- green until the arrival time goes by, grey after it. 'live'
+  // decides whether there is an AIRCRAFT to draw at all, which needs the flight
+  // to be between its two instants. A flight departing on Friday is not past and
+  // not live: a green arc with nothing on it, which is the right picture.
   function rebuild() {
     var arcs = [], planes = [];
     for (var i = 0; i < FLIGHTS.length; i++) {
       var f = FLIGHTS[i];
-      var live = NOW >= f.dep && NOW <= f.arr;
+      // AN UNKNOWN ARRIVAL IS NOT PAST. A route whose record carried no ISO time
+      // cannot be shown to be over, and the null must be tested rather than
+      // compared: null coerces to 0 in a numeric comparison, so NOW > f.arr
+      // alone would file every timeless route as having landed at the epoch.
+      var past = f.arr !== null && NOW > f.arr;
+      var live = f.dep !== null && f.arr !== null && NOW >= f.dep && NOW <= f.arr;
       for (var s = 0; s < f.segs.length; s++) {
-        arcs.push({ type: 'Feature', properties: { live: live ? 1 : 0 },
+        arcs.push({ type: 'Feature', properties: { past: past ? 1 : 0 },
                     geometry: { type: 'LineString', coordinates: f.segs[s] } });
       }
       if (live) {
         // LINEAR IN TIME, AND THAT IS THE HONEST CHOICE. A real flight climbs,
         // cruises, descends, holds and is pushed about by wind, so its position
         // is not a constant fraction of a great circle. Modelling a climb
-        // profile would move the dot somewhere equally wrong while implying the
-        // opposite. The mark is drawn soft-edged for the same reason — see the
-        // plane layer.
+        // profile would move the aircraft somewhere equally wrong while implying
+        // the opposite.
         var t = (NOW - f.dep) / (f.arr - f.dep);
         if (t < 0) t = 0; if (t > 1) t = 1;
         var idx = Math.round(t * (f.pts.length - 1));
-        planes.push({ type: 'Feature', properties: {},
+        // THE TANGENT AT THE POINT IT IS STANDING ON, taken across the sample
+        // before and the sample after so the nose follows the curve rather than
+        // the chord from the airport it left. At the ends the window is clamped
+        // and becomes one-sided, which is the same tangent measured over half
+        // the span -- a 64-sample arc has no segment long enough for that to
+        // show.
+        var i0 = idx > 0 ? idx - 1 : 0;
+        var i1 = idx < f.pts.length - 1 ? idx + 1 : f.pts.length - 1;
+        planes.push({ type: 'Feature',
+                      properties: { heading: bearing(f.pts[i0], f.pts[i1]) },
                       geometry: { type: 'Point', coordinates: f.pts[idx] } });
       }
     }
@@ -1404,6 +1609,22 @@ function start() {
 
   function tick(ms) { NOW = ms; rebuild(); }
 
+  // ── HIDING WHAT IS OVER ────────────────────────────────────────────────────
+  //
+  // A LAYER FILTER, NOT A REBUILD AND NOT A SECOND LAYER. The features are
+  // already tagged with the answer, so this is the renderer skipping some of
+  // them -- no geometry is recomputed, nothing crosses the bridge but a boolean,
+  // and a filter SURVIVES setData, so the next minute tick does not put the
+  // hidden arcs back.
+  //
+  // null CLEARS THE FILTER rather than setting one that matches everything.
+  // MapLibre treats a null filter as "no filtering at all" and skips the
+  // per-feature evaluation entirely.
+  function setShowPast(on) {
+    map.setFilter('arcs', on ? null : ['!=', ['get', 'past'], 1]);
+    post({ type: 'showPast', on: !!on });
+  }
+
   window.__cam = {
     airport: flyAirport,
     route: flyRoute,
@@ -1412,7 +1633,8 @@ function start() {
     homeNow: function () { goHome(false); },
     probe: probe,
     flights: setFlights,
-    tick: tick
+    tick: tick,
+    past: setShowPast
   };
 
   var idled = false;
@@ -1485,6 +1707,10 @@ export type GlobeMapHandle = {
   // where night is -- so a tick is one number across the bridge rather than
   // several kilobytes of geometry that has not moved.
   tick: (ms: number) => void;
+  // WHETHER ARCS OF FLIGHTS THAT HAVE LANDED ARE DRAWN AT ALL. A filter on a
+  // layer whose features are already tagged, so this costs one boolean across
+  // the bridge and no geometry -- see setShowPast in the page.
+  setShowPast: (on: boolean) => void;
   // DIAGNOSTIC. Asks the page to report what it is actually holding, which is
   // the one thing React cannot see: homeView and the pin source live in the
   // WebView and survive anything that happens on this side.
@@ -1557,6 +1783,9 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
       },
       tick(ms: number) {
         call(`window.__cam&&window.__cam.tick(${ms})`);
+      },
+      setShowPast(on: boolean) {
+        call(`window.__cam&&window.__cam.past(${on ? 'true' : 'false'})`);
       },
     }), [call]);
 
@@ -1649,6 +1878,9 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           }
           if (m.type === 'probe') {
             console.log(`[HOME][PAGE] probe(${m.tag}): holds ${m.home} at ${m.homeLon}, pin features = ${m.pins}`);
+          }
+          if (m.type === 'showPast') {
+            console.log(`[MAP] past arcs ${m.on ? 'shown' : 'hidden'}`);
           }
           if (m.type === 'overlay') {
             console.log(`[MAP] overlay: ${m.arcs} flights, ${m.planes} in the air`);

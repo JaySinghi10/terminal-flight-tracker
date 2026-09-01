@@ -705,6 +705,46 @@ export async function addMapRoute(
   return { ok: true, routes: next };
 }
 
+// -- WHETHER PAST ROUTES ARE DRAWN -----------------------------------------
+//
+// A PREFERENCE ABOUT THE MAP, NOT ABOUT A ROUTE, so it is its own key rather
+// than a field on each entry. Hiding the arcs of flights that have already flown
+// is one decision about the whole overlay; storing it per route would let the
+// same question be answered twelve different ways and would need re-answering
+// every time a route was added.
+//
+// SCOPED THE SAME WAY THE ROUTES ARE, per account with a guest fallback. What
+// one user chose to see must not be what the next one finds.
+//
+// TRUE IS THE DEFAULT AND THE ABSENT KEY MEANS TRUE. The control HIDES; a
+// missing preference must not silently take something off the map, and a user
+// who has never touched it should see everything they added.
+const MAP_PAST_PREFIX = 'mapPastShown:v1:';
+const MAP_PAST_GUEST = `${MAP_PAST_PREFIX}guest`;
+
+function mapPastKeyFor(email: string | null) {
+  return email ? `${MAP_PAST_PREFIX}${email.trim().toLowerCase()}` : MAP_PAST_GUEST;
+}
+
+// ONLY THE EXACT STRING '0' HIDES. Anything else -- absent, malformed, a value
+// from some future version of this key -- reads as shown, which is the side that
+// cannot lose the user anything.
+export async function getMapPastShown(email: string | null): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(mapPastKeyFor(email))) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export async function setMapPastShown(email: string | null, on: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(mapPastKeyFor(email), on ? '1' : '0');
+  } catch {
+    // Same contract as writeRoutes: the choice holds for this session.
+  }
+}
+
 export async function removeMapRoute(
   email: string | null,
   id: string,
