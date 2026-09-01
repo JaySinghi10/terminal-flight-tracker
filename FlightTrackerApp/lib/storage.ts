@@ -585,3 +585,132 @@ export async function touchSavedFlight(
   await writeKey(keyFor(email), next);
   return next;
 }
+
+
+// -- ROUTES THE USER HAS PUT ON THE MAP --------------------------------------
+//
+// A SEPARATE BUCKET FROM THE SAVED FLIGHTS, and the separation is the feature.
+// The watchlist is what a user is following; this is what they asked to SEE on
+// the globe, and the two are not the same list. Twenty saved flights drawn at
+// once would be twenty arcs nobody chose; deriving one from the other would
+// take the choice away in both directions -- saving a flight would draw it, and
+// removing a drawing would unsave it.
+//
+// KEYED THE SAME WAY THE FLIGHTS ARE, per account, on the same guest fallback.
+// A signed-in user's routes and a signed-out one's are different buckets, so
+// signing out does not need a clear: the map re-reads under the guest key and
+// finds whatever the guest had, which is usually nothing.
+const MAP_ROUTE_PREFIX = 'mapRoutes:v1:';
+const MAP_ROUTE_GUEST = `${MAP_ROUTE_PREFIX}guest`;
+
+// THE SAME CAP AS THE WATCHLIST, for a different reason. There it is a limit on
+// refresh cost; here it is a limit on how much can be drawn before the globe
+// stops being readable. They are the same number by coincidence rather than by
+// derivation, which is why it is its own constant.
+export const MAX_MAP_ROUTES = 20;
+
+// WHAT THE MAP NEEDS AND NOTHING MORE.
+//
+// CODES, NOT COORDINATES. The map already holds every airport's position -- it
+// bakes all 1,223 into its page -- so storing a latitude here would be a second
+// copy that could go stale against the dataset and could not be corrected by
+// updating it.
+//
+// THE INSTANTS ARE RESOLVED AT ADD TIME AND FROZEN. They come from the record's
+// ISO fields and its airports' timezones, which is a conversion this file has no
+// business doing on every read; and a route on the map is a snapshot of a
+// decision, not a live subscription. A flight that is refreshed while drawn
+// keeps the arc it was drawn with until it is removed and added again.
+//
+// NULLABLE, because a pre-v3 record carries no ISO at all and a flight without
+// a timezone cannot be placed on a clock. The map draws such a route as planned
+// and puts no aircraft on it, which is the honest reading: the route is known,
+// the schedule is not.
+export type MapRoute = {
+  // The flight's own id, so adding and removing key on the record rather than on
+  // the pair of airports -- two flights on the same route on different days are
+  // two routes, and one of them being on the map says nothing about the other.
+  id: string;
+  from: string;
+  to: string;
+  dep: number | null;
+  arr: number | null;
+};
+
+function mapRouteKeyFor(email: string | null) {
+  return email ? `${MAP_ROUTE_PREFIX}${email.trim().toLowerCase()}` : MAP_ROUTE_GUEST;
+}
+
+// The same defensiveness readKey applies to a flight. A malformed entry is
+// dropped rather than thrown on: this is a drawing, and a bad row should cost
+// one arc rather than the whole overlay.
+function isRoute(r: any): r is MapRoute {
+  return !!r
+    && typeof r.id === 'string' && r.id !== ''
+    && typeof r.from === 'string' && r.from !== ''
+    && typeof r.to === 'string' && r.to !== ''
+    && (r.dep === null || typeof r.dep === 'number')
+    && (r.arr === null || typeof r.arr === 'number');
+}
+
+async function readRoutes(key: string): Promise<MapRoute[]> {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const valid = parsed.filter(isRoute);
+    // Written back only when something was actually dropped, so an ordinary
+    // read is a read.
+    if (valid.length !== parsed.length) await writeRoutes(key, valid);
+    return valid;
+  } catch {
+    return [];
+  }
+}
+
+async function writeRoutes(key: string, routes: MapRoute[]) {
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(routes));
+  } catch {
+    // Same contract as writeKey: the in-memory list stays correct for this
+    // session and the map keeps drawing what the user asked for.
+  }
+}
+
+export type MapRouteResult = { ok: boolean; reason?: 'limit'; routes: MapRoute[] };
+
+export async function getMapRoutes(email: string | null): Promise<MapRoute[]> {
+  return readRoutes(mapRouteKeyFor(email));
+}
+
+// Adding a route already on the map REPLACES it rather than duplicating it, so
+// re-adding is how a stale schedule gets refreshed.
+export async function addMapRoute(
+  email: string | null,
+  route: MapRoute,
+): Promise<MapRouteResult> {
+  const key = mapRouteKeyFor(email);
+  const routes = await readRoutes(key);
+  const existing = routes.findIndex(r => r.id === route.id);
+  if (existing >= 0) {
+    const next = [...routes];
+    next[existing] = route;
+    await writeRoutes(key, next);
+    return { ok: true, routes: next };
+  }
+  if (routes.length >= MAX_MAP_ROUTES) return { ok: false, reason: 'limit', routes };
+  const next = [route, ...routes];
+  await writeRoutes(key, next);
+  return { ok: true, routes: next };
+}
+
+export async function removeMapRoute(
+  email: string | null,
+  id: string,
+): Promise<MapRoute[]> {
+  const key = mapRouteKeyFor(email);
+  const next = (await readRoutes(key)).filter(r => r.id !== id);
+  await writeRoutes(key, next);
+  return next;
+}

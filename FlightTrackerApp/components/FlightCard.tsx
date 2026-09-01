@@ -89,13 +89,16 @@ import {
   ICON_DELETE,
   notImplemented,
   ICON_REFRESH,
+  ICON_MAP,
+  ICON_MAP_ON,
 } from './swipe';
 import {
   GlassLayers,
   g,
   EASE_OUT, EASE_IN, CAL_RISE, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
+  OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
 } from '../lib/glass';
-import { CARD_RADIUS, CARD_PAD, PAGE_BG } from '../lib/cards';
+import { CARD_RADIUS, CARD_PAD, CARD_FILL, PAGE_BG } from '../lib/cards';
 
 // Declared here rather than imported from a screen, exactly as lib/glass.tsx,
 // lib/flightstatus.tsx and components/swipe.tsx declare their own. The values are
@@ -984,6 +987,15 @@ type FlightCardProps = {
   // derived from the record and the clock rather than passed in beside this.
   isSaved: boolean;
   handleToggleSave: () => void;
+  // WHETHER THIS FLIGHT'S ROUTE IS DRAWN ON THE GLOBE, and the toggle that
+  // changes it. A second pair in the shape of isSaved / handleToggleSave, for
+  // the same reason: the card cannot know, because the answer is in a store, and
+  // it is not allowed to reach for one.
+  //
+  // ON THE MAP IS NOT DERIVED FROM SAVED. A flight can be drawn without being
+  // watched and watched without being drawn -- see lib/maproutes.
+  routeOnMap: boolean;
+  toggleRouteOnMap: () => void;
   refreshFlightCard: () => void;
   closeFlightCard: () => void;
 };
@@ -994,6 +1006,8 @@ export function FlightCard({
   now,
   isSaved,
   handleToggleSave,
+  routeOnMap,
+  toggleRouteOnMap,
   refreshFlightCard,
   closeFlightCard,
 }: FlightCardProps) {
@@ -1201,6 +1215,130 @@ export function FlightCard({
         if (finished) runOnJS(closeFlightCard)();
       },
     );
+  };
+
+  // ── THE ROUTE CARD'S SWIPE ────────────────────────────────────────────────
+  //
+  // A SECOND Swipeable, NOT A SECOND VOCABULARY. Everything here is
+  // components/swipe's: SwipeAction and ExpandAction, SWIPE_FILL_DIM,
+  // SWIPE_SPRING, EXPAND_HAPTIC, the 1.15 friction and the 2 overshoot. What
+  // differs is the panel's contents and what a commit does, which is exactly
+  // what that file says stays with the caller.
+  //
+  // NEITHER .enabled() NOR .onTouchesDown() WITH manager.fail(). This is a plain
+  // ReanimatedSwipeable exactly as the flight card above it is; the two are
+  // siblings with no gesture relationship to compose, so there is nothing here
+  // that would reach for either.
+  //
+  // ONE PANEL, ON THE LEFT, revealed by dragging RIGHT. The left panel is where
+  // this app puts the actions that KEEP something -- save on the card, restore
+  // on an archive row -- and putting a route on the map is that kind of action.
+  // The right-hand side stays empty rather than being given a second copy of
+  // what the panel already has.
+  const routeSwipe = useRef<SwipeableMethods>(null);
+  const routeW = useSharedValue(0);
+  const routeArmed = useRef(false);
+  const onRouteCross = useCallback((on: boolean) => {
+    routeArmed.current = on;
+    EXPAND_HAPTIC();
+  }, []);
+
+  // NOTHING LEAVES, so nothing is thrown. The route card stays exactly where it
+  // is whether its route is drawn or not -- the same reasoning the flight card's
+  // refresh commit gives for settling rather than exiting. The panel closes and
+  // the toggle runs.
+  const onRouteWillOpen = () => {
+    if (!routeArmed.current) return;
+    routeArmed.current = false;
+    routeSwipe.current?.close();
+    toggleRouteOnMap();
+  };
+
+  // others={0} BECAUSE THIS ACTION IS ALONE IN ITS PANEL. ExpandAction subtracts
+  // the width of whatever else shares the panel so the box cannot start growing
+  // before the panel is open; with nothing beside it there is nothing to
+  // subtract, which is the case that parameter documents.
+  const renderRouteLeft = (progress: SharedValue<number>, translation: SharedValue<number>) => (
+    <View style={sf.routeSwipeGroup}>
+      <ExpandAction side="left" translation={translation} rowW={routeW} others={0} onCross={onRouteCross}>
+        {/* THE GLYPH CARRIES THE STATE AND THE FILL DOES NOT, which is the
+            bookmark's treatment on the card above: one control changing state
+            rather than two different buttons. Green when the route is drawn,
+            dim when it is not. */}
+        <SwipeAction
+          label={routeOnMap ? 'remove route from map' : 'add route to map'}
+          fill={SWIPE_FILL_DIM}
+          progress={progress}
+          grow="left"
+          onPress={() => { routeSwipe.current?.close(); toggleRouteOnMap(); }}
+        >
+          {routeOnMap ? ICON_MAP_ON : ICON_MAP}
+        </SwipeAction>
+      </ExpandAction>
+    </View>
+  );
+
+  // ── THE LONG PRESS, AND WHAT IT OFFERS ────────────────────────────────────
+  //
+  // THE SAME ACTION AS THE SWIPE, deliberately. A swipe is fast once you know it
+  // is there and invisible until then; a long press is what people try when they
+  // suspect something is available and cannot find it. Two ways in, one action
+  // behind them -- toggleRouteOnMap in lib/flightcard.
+  //
+  // A MENU RATHER THAN A DIRECT TOGGLE. Holding something and having it silently
+  // change state is the one long-press behaviour that cannot be undone by
+  // letting go; naming the action and asking for a second tap is what makes the
+  // hold safe to try.
+  const [mapMenuOpen, setMapMenuOpen] = useState(false);
+  const mapMenuAnim = useRef(new Animated.Value(0)).current;
+  const mapMenuScrimAnim = useRef(new Animated.Value(0)).current;
+
+  // THE OVERLAY'S TIMINGS, NOT THE SHEET'S. PANEL_IN_MS and OVERLAY_RISE are
+  // what the app's small floating panels use; CAL_IN_MS and CAL_RISE belong to a
+  // full sheet growing out of a card, and this grows out of nothing and covers
+  // almost none of the screen.
+  useEffect(() => {
+    if (!mapMenuOpen) return;
+    mapMenuAnim.setValue(0);
+    mapMenuScrimAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(mapMenuScrimAnim, {
+        toValue: 1, duration: SCRIM_IN_MS, easing: EASE_OUT, useNativeDriver: true,
+      }),
+      Animated.timing(mapMenuAnim, {
+        toValue: 1, duration: PANEL_IN_MS, easing: EASE_OUT, useNativeDriver: true,
+      }),
+    ]).start();
+  }, [mapMenuOpen]);
+
+  // THE HAPTIC IS THE THRESHOLD'S, the same one a full swipe fires when it arms.
+  // Both are the moment a gesture becomes an offer, and they should feel like
+  // the same event.
+  const openMapMenu = () => {
+    if (flightRecord === null) return;
+    EXPAND_HAPTIC();
+    setMapMenuOpen(true);
+  };
+
+  // ANIMATED OUT, THEN UNMOUNTED. Setting mapMenuOpen false first would take the
+  // Modal off screen on the frame the exit began.
+  const closeMapMenu = () => {
+    Animated.parallel([
+      Animated.timing(mapMenuScrimAnim, {
+        toValue: 0, duration: SCRIM_OUT_MS, easing: EASE_IN, useNativeDriver: true,
+      }),
+      Animated.timing(mapMenuAnim, {
+        toValue: 0, duration: PANEL_OUT_MS, easing: EASE_IN, useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => { if (finished) setMapMenuOpen(false); });
+  };
+
+  // CLOSES FIRST, THEN ACTS. The toggle re-renders this card and swaps the
+  // menu's own label underneath the finger; running it while the menu is still
+  // on screen would show the opposite word for the length of the exit.
+  const chooseMapToggle = () => {
+    closeMapMenu();
+    toggleRouteOnMap();
   };
 
   // NOT MEMOISED, unlike the row's. The row memoises because there are up to
@@ -1592,6 +1730,77 @@ export function FlightCard({
           </Animated.View>
         </Pressable>
       </Modal>
+
+      {/* ── WHAT A LONG PRESS ON THE ROUTE OFFERS ──
+          A MENU, NOT A SHEET, and the difference is in every number. The airport
+          sheet is the card OPENED: it grows out of the card's own rect, rises
+          CAL_RISE and runs CAL_IN_MS, because it is the same object arriving at
+          a new size. This is a small panel that appears over the page to ask one
+          question, so it takes the overlay's rise and the panel's timings.
+
+          THE SAME MATERIAL THOUGH. sheetShell, GlassLayers and sheetEdge, in
+          that order, exactly as every other floating surface in this app. A menu
+          made of something else would be a fourth material for one control.
+
+          NO HEAD AND NO CLOSE BUTTON. There is one action and a scrim that
+          dismisses; a title bar over a single row would be more chrome than
+          content. The route itself is the caption, which is also what confirms
+          WHICH card was held on a screen that can show several.
+
+          IT RENDERS EVEN WITH NO RECORD, and openMapMenu is what guarantees it
+          never opens then. Gating the Modal on flightRecord as well would put
+          the guard in two places and let them disagree. */}
+      <Modal
+        visible={mapMenuOpen}
+        transparent
+        animationType="none"
+        onRequestClose={closeMapMenu}
+      >
+        <Pressable style={g.routeCalScrim} onPress={closeMapMenu}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: mapMenuScrimAnim }]}
+          />
+          <Animated.View
+            style={[
+              g.sheetShell,
+              s.mapMenu,
+              {
+                opacity: mapMenuAnim,
+                transform: [{
+                  translateY: mapMenuAnim.interpolate({
+                    inputRange: [0, 1], outputRange: [OVERLAY_RISE, 0],
+                  }),
+                }],
+              },
+            ]}
+          >
+            <GlassLayers />
+            <View style={g.sheetEdge} pointerEvents="none" />
+            {/* Swallows the tap so the scrim's dismiss does not fire through. */}
+            <Pressable style={s.mapMenuBody}>
+              <Text style={s.mapMenuRoute}>{`${flight.from} to ${flight.to}`}</Text>
+              {/* THE GLYPH AND THE WORDS SAY THE SAME THING, which is what makes
+                  this row and the swipe button behind the same gesture read as
+                  one control: green pin and "Remove" when the route is drawn,
+                  dim pin and "Add" when it is not. */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={chooseMapToggle}
+                style={s.mapMenuAction}
+                accessibilityRole="button"
+              >
+                <Svg width={20} height={20} viewBox="0 0 24 24">
+                  {routeOnMap ? ICON_MAP_ON : ICON_MAP}
+                </Svg>
+                <Text style={[s.mapMenuLabel, routeOnMap && s.mapMenuLabelOn]}>
+                  {routeOnMap ? 'Remove route from map' : 'Add route to map'}
+                </Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
             {/* THE ONE THE COMMIT ANIMATES, and s.resultWrap rides on it because
                 the gap belongs to whichever element holds the children. Two
                 animation systems, one each: React Native's Animated owns the
@@ -1796,82 +2005,134 @@ export function FlightCard({
                   belt={flight.baggage}
                   desk={flight.checkinDesk}
                 />
+
+                {/* WHEN THIS WAS LAST ASKED FOR, and it is the last line of the
+                    card now rather than the last line of the result.
+
+                    IT FOLLOWS ITS SUBJECT. This is metadata about the RECORD --
+                    when the lookup ran -- and the record is what this card
+                    shows. It sat under the route block only because the route
+                    block used to be part of the same undifferentiated stack;
+                    with the route on a surface of its own, a line about the
+                    fetch floating between two cards would belong to neither.
+
+                    LAST, AND UNDER THE TILES, because it is the least of what is
+                    here and the only thing on the card that is about the app
+                    rather than about the flight.
+
+                    hideStatus AND hideAbsolute ARE UNCHANGED and both notes
+                    still hold: the word is in the heading directly above, and
+                    the tail's departure time would repeat one the route card
+                    prints in full a few points below.
+
+                    NO STYLE. s.routeStatus existed to buy clearance from
+                    whatever floated above it on the page; inside the card,
+                    airportCard's own gap of 14 spaces it from the tiles exactly
+                    as it spaces every other block in here. */}
+                {flightRecord !== null && (
+                  <StatusLine
+                    f={flightRecord}
+                    now={now}
+                    hideStatus
+                    hideAbsolute
+                    numberOfLines={1}
+                  />
+                )}
               </View>
               </TouchableOpacity>
             </ReanimatedSwipeable>
 
-            {/* THE ROUTE, ON NO SURFACE AT ALL. This began as a card holding
-                  a flight number, an airline, two controls and a status band,
-                  with the route on a second card below it. Each of those left in
-                  turn, the two cards merged, and what was underneath went with
-                  the last of them: a surface exists to group things, and there
-                  was one thing left inside it.
+            {/* THE ROUTE IS A CARD AGAIN, AND THE GESTURE IS THE REASON.
+                  It stood on the bare page because a surface exists to group
+                  things and there was one thing left inside it. That held while
+                  the block was inert. It is now something you can hold and
+                  swipe, and a thing you can pick up needs an edge to pick it up
+                  by: the drag has to be seen to move something, and a swipe that
+                  slides loose text across black reads as a rendering fault.
 
-                  So the row, its bar and the status line beneath sit on the page
-                  at the page margin, which is where the route block sat before
-                  any of this was a card. s.routeCard and every text style in it
-                  are untouched, as is the bar's render condition. */}
+                  THE PROGRESS BAR COMES INSIDE IT. The bar measures the distance
+                  between the two airports named on either side of it and belongs
+                  to them -- the same argument the status line's old note made
+                  for sitting after the bar rather than between it and the route.
+                  Now that the route has a surface, leaving the bar outside would
+                  put the measure on the page and the thing it measures on a
+                  card.
+
+                  THE STATUS LINE DOES NOT. It went to the bottom of the flight
+                  card above, which is what it was always about: when the RECORD
+                  was last fetched is metadata about the lookup rather than a
+                  fact about these two airports.
+
+                  s.routeCard IS NOW THE SURFACE and s.routeRow is the row it
+                  holds. Every text style inside is untouched; the row's own
+                  style object is the old routeCard under a name that says what
+                  it is. */}
+            <ReanimatedSwipeable
+              ref={routeSwipe}
+              friction={1.15}
+              overshootFriction={2}
+              animationOptions={SWIPE_SPRING}
+              onSwipeableWillOpen={onRouteWillOpen}
+              childrenContainerStyle={sf.rowSurface}
+              renderLeftActions={flightRecord === null ? undefined : renderRouteLeft}
+            >
+              {/* NO onPress, ONLY onLongPress. A tap on the route means nothing
+                  -- the card above is what opens a sheet -- and giving this one a
+                  tap action would put two different results behind two presses
+                  that feel identical.
+
+                  THE DIM ON PRESS-IN IS THE WHOLE AFFORDANCE, and it is the only
+                  one there is. TouchableOpacity fades on touch whether or not a
+                  press ever fires, so holding the card visibly does something
+                  before the menu arrives. Same 0.7 as the flight card, so the
+                  two read as the same kind of surface.
+
+                  IT DOES NOT FIGHT THE SWIPE, for the reason the card above
+                  gives: ReanimatedSwipeable's pan takes the responder after
+                  about 10pt of horizontal travel and cancels the press, and a
+                  long press that has moved 10pt is a drag.
+
+                  DISABLED WITHOUT A RECORD, exactly as the panel is. There is
+                  nothing to add: the id the map keys on and the timezones its
+                  instants are read against both live on the record.
+
+                  onLayout HERE RATHER THAN ON THE CARD INSIDE, because
+                  ExpandAction reads routeW as the width of the thing being
+                  dragged and this is what the Swipeable translates. */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onLongPress={openMapMenu}
+                disabled={flightRecord === null}
+                onLayout={e => { routeW.value = e.nativeEvent.layout.width; }}
+              >
               <View style={s.routeCard}>
-                <View style={s.routeLeft}>
-                  <Text style={s.routeIATA}>{flight.from}</Text>
-                  <Text style={s.routeCity} numberOfLines={2}>{trimAirportName(flight.fromCity)}</Text>
+                <View style={s.routeRow}>
+                  <View style={s.routeLeft}>
+                    <Text style={s.routeIATA}>{flight.from}</Text>
+                    <Text style={s.routeCity} numberOfLines={2}>{trimAirportName(flight.fromCity)}</Text>
+                  </View>
+                  <View style={s.routeMid}>
+                    {flight.duration !== null && <Text style={s.routeDuration}>{flight.duration}</Text>}
+                    <Text style={s.routeArrow}>· ✈ ·</Text>
+                    <Text style={s.routeDirect}>Direct</Text>
+                  </View>
+                  <View style={s.routeRight}>
+                    <Text style={s.routeIATA}>{flight.to}</Text>
+                    <Text style={s.routeCity} numberOfLines={2}>{trimAirportName(flight.toCity)}</Text>
+                  </View>
                 </View>
-                <View style={s.routeMid}>
-                  {flight.duration !== null && <Text style={s.routeDuration}>{flight.duration}</Text>}
-                  <Text style={s.routeArrow}>· ✈ ·</Text>
-                  <Text style={s.routeDirect}>Direct</Text>
-                </View>
-                <View style={s.routeRight}>
-                  <Text style={s.routeIATA}>{flight.to}</Text>
-                  <Text style={s.routeCity} numberOfLines={2}>{trimAirportName(flight.toCity)}</Text>
-                </View>
+
+                {/* Hidden entirely when the flight state cannot place it. */}
+                {progressValue !== null && (flight.status === 'ACTIVE' || flight.status === 'LANDED') && (
+                  <ProgressBar
+                    progress={progressValue}
+                    color={flight.statusColor}
+                    style={s.routeProgress}
+                  />
+                )}
               </View>
-
-              {/* Hidden entirely when the flight state cannot place it. */}
-              {progressValue !== null && (flight.status === 'ACTIVE' || flight.status === 'LANDED') && (
-                <ProgressBar
-                  progress={progressValue}
-                  color={flight.statusColor}
-                  style={s.routeProgress}
-                />
-              )}
-
-              {/* THE TWO FACTS THE STATUS BAND CARRIED, and nothing else it
-                  carried. The band was a filled block with a rail, a pulse and a
-                  15pt word; this is one 11pt line saying what the flight is doing
-                  and when we last asked.
-
-                  flightLineSegments AND StatusLine, not a rewrite. The word, its
-                  colour and the "updated 2m ago" tail all come from the same
-                  function the watchlist rows read, so the card and the rows
-                  cannot disagree about a flight they are both showing.
-
-                  hideAbsolute, which is what that parameter was added for: the
-                  tail would otherwise end "· dep 00:15", and the departure time
-                  is in the route row directly above this.
-
-                  AFTER THE PROGRESS BAR rather than between it and the route.
-                  The bar measures the distance between those two airports and
-                  belongs to them; this is metadata about the record, and putting
-                  it in the middle would separate a thing from its own measure.
-
-                  hideStatus NOW, because the word moved into the card's heading
-                  and one screen does not need it twice. What is left is the one
-                  fact that was never up there: when this was last asked for.
-                  StatusWord and this read the same first segment, so the two
-                  cannot disagree; they show different halves of it. This is one
-                  line again — the two-line form StatusLine briefly carried went
-                  with the word, since nothing was left to stack. */}
-            {flightRecord !== null && (
-              <StatusLine
-                f={flightRecord}
-                now={now}
-                hideStatus
-                hideAbsolute
-                numberOfLines={1}
-                style={s.routeStatus}
-              />
-            )}
+              </TouchableOpacity>
+            </ReanimatedSwipeable>
             </Reanimated.View>
     </>
   );
@@ -1904,29 +2165,44 @@ const s = StyleSheet.create({
   // 3pt clear of the route row above, and anything under 11 would put a plane
   // through the arrival time. Leaving the 14 here would have made it 26 and
   // opened a hole in the middle of the card instead.
-  // 4, AND THE TOTAL IS STILL 14. This bar sat inside heroCard, whose gap of 12
-  // supplied all but 2 of its clearance. The card is gone and the bar is a child
-  // of resultWrap now, whose gap is 10 — so 4 restores the same 14.
+  // 14, UP FROM 4, AND THE TOTAL IS STILL 14. The 4 was what was left after
+  // resultWrap's gap of 10 had already been applied between two siblings on the
+  // page. The bar is inside the route card now, stacked directly under the row
+  // with no gap in front of it, so the whole 14 has to be spelled here.
   //
-  // 14 IS THE FIGURE THAT MATTERS. pg.plane is at top: -11, so the glyph riding
-  // the bar overhangs its wrapper upward by 11pt; 14 leaves it 3pt clear of the
-  // route row above, and anything under 11 would put a plane through an airport
-  // name.
-  routeProgress: { marginTop: 4, marginBottom: 0 },
-  // 8 ON TOP OF resultWrap's GAP OF 10, so this line sits 18 below whatever
-  // precedes it — the progress bar where one renders, the route row where none
-  // does. At the bare 10 it read as a fourth line of the route block rather than
-  // as a note under it.
+  // 14 IS THE FIGURE THAT MATTERS, and it has survived three arrangements.
+  // pg.plane is at top: -11, so the glyph riding the bar overhangs its wrapper
+  // upward by 11pt; 14 leaves it 3pt clear of the route row above, and anything
+  // under 11 would put a plane through an airport name.
   //
-  // A MARGIN HERE RATHER THAN A BIGGER GAP UPSTREAM. resultWrap's 10 also spaces
-  // the swipeable card from the route row, and widening it would have pushed
-  // those apart to fix something between two different children.
-  routeStatus: { marginTop: 8 },
+  // marginBottom STAYS 0, and pg.track's own 14 is why. That margin is not a
+  // gap — it is the height the wrapper needs for the plane glyph to descend
+  // into, since the track itself is 3pt and the glyph is 20. The card's
+  // CARD_PAD sits under it.
+  routeProgress: { marginTop: 14, marginBottom: 0 },
+  // THE ROUTE'S SURFACE. The app's card, in the app's constants: CARD_FILL is
+  // the same 3% white every other card is painted with and CARD_RADIUS the same
+  // 12, so this reads as one of the family rather than as a rectangle that
+  // happens to be near them. Spelling either as a literal here is how the next
+  // change to the family would leave this behind.
+  //
+  // CARD_PAD ALL ROUND, and the horizontal half is the visible change to the
+  // row inside: the airport codes used to start at the page margin and now start
+  // 14 in. Both columns move by the same 14, so the row is still a row.
+  routeCard: {
+    backgroundColor: CARD_FILL,
+    borderRadius: CARD_RADIUS,
+    padding: CARD_PAD,
+  },
+  // THE ROW, WHICH IS THE OLD routeCard UNDER A NAME THAT SAYS WHAT IT IS.
+  // Character for character what it was; only the key changed, because the
+  // surface above took the old one.
+  //
   // paddingVertical is gone: it was breathing room when this row floated on
   // black, and inside a surface carrying CARD_PAD it was padding inside padding
   // — 4pt that made this card sit taller than its siblings for a reason nobody
   // would have been able to name later.
-  routeCard: {
+  routeRow: {
     flexDirection: "row", alignItems: "center",
   },
   routeLeft: { flex: 1 },
@@ -1937,6 +2213,32 @@ const s = StyleSheet.create({
   routeDuration: { fontSize: 13, color: "rgba(226,226,226,0.5)", marginBottom: 6, fontFamily: MONO },
   routeArrow: { fontSize: 20, color: "rgba(226,226,226,0.45)", fontFamily: MONO },
   routeDirect: { fontSize: 13, color: "rgba(226,226,226,0.5)", marginTop: 6, fontFamily: MONO },
+  // ── THE LONG-PRESS MENU ────────────────────────────────────────────────────
+  //
+  // alignSelf CENTRE, so the panel is only as wide as the longest line in it
+  // rather than the full width g.routeCalScrim would otherwise give it. A menu
+  // of one row stretched across the screen reads as a sheet that failed to
+  // load its contents.
+  mapMenu: { alignSelf: "center", minWidth: 220 },
+  // TIGHTER THAN g.sheetBody's 20. That padding is sized for a sheet with a
+  // header and four groups in it; this holds two lines.
+  mapMenuBody: { padding: 16, gap: 12 },
+  // THE CAPTION, in the voice every other label in this file uses: 11pt Inter at
+  // 0.4. It names the subject and is not the action, so it must not compete with
+  // the row under it.
+  mapMenuRoute: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
+    letterSpacing: 1, textTransform: "uppercase",
+  },
+  // 10 between the glyph and the word, the same gutter the swipe button leaves
+  // around its own 20pt icon.
+  mapMenuAction: { flexDirection: "row", alignItems: "center", gap: 10 },
+  // 15, WHICH IS THE APP'S WORKING SIZE for a value rather than a label. This is
+  // the thing being chosen, so it is the largest text on the panel.
+  mapMenuLabel: { fontSize: 15, color: SWIPE_INK_DIM, fontFamily: SANS },
+  // COLOUR ONLY, so the size and family above still apply. Green when the route
+  // is already drawn, which pairs with the glyph beside it.
+  mapMenuLabelOn: { color: "#4ade80" },
   // NO backgroundColor ANY MORE. CARD_FILL was the card's whole surface; the
   // glass tint inside GlassLayers is now, and a fill here would sit BEHIND the
   // blur and be flattened into it — the same reason sheetShell and routeDropPanel
@@ -2381,4 +2683,11 @@ const sf = StyleSheet.create({
   // either way; only the number that gets it there changed. Reading the
   // constant rather than repeating 14 means the two cannot drift if it moves.
   cardSwipeGroup: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: CARD_PAD },
+  // THE ROUTE CARD'S PANEL, and it centres where the flight card's pins to the
+  // top. That is the difference height makes, and it is the same reasoning
+  // cardSwipeGroup gives in reverse: the flight card is several hundred points
+  // tall, so centring would park its buttons a long way from anything; the route
+  // card is about as tall as a watchlist row, and on a row the middle of the
+  // panel and the middle of the card are the same place.
+  routeSwipeGroup: { flexDirection: 'row', alignItems: 'center' },
 });

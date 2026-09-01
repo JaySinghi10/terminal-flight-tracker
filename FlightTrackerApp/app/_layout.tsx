@@ -25,6 +25,11 @@ import { ToastProvider } from "../lib/toast";
 // nothing else — see the note at the top of lib/account.tsx for why username and
 // displayName deliberately stayed where they are.
 import { AccountProvider } from "../lib/account";
+// AND WHICH ROUTES ARE ON THE MAP. Inside SavedProvider because it reads the
+// account email from it, and wrapping Tabs for the same reason the saved list
+// does: the card that ADDS a route is on two screens and the map that DRAWS one
+// is on a third state of a third, and none of them owns the list.
+import { MapRoutesProvider } from "../lib/maproutes";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -76,14 +81,16 @@ export default function Layout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AccountProvider>
         <SavedProvider>
-          <QueryProvider>
-            <ToastProvider>
-              <Tabs
-                tabBar={props => <GlassTabBar {...props} />}
-                screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
-              />
-            </ToastProvider>
-          </QueryProvider>
+          <MapRoutesProvider>
+            <QueryProvider>
+              <ToastProvider>
+                <Tabs
+                  tabBar={props => <GlassTabBar {...props} />}
+                  screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
+                />
+              </ToastProvider>
+            </QueryProvider>
+          </MapRoutesProvider>
         </SavedProvider>
       </AccountProvider>
     </GestureHandlerRootView>

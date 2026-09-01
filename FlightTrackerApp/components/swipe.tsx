@@ -20,7 +20,7 @@
 // were.
 import { TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 // The same aliasing index.tsx uses: this file's animations are Reanimated's
 // alone, and REasing is Reanimated's Easing rather than React Native's. The two
 // are not interchangeable — see the note at EXIT_TIMING.
@@ -378,6 +378,30 @@ export const ICON_REMIND = (
     <Path d="M12 7v5l3 2" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
   </>
 );
+
+// THE MAP'S OWN MARK, RESTATED AT BUTTON SIZE, and it is deliberately not a
+// folded-paper map or a globe. The pin on the globe is a translucent halo with a
+// solid dot in it and the home button on the search screen already restates that
+// as a stroked ring around a dot; this is the third statement of the same idea,
+// at the same geometry, so a control that puts something ON the map and the mark
+// that appears THERE read as one thing.
+//
+// TWO FINISHED ELEMENTS RATHER THAN PATH DATA. The bookmark exports its `d`
+// because the call site computes its two colours from the save state; this glyph
+// has exactly two states and no third, so naming them here costs less than
+// threading a pair of colours through every call.
+//
+// GREEN FOR ON, and it is AIRPORT_INK's green -- the same value the bookmark
+// uses for a saved flight and the map uses for everything live. On the map means
+// drawn, and drawn on this map means green.
+const mapPin = (ink: string) => (
+  <>
+    <Circle cx={12} cy={12} r={7.5} fill="none" stroke={ink} strokeWidth={1.75} />
+    <Circle cx={12} cy={12} r={3.2} fill={ink} />
+  </>
+);
+export const ICON_MAP = mapPin(SWIPE_INK_DIM);
+export const ICON_MAP_ON = mapPin('#4ade80');
 
 // PLACEHOLDERS. They render, they are tappable, and they deliberately do
 // nothing: there is no notification scheduling in this app yet and no reminder

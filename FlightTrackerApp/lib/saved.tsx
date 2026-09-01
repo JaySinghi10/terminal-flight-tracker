@@ -171,6 +171,18 @@ export function arrivalTs(f: SavedFlight): number | null {
   return zonedIsoToTs(f.to.actualIso ?? f.to.estimatedIso ?? f.to.scheduledIso, f.to.timezone);
 }
 
+// THE INSTANT A FLIGHT LEFT, or is expected to. arrivalTs's rule read from the
+// other end of the record, and the two are written together so the precedence
+// cannot come apart: actual first, then the estimate, then the schedule.
+//
+// NOT USED BY THE ARCHIVE, which is why this arrived later than its pair. It is
+// the departure half of a route drawn on the map -- an arc needs to know when
+// the flight starts as well as when it ends, and the aircraft riding it needs
+// both to sit anywhere on it.
+export function departureTs(f: SavedFlight): number | null {
+  return zonedIsoToTs(f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso, f.from.timezone);
+}
+
 // DERIVED, never stored, so there is no schema change and no migration.
 //
 // A stored flag would have to be recomputed on every read anyway — a flight

@@ -99,6 +99,9 @@ import {
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
 import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../components/GlobeMap';
+// WHICH ROUTES ARE DRAWN. A store rather than a derivation from the watchlist —
+// the map shows what was asked for and nothing else.
+import { useMapRoutes } from '../lib/maproutes';
 // WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
@@ -1096,42 +1099,6 @@ function routeEndLabel(code: string, name: string, cap: number): string {
   return routeClip(short, cap);
 }
 
-// -- TEST DATA. REMOVE THIS BLOCK ---------------------------------------------
-//
-// TWO HARDCODED FLIGHTS SO THE OVERLAY CAN BE SEEN BEFORE IT IS WIRED TO THE
-// SAVED FLIGHTS. Delete TEST_FLIGHTS, the two effects that push it at the map,
-// and the MapFlight import, and the map goes back to drawing nothing.
-//
-// THE PAIR IS DELIBERATE. Bengaluru to Delhi is a short hop whose great circle
-// is barely distinguishable from a straight line; Indore to New York crosses
-// half the planet and bends hard over the pole, which is the case a two-point
-// LineString would get visibly wrong. One is in the air and one has not left,
-// so both weights of arc and the aircraft mark are all on screen at once.
-//
-// ANCHORED AT LOAD, NOT AT EVERY TICK. The times are computed once, relative to
-// the clock when the module is first evaluated, so BLR-DEL is always about half
-// flown when the app opens and IDR-JFK always leaves in a few hours -- but from
-// then on they age normally, which is what lets the minute tick actually move
-// the aircraft. Recomputing them per tick would pin the mark in place forever.
-const TEST_FLIGHTS: MapFlight[] = (() => {
-  const t0 = Date.now();
-  const MIN = 60_000;
-  const HOUR = 60 * MIN;
-  const leg = (from: string, to: string, dep: number, arr: number): MapFlight[] => {
-    const a = airportByCode(from);
-    const b = airportByCode(to);
-    if (a === null || b === null) return [];
-    return [{ a: [a.lon, a.lat], b: [b.lon, b.lat], dep, arr }];
-  };
-  return [
-    // AIRBORNE, ROUGHLY HALFWAY. A 2h30 block time straddling the current
-    // instant, so the aircraft sits near the middle of the arc.
-    ...leg('BLR', 'DEL', t0 - 75 * MIN, t0 + 75 * MIN),
-    // UPCOMING. Departing in three hours, fifteen in the air after that.
-    ...leg('IDR', 'JFK', t0 + 3 * HOUR, t0 + 18 * HOUR),
-  ];
-})();
-
 export default function Search() {
   // THE QUERY IS THE BAR'S, and this screen only reads it. setQuery is here for
   // one purpose: clearResultView wipes the line when the account changes, exactly
@@ -1155,7 +1122,11 @@ export default function Search() {
     showResult,
     runFlightLookup, refreshFlightCard, handleToggleSave,
     isSaved,
+    routeOnMap, toggleRouteOnMap,
   } = useFlightCardHost();
+  // THE OVERLAY'S LIST. This screen is the only one that draws it; the card that
+  // adds and removes is on two screens and owns none of it. See lib/maproutes.
+  const { routes, hydrated: routesHydrated } = useMapRoutes();
   const insets = useSafeAreaInsets();
 
   const [chatResponse, setChatResponse] = useState<string | null>(null);
@@ -1986,14 +1957,52 @@ export default function Search() {
     mapRef.current?.setHome(home);
   }, [mapReady, home, leaveAirport]);
 
-  // -- TEST DATA. REMOVE THESE TWO EFFECTS -----------------------------------
+  // ── THE ROUTES THE USER PUT ON THE MAP ────────────────────────────────────
+  //
+  // ONLY WHAT WAS EXPLICITLY ADDED, and never the watchlist. Twenty saved
+  // flights drawn without being asked for would be twenty arcs nobody chose;
+  // the store keeps a separate list precisely so that saving and drawing stay
+  // two decisions. See lib/maproutes.
+  //
+  // RESOLVED HERE, NOT IN THE PAGE. Storage keeps IATA codes and airportByCode
+  // is the same lookup the search, the panel and the camera use, so an arc
+  // cannot land on a different airport from the one the route names. An unknown
+  // code is dropped silently: the dataset can lack an airport a flight names,
+  // and a missing arc is the right outcome for one.
+  const mapFlights = useMemo<MapFlight[]>(
+    () => routes.flatMap(r => {
+      const a = airportByCode(r.from);
+      const b = airportByCode(r.to);
+      if (a === null || b === null) return [];
+      return [{
+        a: [a.lon, a.lat] as [number, number],
+        b: [b.lon, b.lat] as [number, number],
+        dep: r.dep,
+        arr: r.arr,
+      }];
+    }),
+    [routes],
+  );
+
+  // KEYED ON A STRING, not on the array, whose identity changes whenever the
+  // provider re-renders. The map is told only when the SET actually differs —
+  // the page rebuilds all of the geometry on every setFlights, so a re-send of
+  // an identical list is 64 slerp samples per route for nothing.
+  const mapFlightsKey = mapFlights
+    .map(f => `${f.a[0]},${f.a[1]},${f.b[0]},${f.b[1]},${f.dep},${f.arr}`)
+    .join('|');
+
+  // GATED ON hydrated AS WELL AS mapReady. Before the first read lands the list
+  // is empty, and pushing that would draw nothing and then fill in — which reads
+  // as the routes being removed and put back on every app start.
   //
   // SENT ONCE, WHEN THE STYLE HAS PARSED. The list never changes, so there is
   // nothing to key on but the map becoming ready.
   useEffect(() => {
-    if (!mapReady) return;
-    mapRef.current?.setFlights(TEST_FLIGHTS);
-  }, [mapReady]);
+    if (!mapReady || !routesHydrated) return;
+    mapRef.current?.setFlights(mapFlights);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapFlightsKey, mapReady, routesHydrated]);
 
   // THE MINUTE TICK, FORWARDED. `now` already advances once a minute for the
   // flight card; the map rides the same one rather than starting a second timer
@@ -3901,6 +3910,8 @@ export default function Search() {
                 now={now}
                 isSaved={isSaved}
                 handleToggleSave={handleToggleSave}
+                routeOnMap={routeOnMap}
+                toggleRouteOnMap={toggleRouteOnMap}
                 refreshFlightCard={refreshFlightCard}
                 closeFlightCard={closeFlightCard}
               />

@@ -29,9 +29,16 @@
 // clear are untouched.
 import { useState, useRef, useEffect } from 'react';
 import { Text, Animated, Easing } from 'react-native';
-import { SavedFlight, savedFlightFromApi } from './storage';
-import { useSaved, flightUrl, SAVE_MSG, effectiveStatus } from './saved';
+import { SavedFlight, savedFlightFromApi, MapRoute, MAX_MAP_ROUTES } from './storage';
+import {
+  useSaved, flightUrl, SAVE_MSG, effectiveStatus, departureTs, arrivalTs,
+} from './saved';
 import { useToast } from './toast';
+// THE ROUTE OVERLAY'S STORE. Here rather than in the card for the same reason
+// isSaved is: the card is handed the facts it cannot work out for itself, and
+// which routes are drawn is one of them. Both screens already call this hook, so
+// putting it here is what lets the card stay prop-driven.
+import { useMapRoutes } from './maproutes';
 import { FlightData, flightDataFromApi } from '../components/FlightCard';
 
 // Declared here rather than imported from a screen, exactly as every other
@@ -68,9 +75,31 @@ export function FlightError({ error, errorMsgOpacity }: {
   );
 }
 
+// A RECORD, AS THE MAP STORES IT.
+//
+// THE CONVERSION HAPPENS ONCE, HERE, AND THE RESULT IS FROZEN. departureTs and
+// arrivalTs read the record's ISO fields against its airports' IANA zones, which
+// is the one operation in this app that must never be done twice by two
+// different pieces of code -- see the note at the top of lib/time. Storage keeps
+// numbers so that neither it nor the map ever has to do it again.
+//
+// A NULL INSTANT IS NOT A FAILURE. A pre-v3 record has no ISO to read and the
+// map is built for that: the arc still draws, in the planned weight, with no
+// aircraft on it. The route is known even when the schedule is not.
+function mapRouteFor(f: SavedFlight): MapRoute {
+  return {
+    id: f.id,
+    from: f.from.iata,
+    to: f.to.iata,
+    dep: departureTs(f),
+    arr: arrivalTs(f),
+  };
+}
+
 export function useFlightCardHost() {
   const { savedFlights, saveRecord, handleUnsave, refreshOne } = useSaved();
   const { showToast, showUndo } = useToast();
+  const { isOnMap, addRoute, removeRoute } = useMapRoutes();
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -188,6 +217,32 @@ export function useFlightCardHost() {
 
   const isSaved = !!flightRecord && savedFlights.some(f => f.id === flightRecord.id);
 
+  // ON THE MAP IS NOT THE SAME QUESTION AS SAVED, and the card shows both at
+  // once. A flight can be drawn without being watched and watched without being
+  // drawn; nothing here derives one from the other.
+  const routeOnMap = !!flightRecord && isOnMap(flightRecord.id);
+
+  // THE TOGGLE, AND IT IS THE ONE ACTION BEHIND THREE CONTROLS: the long press
+  // menu, the swipe button and the swipe's own full-swipe commit. Written once
+  // so the three cannot come to mean different things.
+  //
+  // NO RECORD, NO ROUTE. flightRecord is what carries the airports' timezones
+  // and the id the map keys on, and it is null only between a lookup failing and
+  // the card being cleared. The controls are hidden in that state rather than
+  // disabled — see the route card.
+  const toggleRouteOnMap = async () => {
+    if (!flightRecord) return;
+    if (routeOnMap) {
+      await removeRoute(flightRecord.id);
+      showToast('removed from map');
+      return;
+    }
+    const outcome = await addRoute(mapRouteFor(flightRecord));
+    showToast(outcome === 'limit'
+      ? `map holds ${MAX_MAP_ROUTES} routes — remove one first`
+      : 'added to map');
+  };
+
   // THE UNSAVE IS THE STORE'S AND THE BANNER IS THIS SCREEN'S. handleUnsave
   // composes the line, because it is the only thing that knows whether the
   // record had reminders on it when it went; showUndo is what puts it on screen.
@@ -269,5 +324,6 @@ export function useFlightCardHost() {
     showResult,
     runFlightLookup, refreshFlightCard, handleToggleSave,
     isSaved, unsaveWithBanner,
+    routeOnMap, toggleRouteOnMap,
   };
 }

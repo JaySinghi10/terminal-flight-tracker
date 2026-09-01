@@ -1076,6 +1076,7 @@ export default function Index() {
     errorMsgOpacity, resultOpacity, resultTranslate,
     showResult, isSaved, unsaveWithBanner,
     handleToggleSave, refreshFlightCard,
+    routeOnMap, toggleRouteOnMap,
   } = useFlightCardHost();
   const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
@@ -1840,6 +1841,8 @@ export default function Index() {
                 now={now}
                 isSaved={isSaved}
                 handleToggleSave={handleToggleSave}
+                routeOnMap={routeOnMap}
+                toggleRouteOnMap={toggleRouteOnMap}
                 refreshFlightCard={refreshFlightCard}
                 closeFlightCard={closeFlightCard}
               />

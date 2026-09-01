@@ -1441,11 +1441,18 @@ loadFrom(0);
 // and arrival do not move, so the page can answer that question itself against
 // whatever clock it was last given, and the arc, the aircraft and the tick then
 // agree by construction rather than by being kept in step.
+//
+// EITHER INSTANT MAY BE NULL, and that is a real state rather than a defensive
+// one. A saved record from before the schema carried ISO times has nothing to
+// read, and a flight whose airports have no IANA zone cannot be put on a clock
+// at all — see lib/time. Such a route still HAS two ends, so it still draws;
+// what it cannot claim is that anything is flying along it. The page reads a
+// null as "not live", which means the planned weight and no aircraft.
 export type MapFlight = {
   a: [number, number];
   b: [number, number];
-  dep: number;
-  arr: number;
+  dep: number | null;
+  arr: number | null;
 };
 
 // ── WHAT THE SCREEN CAN ASK THE MAP TO DO ───────────────────────────────────
