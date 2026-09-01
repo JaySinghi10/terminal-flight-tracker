@@ -2555,6 +2555,24 @@ export default function Search() {
     showAirport(hit.airport.iata);
   }, [leaveAirport, showAirport]);
 
+  // ── BACK TO THE AIRPORT THE PANEL IS ALREADY DESCRIBING ───────────────────
+  //
+  // THE CAMERA ONLY, AND NOTHING ELSE. This is not openAirport with the same
+  // code: openAirport also clears panelSkipped and sets panelIata, and neither
+  // is wanted here. setPanelIata to the value it already holds is a no-op React
+  // bails out of, but clearing panelSkipped is NOT -- after a tap-to-complete
+  // that flag is true, and setting it false re-runs both typing effects and
+  // replays the whole panel. The panel is already showing this airport; there
+  // is nothing to open and nothing to retype.
+  //
+  // THE SAME FLIGHT THE CODES USE, because it is the same call: flyToAirport
+  // reaches flyPlace at AIRPORT_ZOOM with no minZoom, which is the direct move.
+  // Pulling back to the globe would be showing the user where they already are.
+  const flyToPanelAirport = useCallback(() => {
+    if (panelIata === null) return;
+    mapRef.current?.flyToAirport(panelIata);
+  }, [panelIata]);
+
   const openAirport = useCallback((iata: string) => {
     // A NEW AIRPORT TYPES ITSELF IN AGAIN. Switching while one panel is finished
     // must not inherit its skip, or the second would appear all at once.
@@ -4206,13 +4224,46 @@ export default function Search() {
           its content container and cannot be pressed. */}
       {panelAirport !== null && (
         <View style={[ap.wrap, { top: winHeight * 0.26 }]} pointerEvents="box-none">
-          {/* THE CITY, TYPED. The cursor rides the end of the text while it runs
-              and goes when it lands — a block that stayed would read as an input
-              waiting for more, which this is not. */}
-          <Text style={ap.city} numberOfLines={2}>
-            {panelCity.slice(0, typed)}
-            {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
-          </Text>
+          {/* THE CITY, TYPED — AND, ONCE IT HAS LANDED, THE WAY BACK TO IT.
+              The panel already flies to any of the city's OTHER airports from
+              the codes row; the name flies to the one it is describing. That is
+              the case where the user tapped a dot, zoomed out to look around,
+              and now wants the dot back without hunting for it.
+
+              TWO BRANCHES RATHER THAN A disabled PROP, and the reason is what
+              the tap has to do INSTEAD. A tap while the panel is typing means
+              "finish it" — it has to reach the WebView, come back as a map tap
+              that hit nothing, and land in handleMapTap. A disabled Pressable
+              still occupies the tree and there is no guarantee it lets the touch
+              through; not mounting one is the guarantee. It is the same rule the
+              flight-search control follows for the same reason, keyed on the
+              same panelTyping.
+
+              THE UNTYPED BRANCH NEEDS NO SLICE. panelTyping is false only once
+              typingDone is true, and typingDone means typed >= panelCity.length
+              — so the slice would be the whole string and the caret would be
+              hidden. Rendering panelCity directly says that, rather than leaving
+              a reader to work out that the two branches agree.
+
+              THE CURSOR RIDES THE END OF THE TEXT while it runs and goes when it
+              lands — a block that stayed would read as an input waiting for
+              more, which this is not. */}
+          {panelTyping ? (
+            <Text style={ap.city} numberOfLines={2}>
+              {panelCity.slice(0, typed)}
+              {!typingDone && <Text style={ap.caret}>{'█'}</Text>}
+            </Text>
+          ) : (
+            <Pressable
+              onPress={flyToPanelAirport}
+              hitSlop={10}
+              style={({ pressed }) => (pressed ? ap.cityPressed : null)}
+              accessibilityRole="button"
+              accessibilityLabel={`fly back to ${panelAirport.iata}`}
+            >
+              <Text style={ap.city} numberOfLines={2}>{panelCity}</Text>
+            </Pressable>
+          )}
 
           {/* THE COUNTRY, ABOVE THE RULE AND WITH THE CITY. It is the rest of
               the place name — "NEW DELHI" and "India" are one answer to where
@@ -4556,6 +4607,16 @@ const ap = StyleSheet.create({
     textShadowColor: '#050505',
     textShadowRadius: 6,
   },
+  // 0.7 UNDER A FINGER, which is this app's press state everywhere else --
+  // every TouchableOpacity in these two screens carries activeOpacity 0.7, and
+  // a Pressable spells the same thing through its style callback.
+  //
+  // THE CODES ABOVE HAVE NONE, and that is worth writing down rather than
+  // quietly matching. They are a bare Pressable with a hitSlop and no feedback
+  // at all, so "consistent with the codes" could not mean copying them without
+  // meaning "no press state". This takes the app's standard dim instead. If the
+  // codes should have it too, they should get this same entry.
+  cityPressed: { opacity: 0.7 },
   caret: { color: '#4ade80', fontSize: 20 },
   country: {
     fontFamily: SANS,
