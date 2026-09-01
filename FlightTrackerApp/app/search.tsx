@@ -58,7 +58,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   savedFlightFromApi, makeFlightId, ISO_DAY_RE,
-  type SavedFlight, type MapRoute,
 } from '../lib/storage';
 import { airlineFromFlightNumber } from '../lib/airlines';
 import { clock24 } from '../lib/time';
@@ -1226,96 +1225,6 @@ function routeEndLabel(code: string, name: string, cap: number): string {
   return routeClip(short, cap);
 }
 
-// ── TEST DATA. REMOVE THIS BLOCK AND ITS THREE USES ─────────────────────────
-//
-// ONE HARDCODED INTERNATIONAL FLIGHT so the long-haul case can be seen without
-// saving one: Indore to New York, which crosses eleven timezones, the
-// antimeridian-free long way, and an entire day boundary. Every field the flight
-// card renders is populated -- gate, terminal, belt, check-in desk, aircraft,
-// registration, both delays, and actual/estimated/scheduled at both ends -- so
-// the card is exercised rather than sampled.
-//
-// TO REMOVE IT: delete this block, the `TEST_FLIGHT` in mapFlights, the one in
-// panelFlight, and the one in cardToggleSave's guard. Each is marked.
-//
-// THE TIMES ARE FIXED, NOT RELATIVE. A flight whose clock moves would make the
-// card's countdowns and its progress bar move with it, which is what makes a
-// mock hard to read against a real one. This one departed at a stated instant
-// and the status says what it is doing; nothing here drifts.
-//
-// THE ISO FIELDS CARRY LOCAL WALL-CLOCK DIGITS under a +00:00 that is a lie,
-// which is exactly what the flight DTO does -- see the note at the top of
-// lib/time. clock24 reads the digits; zonedIsoToTs pairs them with the timezone
-// beside them. A mock that used true offsets would be the one shape this app
-// does not handle.
-const TEST_FLIGHT: SavedFlight = {
-  id: 'TEST-6E1462-2026-09-02',
-  flightNumber: '6E1462',
-  airline: 'IndiGo',
-  flightDate: '2026-09-02',
-  status: 'active',
-  from: {
-    iata: 'IDR',
-    airport: 'Devi Ahilya Bai Holkar International Airport',
-    city: 'Indore',
-    shortName: 'Devi Ahilya Bai Holkar',
-    terminal: '1',
-    gate: 'A3',
-    scheduled: '2026-09-02 02:40',
-    actual: '2026-09-02 02:58',
-    estimated: '2026-09-02 02:52',
-    delay: 18,
-    scheduledIso: '2026-09-02T02:40:00+00:00',
-    estimatedIso: '2026-09-02T02:52:00+00:00',
-    actualIso: '2026-09-02T02:58:00+00:00',
-    timezone: 'Asia/Kolkata',
-    checkinDesk: '12-16',
-    baggage: null,
-    actualSource: 'runway',
-    estimatedSource: 'schedule',
-  },
-  to: {
-    iata: 'JFK',
-    airport: 'John F Kennedy International Airport',
-    city: 'New York',
-    shortName: 'John F Kennedy',
-    terminal: '4',
-    gate: 'B22',
-    scheduled: '2026-09-02 09:15',
-    actual: '',
-    estimated: '2026-09-02 09:41',
-    delay: 26,
-    scheduledIso: '2026-09-02T09:15:00+00:00',
-    estimatedIso: '2026-09-02T09:41:00+00:00',
-    actualIso: null,
-    timezone: 'America/New_York',
-    checkinDesk: null,
-    baggage: '7',
-    actualSource: null,
-    estimatedSource: 'provider',
-  },
-  // The provider's own finer word, which the badge prefers when the clock has
-  // not overruled the mapped status. See flightDataFromSaved.
-  rawStatus: 'En Route',
-  aircraftModel: 'Airbus A350-900',
-  aircraftRegistration: 'VT-IXA',
-  savedAt: 1756771200000,
-  updatedAt: 1756771200000,
-  landedAt: null,
-  archivedAt: null,
-  remindersSetAt: null,
-  schemaVersion: 10,
-};
-
-// The route that draws it. TEST DATA -- goes with the block above.
-const TEST_ROUTE: MapRoute = {
-  id: TEST_FLIGHT.id,
-  from: 'IDR',
-  to: 'JFK',
-  dep: departureTs(TEST_FLIGHT),
-  arr: arrivalTs(TEST_FLIGHT),
-};
-
 // Reanimated needs a component it has wrapped to accept an animated style, and
 // Pressable is not one. Declared at module scope so it is created once for the
 // life of the process rather than on every render of the screen.
@@ -2273,8 +2182,7 @@ export default function Search() {
   // code is dropped silently: the dataset can lack an airport a flight names,
   // and a missing arc is the right outcome for one.
   const mapFlights = useMemo<MapFlight[]>(
-    // TEST DATA -- the concat is the whole of how the mock reaches the map.
-    () => [TEST_ROUTE, ...routes].flatMap(r => {
+    () => routes.flatMap(r => {
       const a = airportByCode(r.from);
       const b = airportByCode(r.to);
       if (a === null || b === null) return [];
@@ -2373,10 +2281,7 @@ export default function Search() {
   // store has since corrected.
   const panelFlight = panelFlightId === null
     ? null
-    // TEST DATA -- the first arm is the mock; the second is every real record.
-    : (panelFlightId === TEST_FLIGHT.id
-      ? TEST_FLIGHT
-      : (savedFlights.find(f => f.id === panelFlightId) ?? null));
+    : (savedFlights.find(f => f.id === panelFlightId) ?? null);
 
   // ── WHICH ARC IS SELECTED ─────────────────────────────────────────────────
   //
@@ -2900,17 +2805,11 @@ export default function Search() {
   // that is saved. The bookmark therefore only ever unsaves.
   const cardToggleSave = async () => {
     if (panelFlight === null) return;
-    // TEST DATA -- the mock is not in the store and unsaving it would report a
-    // removal that never happened.
-    if (panelFlight.id === TEST_FLIGHT.id) return;
     await unsaveWithBanner(panelFlight);
   };
 
   const cardRefresh = async () => {
     if (panelFlight === null) return;
-    // TEST DATA -- refreshing the mock would spend a lookup on a flight number
-    // that may not exist.
-    if (panelFlight.id === TEST_FLIGHT.id) return;
     await refreshOne(panelFlight);
   };
 
