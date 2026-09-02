@@ -632,17 +632,7 @@ export default function Flights() {
           </>
         )}
 
-        {/* A LINK RATHER THAN A SECTION. Past trips are not part of this screen's
-            subject; this is the door out to them. */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={pastSheet.present}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={st.pastLink}
-          accessibilityRole="button"
-        >
-          <Text style={st.pastLinkText}>{'Past flights'}</Text>
-        </TouchableOpacity>
+        {/* The past-flights sheet is still mounted above and has no way in yet. */}
       </ScrollView>
     </View>
   );
@@ -707,9 +697,6 @@ const st = StyleSheet.create({
     paddingHorizontal: CARD_PAD,
   },
   addText: { fontFamily: SANS, fontSize: 13, color: '#e2e2e2' },
-
-  pastLink: { marginTop: 28, alignSelf: 'flex-start' },
-  pastLinkText: { fontFamily: SANS, fontSize: 11, color: DIM },
 
   // ── THE SHEETS ──
   // A floor and a ceiling, exactly as the archive sheet carries: more than half
