@@ -70,9 +70,10 @@ import {
 // leaving.
 import {
   getStatusColor,
-  WEEKDAYS,
-  MONTHS,
   routeDateLabel,
+  // MOVED OUT OF THIS FILE AND IMPORTED BACK. See the note where it now lives.
+  // WEEKDAYS and MONTHS went with it: formatClock was their only reader here.
+  formatClock,
   StatusLine,
 } from '../lib/flightstatus';
 // THE SWIPE, AND EVERY PIECE IT IS MADE OF. The button, the expanding box, the
@@ -169,18 +170,6 @@ const ARCHIVE_ROW_STAGGER = 0.07;
 const ARCHIVE_ROW_FADE = 0.45;
 const ARCHIVE_ROW_MAX = 6;
 const ARCHIVE_ROW_RISE = 6;
-// Header line, e.g. "Sat, 16 Aug · 02:04". Fixed arrays rather than Intl so
-// the output never shifts with locale.
-//
-// 24-hour, matching the route rows. Both parts are zero-padded, so the line is
-// the same nineteen characters at every hour and no longer changes width as the
-// meridiem comes and goes.
-function formatClock(ts: number) {
-  const d = new Date(ts);
-  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${WEEKDAYS[d.getDay()]}, ${day} ${MONTHS[d.getMonth()]} · ${time}`;
-}
 
 // WEEKDAYS holds abbreviations for the clock line; "Happy Sat" reads clipped in
 // a greeting, so the full names live here. Only the weekend entries reach it.

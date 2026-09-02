@@ -73,6 +73,25 @@ export function routeDateLabel(iso: string | null): string {
   return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+// Header line, e.g. "Sat, 16 Aug - 02:04". Fixed arrays rather than Intl so
+// the output never shifts with locale.
+//
+// 24-hour, matching the route rows. Both parts are zero-padded, so the line is
+// the same nineteen characters at every hour and no longer changes width as the
+// meridiem comes and goes.
+//
+// IT WAS app/index.tsx's AND IS UNCHANGED. It moved because THREE screens read
+// it now -- home's greeting, My Flights and Bookings -- and a screen must never
+// be the place another screen imports from. WEEKDAYS and MONTHS are already
+// here, which is the other half of the reason: the helper and the two arrays it
+// is built from were on opposite sides of a screen boundary.
+export function formatClock(ts: number) {
+  const d = new Date(ts);
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${WEEKDAYS[d.getDay()]}, ${day} ${MONTHS[d.getMonth()]} · ${time}`;
+}
+
 // "6:40 PM IST" -> "6:40 PM". A departure board omits the origin airport
 // object, so departure times arrive with no zone label while arrivals have one;
 // dropping the label restores symmetry. Anything without AM/PM is returned

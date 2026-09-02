@@ -1789,13 +1789,37 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // both, so what the field did next depended on which exit had been taken and
   // whether a hide event had actually arrived. Neither is a thing to leave to an
   // event. See the note on kbH.
+  //
+  // -- AND THE MIRROR OF IT, WHICH WAS MISSING ------------------------------
+  //
+  // THE GUARD ABOVE CATCHES THE ROUTE LEAVING SEARCH WHILE THE BAR WAS NOT TOLD.
+  // This catches the route ARRIVING at search the same way: a deep link, a
+  // notification, or a router.push from another screen -- which app/flights.tsx
+  // now does from its "Search for a flight" menu row.
+  //
+  // IT IS THE SAME WRONG STATE POINTING THE OTHER WAY. A field over a screen
+  // that is closed, and four tabs over the screen that is open, are one fault
+  // read from either end: the bar and the route disagreeing about what is on
+  // screen. One effect owns both directions so they cannot come to differ.
+  //
+  // NOTHING TYPES AND NO KEYBOARD COMES UP. Pressing the Search TAB raises the
+  // field, through pressBeganInSearch on the release; ARRIVING here is not a
+  // press, and opening a keyboard nobody asked for over a screen they navigated
+  // to would be this effect inventing an intent. The mode alone.
+  //
+  // THE ORDINARY PRESS DOES NOT DOUBLE-SET. onPressIn calls enter(i) and
+  // setSearchMode(true) in one handler, so both land in one commit and the first
+  // render this effect sees already has the mode true -- the test below returns.
   useEffect(() => {
-    if (!searchMode || activeIndex === SEARCH_INDEX) return;
-    setSearchMode(false);
-    setTyping(false);
-    setQuery('');
-    setKbH(0);
-    Keyboard.dismiss();
+    if (searchMode && activeIndex !== SEARCH_INDEX) {
+      setSearchMode(false);
+      setTyping(false);
+      setQuery('');
+      setKbH(0);
+      Keyboard.dismiss();
+      return;
+    }
+    if (!searchMode && activeIndex === SEARCH_INDEX) setSearchMode(true);
   }, [searchMode, activeIndex]);
 
   // MEASURED, NOT ASSUMED. Each label reports its own box, so the capsule fits

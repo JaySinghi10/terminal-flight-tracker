@@ -44,7 +44,9 @@ import { reminderTimes } from '../lib/reminders';
 // out of a stored ISO field; clockInZone takes an instant that was COMPUTED
 // rather than stored, which is what reminderTimes hands back. See lib/time.
 import { clock24, clockInZone } from '../lib/time';
-import { StatusLine, routeDateLabel, CD_GREEN } from '../lib/flightstatus';
+// formatClock IS HOME'S HEADER LINE, and it is imported rather than restated
+// because this screen now wears the same header. See the note where it lives.
+import { StatusLine, routeDateLabel, formatClock, CD_GREEN } from '../lib/flightstatus';
 import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG } from '../lib/cards';
 import {
   GlassLayers, g,
@@ -71,6 +73,9 @@ import { computeProgress } from '../components/FlightCard';
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
 const SANS = 'Inter_400Regular';
+// The semibold face, loaded in _layout with the rest. The screen's title is the
+// only thing here that uses it -- see st.title.
+const SANS_SEMI = 'Inter_600SemiBold';
 
 // AMBER MEANS "SOMETHING IS HAPPENING THAT YOU SHOULD KNOW ABOUT" and it is the
 // app's existing #fbbf24 — CD_LATE's value, spelled here rather than imported
@@ -756,6 +761,11 @@ export default function Flights() {
       >
         <Text style={st.brand}>{'>_'}</Text>
         <Text style={st.title}>{'My Flights'}</Text>
+        {/* HOME'S OWN CLOCK LINE, character for character: 15pt MONO at 0.4,
+            3 under the title. It reads the tick this screen already keeps for
+            the phases and the countdowns -- see `now` -- rather than starting a
+            second one. */}
+        <Text style={st.clock}>{formatClock(now)}</Text>
 
         {current.length === 0 ? (
           // ── NOTHING YET, AND IT IS THE CENTRE OF THE SCREEN ──
@@ -817,11 +827,22 @@ const st = StyleSheet.create({
   // See the note at the ScrollView.
   scrollFill: { flexGrow: 1 },
   brand: { fontFamily: MONO_BOLD, color: CD_GREEN, fontSize: 15 },
-  // 24, MATCHING THE GREETING ON HOME (index.tsx:1689) IN SIZE ONLY. That line
-  // is SANS_SEMI because it is language spoken to a person; this is MONO because
-  // every screen's title in this app is MONO and a title is a label rather than
-  // a greeting. The colour is unchanged. Only the size moved.
-  title: { fontFamily: MONO, fontSize: 24, color: '#e2e2e2', marginTop: 36 },
+  // -- HOME'S GREETING, EXACTLY, AND THE FAMILY CHANGE IS THE POINT --
+  //
+  // SANS_SEMI RATHER THAN MONO, ASKED FOR DELIBERATELY AND AGAINST WHAT THE
+  // PREVIOUS NOTE HERE ARGUED. That note said every screen's title is MONO and a
+  // title is a label rather than a greeting. The decision went the other way:
+  // these are WORDS SPOKEN TO A PERSON, the same as "Good evening, Jay", and the
+  // app should read as one app rather than as a titled screen sitting next to a
+  // greeted one. Mono is for machine data -- codes, clocks, flight numbers --
+  // and "My Flights" is not one.
+  //
+  // marginTop 10, NOT 36, which is the greeting's own gap under the >_ mark.
+  // Matching the treatment means matching the spacing; 36 was this screen's and
+  // put the title half a screen below a mark it belongs to.
+  title: { fontFamily: SANS_SEMI, fontSize: 24, color: '#e2e2e2', marginTop: 10 },
+  // index.tsx's clock line, character for character.
+  clock: { fontFamily: MONO, fontSize: 15, color: 'rgba(226,226,226,0.4)', marginTop: 3 },
 
   // ── THE EMPTY STATE ──
   // routeEmptyWrap's own padding, so a wrapped line breaks well short of the
