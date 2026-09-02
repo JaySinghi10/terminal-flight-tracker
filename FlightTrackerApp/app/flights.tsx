@@ -32,6 +32,7 @@ import {
   departureTs,
   effectiveStatus,
   sortSavedByRelevance,
+  OWN_MSG,
 } from '../lib/saved';
 // THE PHASE BOUNDARIES, AND THEY ARE ALREADY WRITTEN. See phaseOf.
 //
@@ -494,10 +495,14 @@ export default function Flights() {
     showToast(`${leg.flightNumber} removed`);
   };
 
+  // THE SAME REPORT THE CARD'S MENU MAKES, through the same strings. ownFlight
+  // calls enableReminders on both its paths, so adding a flight here turns
+  // reminders on exactly as adding one from the flight card does -- and two
+  // paths into one action must not say different things about it. See OWN_MSG.
   const add = async (f: SavedFlight) => {
-    await ownFlight(f);
+    const outcome = await ownFlight(f);
     importSheet.dismiss();
-    showToast(`${f.flightNumber} added`);
+    showToast(OWN_MSG[outcome.remind]);
   };
 
   // THE TWO WAYS IN, and neither of them is a text field. A search input here

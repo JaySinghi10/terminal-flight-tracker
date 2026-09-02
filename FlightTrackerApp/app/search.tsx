@@ -1254,6 +1254,7 @@ export default function Search() {
     runFlightLookup, refreshFlightCard, handleToggleSave,
     isSaved, unsaveWithBanner,
     routeOnMap, toggleRouteOnMap,
+    isOwnedFlight, toggleOwned,
   } = useFlightCardHost();
   // THE OVERLAY'S LIST. This screen is the only one that draws it; the card that
   // adds and removes is on two screens and owns none of it. See lib/maproutes.
@@ -4649,6 +4650,8 @@ export default function Search() {
                 handleToggleSave={handleToggleSave}
                 routeOnMap={routeOnMap}
                 toggleRouteOnMap={toggleRouteOnMap}
+                isOwnedFlight={isOwnedFlight}
+                toggleOwned={toggleOwned}
                 refreshFlightCard={refreshFlightCard}
                 closeFlightCard={closeFlightCard}
               />

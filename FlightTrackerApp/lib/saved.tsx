@@ -147,6 +147,35 @@ export const SAVE_MSG: Record<RemindOutcome, string> = {
   'no-time': 'saved · no departure time',
 };
 
+// THE OWNERSHIP PATH'S WORDING, and it is SAVE_MSG's argument applied to the
+// other verb.
+//
+// ADDED COMES FIRST IN EVERY ONE OF THEM, for the identical reason saved does:
+// adding the flight is what the user asked for and it succeeded in all four
+// cases -- reminders are the thing that happened as well, or did not. A line
+// reporting only a reminder failure would read as an add that failed.
+//
+// AND IT HAS TO EXIST AT ALL, which is the point rather than the tidiness.
+// ownFlight calls enableReminders on BOTH its paths, so adding a flight to My
+// Flights turns reminders on exactly as saving one does. saveRecord reports
+// that; this is the ownership path's copy of the same report. A user who had
+// deliberately turned reminders off must not have them come back with no
+// notice.
+//
+// THE SAME LENGTH DISCIPLINE. Prefixing the swipe's own strings would give 46
+// and 45 characters, which overflows one line at any width this app runs at.
+// These are 20 to 26, the same band SAVE_MSG sits in, which fits 320pt.
+//
+// THE SAME SEPARATOR, character for character: the middle dot SAVE_MSG uses,
+// spaced. Two banners in one app reporting one kind of outcome must not be
+// punctuated differently.
+export const OWN_MSG: Record<RemindOutcome, string> = {
+  on: 'added · reminders on',
+  denied: 'added · reminders off',
+  'too-late': 'added · too late to remind',
+  'no-time': 'added · no departure time',
+};
+
 // ── THE RULES ABOUT A RECORD ────────────────────────────────────────────────
 //
 // Pure, and shared. They are here rather than on the home screen because the

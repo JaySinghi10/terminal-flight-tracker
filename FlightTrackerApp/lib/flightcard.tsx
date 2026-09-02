@@ -31,7 +31,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Text, Animated, Easing } from 'react-native';
 import { SavedFlight, savedFlightFromApi, MapRoute, MAX_MAP_ROUTES } from './storage';
 import {
-  useSaved, flightUrl, SAVE_MSG, effectiveStatus, departureTs, arrivalTs,
+  useSaved, flightUrl, SAVE_MSG, OWN_MSG, effectiveStatus, departureTs, arrivalTs,
 } from './saved';
 import { useToast } from './toast';
 // THE ROUTE OVERLAY'S STORE. Here rather than in the card for the same reason
@@ -97,7 +97,9 @@ function mapRouteFor(f: SavedFlight): MapRoute {
 }
 
 export function useFlightCardHost() {
-  const { savedFlights, saveRecord, handleUnsave, refreshOne } = useSaved();
+  const {
+    savedFlights, saveRecord, handleUnsave, refreshOne, ownFlight, disownFlight,
+  } = useSaved();
   const { showToast, showUndo } = useToast();
   const { isOnMap, addRoute, removeRoute } = useMapRoutes();
 
@@ -222,6 +224,19 @@ export function useFlightCardHost() {
   // drawn; nothing here derives one from the other.
   const routeOnMap = !!flightRecord && isOnMap(flightRecord.id);
 
+  // OWNED IS NOT THE SAME QUESTION AS SAVED EITHER, and the card shows both at
+  // once. A flight can be WATCHED without being FLOWN -- the whole watchlist is
+  // that -- and FLOWN without being separately watched, because ownership saves
+  // the record itself when it has to. Nothing here derives one from the other.
+  //
+  // READ OFF THE STORE'S OWN LIST rather than off flightRecord, for the reason
+  // isSaved is: the record on this screen is a snapshot from a lookup and
+  // carries whatever tripId it had when it was built -- which savedFlightFromApi
+  // sets to null by construction, so reading it would report every flight as
+  // unowned forever. The question is about the STORED record.
+  const isOwnedFlight = !!flightRecord
+    && savedFlights.some(f => f.id === flightRecord.id && f.tripId !== null);
+
   // THE TOGGLE, AND IT IS THE ONE ACTION BEHIND THREE CONTROLS: the long press
   // menu, the swipe button and the swipe's own full-swipe commit. Written once
   // so the three cannot come to mean different things.
@@ -241,6 +256,33 @@ export function useFlightCardHost() {
     showToast(outcome === 'limit'
       ? `map holds ${MAX_MAP_ROUTES} routes — remove one first`
       : 'added to map');
+  };
+
+  // THE SAME SHAPE AS toggleRouteOnMap, and deliberately: one action, two
+  // directions, and the wording is this hook's because the card is not allowed
+  // to know what a store is.
+  //
+  // NO RECORD, NO TRIP. flightRecord is what carries the id ownership keys on,
+  // and it is null only between a lookup failing and the card being cleared.
+  //
+  // THE ADD REPORTS ITS REMINDERS. ownFlight calls enableReminders and hands the
+  // outcome back for exactly this reason -- see OWN_MSG, which is SAVE_MSG's
+  // argument applied to the other verb.
+  //
+  // DISOWNING RETURNS THE FLIGHT TO THE WATCHLIST AND DOES NOT UNSAVE IT, which
+  // is why that side reads "removed from My Flights" rather than "removed". The
+  // record keeps its reminders, its archive decision and its place in the list;
+  // only the claim that the user is flying it goes away. Saying "removed" would
+  // describe a deletion that did not happen.
+  const toggleOwned = async () => {
+    if (!flightRecord) return;
+    if (isOwnedFlight) {
+      await disownFlight(flightRecord);
+      showToast('removed from My Flights');
+      return;
+    }
+    const outcome = await ownFlight(flightRecord);
+    showToast(OWN_MSG[outcome.remind]);
   };
 
   // THE UNSAVE IS THE STORE'S AND THE BANNER IS THIS SCREEN'S. handleUnsave
@@ -325,5 +367,6 @@ export function useFlightCardHost() {
     runFlightLookup, refreshFlightCard, handleToggleSave,
     isSaved, unsaveWithBanner,
     routeOnMap, toggleRouteOnMap,
+    isOwnedFlight, toggleOwned,
   };
 }

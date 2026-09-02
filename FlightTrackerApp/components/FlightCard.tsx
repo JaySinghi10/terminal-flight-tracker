@@ -1102,6 +1102,25 @@ type FlightCardProps = {
   // watched and watched without being drawn -- see lib/maproutes.
   routeOnMap: boolean;
   toggleRouteOnMap: () => void;
+  // -- WHETHER THE USER IS FLYING THIS FLIGHT, AND THE TOGGLE FOR IT ---------
+  //
+  // A THIRD PAIR IN THE SHAPE OF isSaved / handleToggleSave AND
+  // routeOnMap / toggleRouteOnMap, for the same reason: the card cannot know,
+  // because the answer is in a store, and it is not allowed to reach for one.
+  //
+  // OPTIONAL, WHERE THE OTHER TWO ARE NOT, AND THAT IS THE ONE DIFFERENCE. The
+  // map variant at app/search.tsx builds its own values by hand -- cardToggleSave,
+  // cardRefresh and cardToggleRoute all act on the flight whose ARC was tapped,
+  // not on the search result useFlightCardHost is holding -- so it has no
+  // ownership pair to pass and would have to invent one. It should not: a card
+  // glanced at over the map is not where a trip is planned, and adding a leg is
+  // a decision that belongs on the screen that shows the trip.
+  //
+  // UNDEFINED MEANS THE ROW IS NOT RENDERED AT ALL, which is the same mechanism
+  // renderLeftActions already uses to remove a whole swipe panel: the absence of
+  // a handler is how this component is told a thing does not apply here.
+  isOwnedFlight?: boolean;
+  toggleOwned?: () => void;
   refreshFlightCard: () => void;
   closeFlightCard: () => void;
   // ── THE MAP'S OWN CUT OF THIS CARD ────────────────────────────────────────
@@ -1137,6 +1156,8 @@ export function FlightCard({
   handleToggleSave,
   routeOnMap,
   toggleRouteOnMap,
+  isOwnedFlight,
+  toggleOwned,
   refreshFlightCard,
   closeFlightCard,
   mapVariant = false,
@@ -1542,6 +1563,15 @@ export function FlightCard({
     toggleRouteOnMap();
   };
 
+  // chooseMapToggle's shape exactly, and for the reason stated there: running
+  // the toggle while the menu is still on screen would swap its own label
+  // underneath the finger for the length of the exit -- "Add to My Flights"
+  // becoming "Remove from My Flights" as the panel fades out.
+  const chooseOwnToggle = () => {
+    closeMapMenu();
+    toggleOwned?.();
+  };
+
   // NOT MEMOISED, unlike the row's. The row memoises because there are up to
   // twenty of them and a new function identity remounts every Svg in both
   // panels; there is exactly one card, and these close over isSaved and
@@ -1943,10 +1973,15 @@ export function FlightCard({
           that order, exactly as every other floating surface in this app. A menu
           made of something else would be a fourth material for one control.
 
-          NO HEAD AND NO CLOSE BUTTON. There is one action and a scrim that
-          dismisses; a title bar over a single row would be more chrome than
-          content. The route itself is the caption, which is also what confirms
-          WHICH card was held on a screen that can show several.
+          NO HEAD AND NO CLOSE BUTTON. There are two actions and a scrim that
+          dismisses; a title bar over two rows would still be more chrome than
+          content, and the reasoning is unchanged from when there was one. The
+          route itself is the caption, which is also what confirms WHICH card was
+          held on a screen that can show several.
+
+          THE SECOND ROW IS OPTIONAL. It renders only when toggleOwned was
+          passed, so the map variant -- which passes neither -- gets exactly the
+          one-row menu this note was originally written for.
 
           IT RENDERS EVEN WITH NO RECORD, and openMapMenu is what guarantees it
           never opens then. Gating the Modal on flightRecord as well would put
@@ -1998,6 +2033,39 @@ export function FlightCard({
                   {routeOnMap ? 'Remove route from map' : 'Add route to map'}
                 </Text>
               </TouchableOpacity>
+              {/* -- AND THE SAME CONTROL FOR THE TRIP --
+                  THE CARD'S OWN BOOKMARK, REUSED RATHER THAN RESTATED. BOOKMARK_D
+                  is the path the left swipe panel already draws for save, and the
+                  treatment is that button's: the GLYPH carries the state and the
+                  surface does not -- filled green when it is yours, outlined at
+                  the dim ink when it is not -- so this reads as one control
+                  changing state rather than as two different buttons.
+
+                  NO SWIPE BUTTON TO GO WITH IT. The left panel already holds
+                  refresh and the bookmark; a third would crowd a gesture that is
+                  two-deep and put a trip decision behind a stroke nobody would
+                  find. The long press is where a second action belongs, and it
+                  now has two. */}
+              {toggleOwned !== undefined && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={chooseOwnToggle}
+                  style={s.mapMenuAction}
+                  accessibilityRole="button"
+                >
+                  <Svg width={20} height={20} viewBox="0 0 24 24">
+                    <Path
+                      d={BOOKMARK_D}
+                      fill={isOwnedFlight === true ? '#4ade80' : 'none'}
+                      stroke={isOwnedFlight === true ? '#4ade80' : SWIPE_INK_DIM}
+                      strokeWidth={1.75}
+                    />
+                  </Svg>
+                  <Text style={[s.mapMenuLabel, isOwnedFlight === true && s.mapMenuLabelOn]}>
+                    {isOwnedFlight === true ? 'Remove from My Flights' : 'Add to My Flights'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </Pressable>
           </Animated.View>
         </Pressable>

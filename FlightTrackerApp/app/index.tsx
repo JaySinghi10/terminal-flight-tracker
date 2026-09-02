@@ -60,6 +60,7 @@ import {
   hasFlown,
   effectiveStatus,
   isArchived,
+  isOwned,
   sortSavedByRelevance,
 } from '../lib/saved';
 // WHAT A FLIGHT IS DOING, AND HOW LONG UNTIL IT DOES IT. The status colour, the
@@ -1077,6 +1078,7 @@ export default function Index() {
     showResult, isSaved, unsaveWithBanner,
     handleToggleSave, refreshFlightCard,
     routeOnMap, toggleRouteOnMap,
+    isOwnedFlight, toggleOwned,
   } = useFlightCardHost();
   const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
@@ -1402,10 +1404,30 @@ export default function Index() {
   // Split once, here, so nothing below has to remember which list it wants.
   // `now` ticks, so a flight crosses into the archive on screen without a
   // reload.
-  const activeSaved = savedFlights.filter(f => !isArchived(f, now));
+  // -- WHAT HOME SHOWS, WHICH IS NOT EVERYTHING IT STORES -------------------
+  //
+  // A FLIGHT THE USER IS FLYING BELONGS TO MY FLIGHTS, and appears there in
+  // full: its legs in order, its phase, its gate, its belt. Showing it here as
+  // well would put one flight in two lists with two different treatments and two
+  // different sets of controls -- a swipe-to-archive on one screen and a
+  // phase-driven card on the other, both claiming the same record.
+  //
+  // A FILTER ON WHAT IS DISPLAYED AND NOTHING ELSE. The record is untouched, it
+  // is still in savedFlights, the refresh loop still reaches it -- refreshAll
+  // reads savedFlights directly, not this -- and disowning it from My Flights
+  // brings it straight back here with everything it had.
+  //
+  // BOTH LISTS, DELIBERATELY, AND NOT JUST THE LIVE ONE. Filtering only
+  // activeSaved would keep an owned flight out of the watchlist until it landed
+  // and then let it reappear in home's ARCHIVE -- the duplication returning at
+  // the worst moment, when the user has stopped thinking about the trip and the
+  // two copies are hardest to explain. One filter, above the split, so neither
+  // half can be forgotten.
+  const watchlist = savedFlights.filter(f => !isOwned(f));
+  const activeSaved = watchlist.filter(f => !isArchived(f, now));
   // Most recent first: the flight that landed an hour ago before the one from
   // last March.
-  const archivedSaved = savedFlights
+  const archivedSaved = watchlist
     .filter(f => isArchived(f, now))
     .sort((a, b) => (arrivalTs(b) ?? 0) - (arrivalTs(a) ?? 0));
 
@@ -1744,7 +1766,13 @@ export default function Index() {
             </View>
           )}
 
-          {savedFlights.length > 0 && flight === null && (
+          {/* GATED ON watchlist, NOT ON savedFlights. The section is about what
+              home SHOWS, and it is gated on the same list it renders. A heading
+              and an archive button over "Nothing upcoming" is a section
+              reporting on a list that no longer has anything to do with it --
+              which is exactly what a user whose every saved flight is owned
+              would have seen. */}
+          {watchlist.length > 0 && flight === null && (
             <View style={{ marginBottom: 24 }}>
               {/* Above the collapse branch: a refresh failure must never be silent. */}
               {refreshMsg !== '' && (
@@ -1851,6 +1879,8 @@ export default function Index() {
                 handleToggleSave={handleToggleSave}
                 routeOnMap={routeOnMap}
                 toggleRouteOnMap={toggleRouteOnMap}
+                isOwnedFlight={isOwnedFlight}
+                toggleOwned={toggleOwned}
                 refreshFlightCard={refreshFlightCard}
                 closeFlightCard={closeFlightCard}
               />
