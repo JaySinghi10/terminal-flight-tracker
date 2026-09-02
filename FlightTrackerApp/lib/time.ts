@@ -97,3 +97,48 @@ export function clock24(iso: string | null, fallback: string): string {
   // itself the first time that flight is refreshed.
   return m ? m[1] : fallback;
 }
+
+// -- AND THE THIRD QUESTION, WHICH IS ASKED OF AN INSTANT RATHER THAN A FIELD --
+//
+// zonedIsoToTs AND clock24 BOTH READ AN ISO STRING: one turns the digits into an
+// instant, the other reads them as text. The two questions at the top of this
+// file are about the stored FIELDS, and both of them still are -- this is a third
+// question, and it is asked of something that was COMPUTED rather than stored.
+//
+// IT EXISTS BECAUSE reminderTimes RETURNS EPOCH MILLISECONDS. The evening before
+// and the moment to leave are both derived from the departure and the origin's
+// zone, and there is no ISO anywhere for clock24 to read. Handing clock24 one of
+// those is not a mistake it can catch; there is simply nothing to give it.
+//
+// THE CALLER NAMES THE ZONE, exactly as it does for zonedIsoToTs, because an
+// instant has no zone of its own -- and a function that picked one here would be
+// picking the device's on behalf of every caller.
+//
+// THE SAME FORMATTER CACHE, and that is not an optimisation but the reason this
+// is six lines rather than sixty. tzFormatter already holds one
+// Intl.DateTimeFormat per distinct zone for the life of the process, already
+// caches a failure as null, and already formats hour and minute in 24-hour form.
+// A second map, or a fresh formatter built here, would be a second answer to a
+// question this file already answers -- see the note above TZ_FORMATTERS for what
+// constructing one costs.
+//
+// % 24 ON THE HOUR, for the reason zonedIsoToTs applies it: hour12: false reports
+// midnight as "24" on some ICU versions, and "24:05" is not a clock.
+//
+// NULL ON EVERY FAILURE, matching zonedIsoToTs's treatment exactly: a missing
+// instant, a missing zone, a zone with no formatter, or a throw from
+// formatToParts. A caller that cannot be told the time renders nothing rather
+// than a time from somewhere else.
+export function clockInZone(ts: number | null, timeZone: string | null): string | null {
+  if (ts === null || !timeZone) return null;
+  const fmt = tzFormatter(timeZone);
+  if (fmt === null) return null;
+  try {
+    const p: Record<string, string> = {};
+    for (const part of fmt.formatToParts(new Date(ts))) p[part.type] = part.value;
+    if (p.hour === undefined || p.minute === undefined) return null;
+    return `${String(Number(p.hour) % 24).padStart(2, '0')}:${p.minute.padStart(2, '0')}`;
+  } catch {
+    return null;
+  }
+}

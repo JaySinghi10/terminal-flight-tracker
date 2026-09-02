@@ -38,6 +38,7 @@ import {
   touchSavedFlight,
   setFlightArchived,
   setFlightReminders,
+  setFlightTrip,
   savedFlightFromApi,
   ISO_DAY_RE,
   migrateLegacyIfNeeded,
@@ -301,6 +302,104 @@ export function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFli
   });
 }
 
+// ── OWNERSHIP ───────────────────────────────────────────────────────────────
+//
+// A FLIGHT THE USER IS FLYING, as against one they are watching. The store has
+// carried both in one list since it existed, and tripId is the only thing that
+// separates them; these are the rules that read it. Pure and exported, beside
+// the sort they sit with, because the screens that group and the store that
+// writes must not be two answers to what a trip is.
+
+// AN ID FOR A JOURNEY, OPAQUE, AND MINTED AT THE MOMENT OF OWNERSHIP. Nothing
+// reads it but an equality test: it NAMES a journey and says nothing about one.
+//
+// NEVER DERIVED FROM THE FLIGHT, and the two reasons are the ones that bite
+// later rather than now. A derived id COLLIDES when the same flight is owned
+// twice -- owned, disowned, and owned again as part of a different journey --
+// and it would have to CHANGE when two legs are merged into one trip, which
+// means rewriting the field on every record already carrying it. An opaque
+// value minted here is stable under both.
+//
+// THE CLOCK AND FOUR RANDOM CHARACTERS. The timestamp separates two ids minted
+// in different milliseconds on its own; the suffix covers two minted inside one,
+// which a loop owning three legs at once can do.
+function newTripId(): string {
+  return `trip:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function isOwned(f: SavedFlight): boolean {
+  return f.tripId !== null;
+}
+
+// EVERY RECORD SHARING A tripId, IN THE ORDER THEY ARE FLOWN.
+//
+// BY THE DEPARTURE INSTANT, never by a stored index -- see the field's own note
+// in storage. departureTs already resolves actual, then estimate, then schedule
+// against the airport's zone, so a leg that is delayed re-orders itself without
+// anything being rewritten.
+//
+// NO_TIME FOR A LEG WITH NO READABLE DEPARTURE, exactly as savedSortKey does it:
+// a pre-v3 record or one with no timezone sinks to the end of its own trip
+// rather than to the front, because an absent time is not an early one.
+//
+// PURE. filter already returns a new array, so the sort cannot reach the
+// caller's list.
+export function legsOfTrip(list: SavedFlight[], tripId: string): SavedFlight[] {
+  return list
+    .filter(f => f.tripId === tripId)
+    .sort((a, b) => (departureTs(a) ?? NO_TIME) - (departureTs(b) ?? NO_TIME));
+}
+
+// WHERE A TRIP SITS, as a rank and a time, which is savedSortKey's shape and for
+// savedSortKey's reason: the two questions are asked in order and the second
+// only breaks ties in the first.
+//
+// THE RANK IS "HAS IT ANY FLYING LEFT". A trip with a leg still to fly outranks
+// one whose legs have all flown, and it does so on the RANK rather than on the
+// time -- because a trip that is still ahead but whose only unflown leg has an
+// unreadable departure would otherwise tie with a finished one at NO_TIME, and
+// "all flown sorts after every trip that has not" would quietly stop being true.
+//
+// THE TIME IS THE EARLIEST LEG STILL TO FLY. legs arrive already ordered, so the
+// first unflown one IS the earliest. A finished trip is keyed on its first leg's
+// departure, which keeps completed journeys in the order they were taken.
+//
+// hasFlown, NOT the stored status, for the reason stated where it is declared:
+// an archived record's status is frozen at whatever the last refresh saw.
+function tripSortKey(legs: SavedFlight[], now: number): { rank: number; when: number } {
+  const next = legs.find(f => !hasFlown(f, now));
+  if (next !== undefined) return { rank: 0, when: departureTs(next) ?? NO_TIME };
+  return { rank: 1, when: departureTs(legs[0]) ?? NO_TIME };
+}
+
+// EVERY OWNED RECORD, GROUPED INTO JOURNEYS AND ORDERED.
+//
+// LEGS BY legsOfTrip, so there is one ordering rule for a trip's contents and
+// this cannot come to disagree with a screen that calls it directly.
+//
+// NOTHING IS FILTERED OUT HERE, and that is deliberate rather than an omission.
+// A finished trip is still a trip, and whether it belongs under a heading or in
+// an archive is a split against a clock -- which is the screen's to make,
+// exactly as index.tsx already makes it with isArchived. This orders; it does
+// not hide.
+//
+// UNOWNED RECORDS ARE NOT A TRIP OF THEIR OWN. They are the watchlist, which is
+// the list this is derived FROM, and returning them here as one-leg trips would
+// make every watched flight look like a journey.
+export function tripsOf(list: SavedFlight[], now: number): SavedFlight[][] {
+  const ids: string[] = [];
+  for (const f of list) {
+    if (f.tripId !== null && !ids.includes(f.tripId)) ids.push(f.tripId);
+  }
+  return ids
+    .map(id => legsOfTrip(list, id))
+    .sort((a, b) => {
+      const ka = tripSortKey(a, now);
+      const kb = tripSortKey(b, now);
+      return ka.rank !== kb.rank ? ka.rank - kb.rank : ka.when - kb.when;
+    });
+}
+
 // ── WHAT A SAVE CAME TO ─────────────────────────────────────────────────────
 //
 // An outcome rather than a sentence, for exactly the reason RemindOutcome is
@@ -343,6 +442,9 @@ type SavedContextValue = {
   refreshAll: (openCardId: string | null, onStarted?: () => void) => Promise<RefreshReport>;
   handleRemind: (f: SavedFlight, on: boolean) => Promise<string>;
   setArchived: (f: SavedFlight, on: boolean) => Promise<void>;
+  setTrip: (f: SavedFlight, tripId: string | null) => Promise<void>;
+  ownFlight: (record: SavedFlight, tripId?: string) => Promise<{ ok: true; remind: RemindOutcome }>;
+  disownFlight: (f: SavedFlight) => Promise<void>;
 };
 
 const SavedContext = createContext<SavedContextValue | null>(null);
@@ -771,6 +873,78 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     setSavedFlights(await setFlightArchived(email, f.id, on ? Date.now() : null));
   }, [email]);
 
+  // Sets or clears tripId. setArchived's shape exactly, on the same [email], and
+  // for the same reason: one device-owned field, one store call, one setState.
+  const setTrip = useCallback(async (f: SavedFlight, tripId: string | null): Promise<void> => {
+    setSavedFlights(await setFlightTrip(email, f.id, tripId));
+  }, [email]);
+
+  // ── THE USER IS FLYING THIS ONE ───────────────────────────────────────────
+  //
+  // TWO PATHS AND ONE OUTCOME. A flight already on the watchlist is simply
+  // claimed; one that is not is saved first, because a trip's leg has to be a
+  // record before it can carry a tripId.
+  //
+  // tripId IS OPTIONAL AND ABSENT MEANS A NEW JOURNEY. Passing one is how a
+  // second leg joins a trip that already exists; omitting it mints one. There is
+  // no separate "start a trip" call, because starting a trip and owning its
+  // first leg are the same act.
+  //
+  // countsToward () => false, AND THIS IS THE ONE THING THAT MUST NOT BE LEFT
+  // OUT. MAX_SAVED_FLIGHTS is a limit on the WATCHLIST -- on how many flights
+  // this app will refresh on the user's behalf -- and a flight the user is
+  // actually FLYING is not a watchlist entry. Without this a full watchlist
+  // would block ownership for a reason that has nothing to do with the journey,
+  // and the block would land BEFORE the flight was owned, so no exemption
+  // written downstream could ever fire: the record would not exist to be exempt.
+  //
+  // WHICH IS ALSO WHY THERE IS NO LIMIT CASE. saveFlight only refuses when
+  // flights.filter(countsToward).length reaches the cap, and a predicate that is
+  // false for every record makes that count zero. ok is true on both paths, so
+  // the type says so rather than leaving a caller to handle an ending that
+  // cannot happen.
+  //
+  // registerWatch ON THE SAVE PATH ONLY, exactly as saveRecord does it. A record
+  // already on the watchlist was registered when it was saved, and registering
+  // it again would be a second subscription to one flight.
+  //
+  // REMINDERS FOLLOW OWNERSHIP EXACTLY AS THEY FOLLOW A SAVE. Owning is a
+  // stronger signal than saving -- the user is not watching this flight, they
+  // are on it -- so it would be strange for the weaker signal to schedule
+  // reminders and the stronger one not to. enableReminders is called on both
+  // paths and its outcome is returned unwrapped, for the same reason saveRecord
+  // returns it: the wording belongs to whichever screen asked.
+  const ownFlight = useCallback(async (
+    record: SavedFlight,
+    tripId?: string,
+  ): Promise<{ ok: true; remind: RemindOutcome }> => {
+    const trip = tripId ?? newTripId();
+    if (!savedFlights.some(f => f.id === record.id)) {
+      // Never 'limit' -- see the note above. The list is set here as well as by
+      // setTrip below, so the record is in state before anything reads it back.
+      const result = await saveFlight(email, record, () => false);
+      setSavedFlights(result.flights);
+      registerWatch(API_BASE, record.flightNumber, record.flightDate);
+    }
+    await setTrip(record, trip);
+    return { ok: true, remind: await enableReminders(record) };
+  }, [email, savedFlights, setTrip, enableReminders]);
+
+  // GIVES THE FLIGHT BACK TO THE WATCHLIST, and does NOT unsave it.
+  //
+  // Disowning says "I am not flying this after all", which is a smaller claim
+  // than "I do not want to see this again" -- and the second is what unsaving
+  // means and what the bookmark is for. Deleting here would make one control do
+  // both and would take the record's reminders, its archive decision and its
+  // history with it.
+  //
+  // The same shape as clearing archivedAt, which hands a flight back to the
+  // arrival-time rule rather than pinning it out of the archive. Both return a
+  // record to the default it had before a decision was made about it.
+  const disownFlight = useCallback(async (f: SavedFlight): Promise<void> => {
+    await setTrip(f, null);
+  }, [setTrip]);
+
   // ONE FRESH RECORD, FOLDED IN. It does not fetch: the card's lookup and the
   // assistant's answer are the home screen's own calls and stay there, and this
   // is only the write they both ended in. touchSavedFlight no-ops when the id is
@@ -878,10 +1052,13 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     refreshAll,
     handleRemind,
     setArchived,
+    setTrip,
+    ownFlight,
+    disownFlight,
   }), [
     savedFlights, email, setEmail, refreshing,
     saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
-    handleRemind, setArchived,
+    handleRemind, setArchived, setTrip, ownFlight, disownFlight,
   ]);
 
   return (

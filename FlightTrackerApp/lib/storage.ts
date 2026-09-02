@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -72,6 +72,24 @@ export type SavedFlight = {
   // record and this field only says whether that list should have anything in
   // it. See lib/reminders.ts reconcile().
   remindersSetAt: number | null;
+  // WHICH JOURNEY THIS FLIGHT BELONGS TO, or null if it belongs to none.
+  //
+  // NULL MEANS THE USER IS ONLY WATCHING THIS FLIGHT. Non-null means they are
+  // FLYING it, and the value names the journey it is part of. A trip is every
+  // record sharing a tripId, and a single flight is a trip with one leg -- there
+  // is no separate representation for the one-leg case, because a trip is a
+  // grouping rather than a container.
+  //
+  // LEGS ARE ORDERED BY THEIR DEPARTURE INSTANT, never by a stored index. The
+  // order is already a fact about the times on each record, so an index would be
+  // a second copy of it that could disagree -- and would have to be rewritten
+  // every time a leg was added, removed or rescheduled. This is the same reason
+  // hasFlown and effectiveStatus derive rather than store.
+  //
+  // DEVICE-OWNED, exactly as archivedAt and remindersSetAt are: the provider
+  // knows nothing about it and never will, so a refresh must carry it forward
+  // rather than replace it. See touchSavedFlight.
+  tripId: string | null;
   // THE PROVIDER'S OWN WORD for what the flight is doing, verbatim: "Boarding",
   // "GateClosed", "EnRoute", "Delayed". Null on a record saved before v10 and on
   // any response that omitted it.
@@ -202,6 +220,9 @@ export function savedFlightFromApi(data: any): SavedFlight {
     // Same: a lookup carries no reminder decision, and touchSavedFlight is what
     // stops one being lost.
     remindersSetAt: null,
+    // Same again: a fresh lookup carries no ownership decision, and
+    // touchSavedFlight is what stops one being lost.
+    tripId: null,
     // Straight off the response, uppercase and spelling untouched, because the
     // badge matches it case-insensitively and nothing else reads it.
     rawStatus: data?.raw_status ?? null,
@@ -330,6 +351,13 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
+  // Absent on every record written before v11. null is correct for all of them:
+  // nobody owned a flight, because there was no way to.
+  if (version < 11 && flight.tripId === undefined) {
+    flight.tripId = null;
+    changed = true;
+  }
+
   // AFTER the version blocks, not before them: v7 may have just supplied the
   // date the id is built from, and the id has to be derived from the record as
   // it now stands rather than as it arrived.
@@ -339,8 +367,8 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     changed = true;
   }
 
-  if (version !== 10) {
-    flight.schemaVersion = 10;
+  if (version !== 11) {
+    flight.schemaVersion = 11;
     changed = true;
   }
 
@@ -550,6 +578,32 @@ export async function setFlightReminders(
   return next;
 }
 
+// Assigns a flight to a trip, or takes it out of one. No-op if not saved.
+//
+// Mirrors setFlightArchived and setFlightReminders line for line, and
+// deliberately: all three write one device-owned field on one record, and none
+// of them has anything to say about what that field means anywhere else.
+// Ordering the legs, naming the journey and deciding what a trip looks like are
+// all somebody else's job, and keeping them out of here is what lets this stay
+// a one-field write that cannot be wrong.
+//
+// NULL GIVES THE FLIGHT BACK TO THE WATCHLIST WITHOUT DELETING IT. The record
+// stays exactly where it is and keeps everything it had; only the claim that
+// the user is flying it goes away.
+export async function setFlightTrip(
+  email: string | null,
+  id: string,
+  tripId: string | null,
+): Promise<SavedFlight[]> {
+  const flights = await readKey(keyFor(email));
+  const idx = flights.findIndex(f => f.id === id);
+  if (idx < 0) return flights;
+  const next = [...flights];
+  next[idx] = { ...flights[idx], tripId };
+  await writeKey(keyFor(email), next);
+  return next;
+}
+
 // Updates a stored record after a fresh lookup. No-op if not saved.
 //
 // targetId names the record to update, and defaults to the fresh record's own
@@ -572,15 +626,18 @@ export async function touchSavedFlight(
   const landedAt = flight.status === 'landed'
     ? (prev.landedAt ?? flight.landedAt ?? Date.now())
     : null;
-  // archivedAt and remindersSetAt join savedAt and landedAt as fields the DEVICE
-  // owns and the provider knows nothing about. A refresh replaces the flight's
-  // data, never the user's decision about it.
+  // archivedAt, remindersSetAt and tripId join savedAt and landedAt as fields
+  // the DEVICE owns and the provider knows nothing about. A refresh replaces
+  // the flight's data, never the user's decision about it -- and tripId is the
+  // costliest of the three to lose, since it is the only one that cannot be
+  // reconstructed from anything else on the record.
   next[idx] = {
     ...flight,
     savedAt: prev.savedAt,
     landedAt,
     archivedAt: prev.archivedAt ?? null,
     remindersSetAt: prev.remindersSetAt ?? null,
+    tripId: prev.tripId ?? null,
   };
   await writeKey(keyFor(email), next);
   return next;

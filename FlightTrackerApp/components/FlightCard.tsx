@@ -346,7 +346,11 @@ export function scheduledDuration(
 
 // Fraction of the flight elapsed, or null meaning "do not draw the bar at all".
 // Called at render time from the live `now` so it advances with the clock.
-function computeProgress(f: SavedFlight | null, now: number): number | null {
+//
+// EXPORTED for app/flights.tsx, which draws its own bar from the same fraction.
+// One implementation, so the card and the trip screen cannot disagree about how
+// far along a flight is.
+export function computeProgress(f: SavedFlight | null, now: number): number | null {
   if (!f) return null;
   // NOT f.status, for the same reason flightLineSegments does not read it: a
   // record claiming to have landed before its own arrival time would fill this
