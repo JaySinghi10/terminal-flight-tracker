@@ -86,7 +86,11 @@ export function FlightError({ error, errorMsgOpacity }: {
 // A NULL INSTANT IS NOT A FAILURE. A pre-v3 record has no ISO to read and the
 // map is built for that: the arc still draws, in the planned weight, with no
 // aircraft on it. The route is known even when the schedule is not.
-function mapRouteFor(f: SavedFlight): MapRoute {
+// EXPORTED FOR app/flights.tsx, which offers the same map toggle on every leg
+// of a trip. A second copy of these five fields there would repeat the
+// departureTs/arrivalTs conversion in a second place -- which is the one thing
+// the note above says must never happen.
+export function mapRouteFor(f: SavedFlight): MapRoute {
   return {
     id: f.id,
     from: f.from.iata,

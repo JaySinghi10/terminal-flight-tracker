@@ -1121,8 +1121,41 @@ type FlightCardProps = {
   // a handler is how this component is told a thing does not apply here.
   isOwnedFlight?: boolean;
   toggleOwned?: () => void;
+  // -- TAKE THIS LEG OFF THE TRIP -------------------------------------------
+  //
+  // Called by the remove action in the trip variant's left panel. It is the same
+  // act toggleOwned performs when the flight is already owned, and app/flights
+  // passes the same function to both -- two controls, one action, so the swipe
+  // and the menu row cannot come to mean different things.
+  removeFromTrip?: () => void;
   refreshFlightCard: () => void;
   closeFlightCard: () => void;
+  // -- MY FLIGHTS' OWN CUT OF THIS CARD --------------------------------------
+  //
+  // OFF EVERYWHERE ELSE, AND THAT IS THE CONTRACT, exactly as mapVariant's is.
+  // Home and the search results pass nothing and get precisely the card they
+  // have today; every read of this flag is additive-by-omission.
+  //
+  // WHAT IT CHANGES AND WHY:
+  //
+  //   THE LEFT PANEL BECOMES REFRESH AND REMOVE-FROM-TRIP. The bookmark toggles
+  //   WATCHING, and watching is the wrong verb on a screen about flights you are
+  //   TAKING: every leg here is saved by construction, so the button could only
+  //   ever unsave -- deleting the record out from under the trip that is showing
+  //   it. Remove is what a person means on this screen, and it disowns rather
+  //   than deletes.
+  //
+  //   THE RIGHT PANEL GOES ENTIRELY. It holds notify, which is unimplemented,
+  //   and close, which closes a SEARCH RESULT. This is not one: there is nothing
+  //   to close, and a card that vanished from a trip because it was swiped shut
+  //   would be a delete wearing the wrong word. undefined is how the library is
+  //   told there is no panel -- see renderRightActions below.
+  //
+  // AND NOTHING ELSE. The route block, the airport tiles, the progress bar, the
+  // sheet the card opens and the long-press menu all stay exactly as they are.
+  // That is the whole point of using the card here rather than rebuilding a
+  // worse one beside it.
+  tripVariant?: boolean;
   // ── THE MAP'S OWN CUT OF THIS CARD ────────────────────────────────────────
   //
   // OFF EVERYWHERE ELSE, AND THAT IS THE CONTRACT. Home and the search results
@@ -1158,8 +1191,10 @@ export function FlightCard({
   toggleRouteOnMap,
   isOwnedFlight,
   toggleOwned,
+  removeFromTrip,
   refreshFlightCard,
   closeFlightCard,
+  tripVariant = false,
   mapVariant = false,
 }: FlightCardProps) {
   // CALLED UNCONDITIONALLY, read only when mapVariant. A hook behind an if is
@@ -1351,6 +1386,14 @@ export function FlightCard({
     // closes and the lookup runs.
     if (side === 'left') {
       cardSwipe.current?.close();
+      // THE LEFT COMMIT IS WHATEVER THE LEFT PANEL'S EXPANDING ACTION IS, and
+      // the two panels put a different one there: refresh on the ordinary card,
+      // remove on a trip leg. Reading the flag here rather than giving the trip
+      // its own onSwipeableWillOpen keeps one commit path with one close.
+      if (tripVariant) {
+        removeFromTrip?.();
+        return;
+      }
       refreshFlightCard();
       return;
     }
@@ -1616,6 +1659,51 @@ export function FlightCard({
           stroke={isSaved ? '#4ade80' : SWIPE_INK_DIM}
           strokeWidth={1.75}
         />
+      </SwipeAction>
+    </View>
+  );
+
+  // -- THE TRIP LEG'S LEFT PANEL --------------------------------------------
+  //
+  // A SECOND RENDERER RATHER THAN A BRANCH INSIDE THE FIRST. renderCardLeft is
+  // the ordinary card's panel and stays exactly what it is; a flag threaded
+  // through it would make one function describe two panels and neither clearly.
+  //
+  // REMOVE IS THE EXPANDING ACTION, so a full swipe commits it -- which is the
+  // same promise a watchlist row makes with delete, and the reason remove sits
+  // in the outboard slot the panel gives to whatever it is really for. Refresh
+  // is the second child, inboard, against the card.
+  //
+  // SWIPE_FILL_DIM AND SWIPE_INK_DIM, NOT THE RED DELETE TREATMENT, and that is
+  // the whole of what the colour is saying. Removing a leg DISOWNS it: the
+  // record stays, its reminders stay, its archive decision stays, and the flight
+  // goes back to the watchlist. Red is this app's word for destroying something,
+  // and using it here would claim a deletion that does not happen.
+  //
+  // THE GLYPH IS ICON_DELETE'S TWO PATHS AT THE DIM INK. It is not that constant
+  // itself, because that one strokes in SWIPE_INK_RED -- the ink is the
+  // difference, and the shape is the same X the app closes and deletes with.
+  const renderTripLeft = (progress: SharedValue<number>, translation: SharedValue<number>) => (
+    <View style={sf.cardSwipeGroup}>
+      <ExpandAction side="left" translation={translation} rowW={cardW} others={SWIPE_W} onCross={onCardCrossLeft}>
+        <SwipeAction
+          label="remove"
+          fill={SWIPE_FILL_DIM}
+          progress={progress}
+          grow="left"
+          onPress={() => { cardSwipe.current?.close(); removeFromTrip?.(); }}
+        >
+          <Path d="M19 5 5 19" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
+          <Path d="M5 5 19 19" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
+        </SwipeAction>
+      </ExpandAction>
+      <SwipeAction
+        label="refresh"
+        fill={SWIPE_FILL_DIM}
+        progress={progress}
+        onPress={() => { cardSwipe.current?.close(); refreshFlightCard(); }}
+      >
+        {ICON_REFRESH}
       </SwipeAction>
     </View>
   );
@@ -2132,8 +2220,15 @@ export function FlightCard({
               // Omitting this leaves the container with no background at all,
               // which is exactly what a card over a map wants.
               childrenContainerStyle={mapVariant ? undefined : sf.rowSurface}
-              renderLeftActions={mapVariant || isArchivedCard ? undefined : renderCardLeft}
-              renderRightActions={mapVariant ? undefined : renderCardRight}
+              // THE SUPPRESSIONS STILL WIN. mapVariant and isArchivedCard both
+              // mean "no panel at all", and neither is overridden by the trip
+              // variant choosing which panel it would otherwise have had.
+              renderLeftActions={
+                mapVariant || isArchivedCard
+                  ? undefined
+                  : (tripVariant ? renderTripLeft : renderCardLeft)
+              }
+              renderRightActions={mapVariant || tripVariant ? undefined : renderCardRight}
             >
               {/* AT THE AIRPORT. The specification table became the three
                   things somebody standing in a terminal actually looks for. The
