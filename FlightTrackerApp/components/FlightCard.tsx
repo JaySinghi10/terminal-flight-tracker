@@ -1386,15 +1386,29 @@ export function FlightCard({
     // closes and the lookup runs.
     if (side === 'left') {
       cardSwipe.current?.close();
-      // THE LEFT COMMIT IS WHATEVER THE LEFT PANEL'S EXPANDING ACTION IS, and
-      // the two panels put a different one there: refresh on the ordinary card,
-      // remove on a trip leg. Reading the flag here rather than giving the trip
-      // its own onSwipeableWillOpen keeps one commit path with one close.
-      if (tripVariant) {
-        removeFromTrip?.();
-        return;
-      }
+      // ONE LEFT COMMIT FOR BOTH PANELS AGAIN. Remove used to sit here behind a
+      // tripVariant test, because remove was the trip panel's expanding action.
+      // It is the RIGHT panel's now, so the left commit is refresh on either
+      // card and the test has nothing left to decide.
       refreshFlightCard();
+      return;
+    }
+
+    // AND THE RIGHT COMMIT IS THE ONE THAT DIFFERS NOW. Remove, on a trip leg,
+    // reached in the same place and closed the same way as every other commit.
+    //
+    // IT DOES NOT THROW, AND THE PARAGRAPH ABOVE IS WHY THE THROW EXISTS AT ALL:
+    // to carry closeFlightCard, so the card is off screen before the result
+    // unmounts. There is no closeFlightCard here -- app/flights.tsx passes
+    // NOT_REACHABLE for it, because a leg is not a result that can be closed --
+    // so the throw has nothing to sequence. What it would sequence instead is
+    // cardExitX finishing on a card removeFromTrip has already taken out of
+    // savedFlights, above a list that closes the gap on the next render with no
+    // animation of its own: a slide out ending in a snap. The panel closes and
+    // the leg goes, which is the same settle refresh gets.
+    if (tripVariant) {
+      cardSwipe.current?.close();
+      removeFromTrip?.();
       return;
     }
 
@@ -1663,48 +1677,72 @@ export function FlightCard({
     </View>
   );
 
-  // -- THE TRIP LEG'S LEFT PANEL --------------------------------------------
+  // -- THE TRIP LEG'S TWO PANELS --------------------------------------------
   //
-  // A SECOND RENDERER RATHER THAN A BRANCH INSIDE THE FIRST. renderCardLeft is
-  // the ordinary card's panel and stays exactly what it is; a flag threaded
-  // through it would make one function describe two panels and neither clearly.
+  // SEPARATE RENDERERS RATHER THAN BRANCHES INSIDE THE ORDINARY CARD'S.
+  // renderCardLeft and renderCardRight are that card's panels and stay exactly
+  // what they are; a flag threaded through either would make one function
+  // describe two panels and neither clearly.
   //
-  // REMOVE IS THE EXPANDING ACTION, so a full swipe commits it -- which is the
-  // same promise a watchlist row makes with delete, and the reason remove sits
-  // in the outboard slot the panel gives to whatever it is really for. Refresh
-  // is the second child, inboard, against the card.
+  // ONE ACTION EACH, WHICH IS THEREFORE THE EXPANDING ONE ON BOTH SIDES. There
+  // is no inboard slot to fill on either, so `others` is 0 on both -- which is
+  // ExpandAction's own note for exactly this case: 64 where a placeholder shares
+  // the panel, 0 where this is the only action. It is the width of the buttons
+  // BESIDE this one, and passing SWIPE_W with nothing beside it would hold the
+  // expansion back by a button that is not there.
+  //
+  // REFRESH ALONE ON THE LEFT. It was the inboard action here, with remove
+  // outboard of it; remove has gone to the other panel and refresh has taken the
+  // slot it left, which is the slot that expands.
+  const renderTripLeft = (progress: SharedValue<number>, translation: SharedValue<number>) => (
+    <View style={sf.cardSwipeGroup}>
+      <ExpandAction side="left" translation={translation} rowW={cardW} others={0} onCross={onCardCrossLeft}>
+        <SwipeAction
+          label="refresh"
+          fill={SWIPE_FILL_DIM}
+          progress={progress}
+          grow="left"
+          onPress={() => { cardSwipe.current?.close(); refreshFlightCard(); }}
+        >
+          {ICON_REFRESH}
+        </SwipeAction>
+      </ExpandAction>
+    </View>
+  );
+
+  // -- AND REMOVE, ON THE RIGHT, WHICH IS THE SIDE THIS APP ALREADY TEACHES ---
+  //
+  // A watchlist row's right panel expands into delete. The ordinary flight
+  // card's expands into close. Both are the action that ENDS the thing you are
+  // looking at, and on a trip leg that action is remove -- so it sits where the
+  // reader's thumb has already learnt to find it, rather than opposite a
+  // refresh that puts it where nothing else in the app puts an ending.
   //
   // SWIPE_FILL_DIM AND SWIPE_INK_DIM, NOT THE RED DELETE TREATMENT, and that is
   // the whole of what the colour is saying. Removing a leg DISOWNS it: the
   // record stays, its reminders stay, its archive decision stays, and the flight
   // goes back to the watchlist. Red is this app's word for destroying something,
-  // and using it here would claim a deletion that does not happen.
+  // and using it here would claim a deletion that does not happen. Being on the
+  // delete side makes that distinction carry MORE weight, not less: the position
+  // says "this ends it" and the colour says "nothing is destroyed".
   //
   // THE GLYPH IS ICON_DELETE'S TWO PATHS AT THE DIM INK. It is not that constant
   // itself, because that one strokes in SWIPE_INK_RED -- the ink is the
   // difference, and the shape is the same X the app closes and deletes with.
-  const renderTripLeft = (progress: SharedValue<number>, translation: SharedValue<number>) => (
+  const renderTripRight = (progress: SharedValue<number>, translation: SharedValue<number>) => (
     <View style={sf.cardSwipeGroup}>
-      <ExpandAction side="left" translation={translation} rowW={cardW} others={SWIPE_W} onCross={onCardCrossLeft}>
+      <ExpandAction side="right" translation={translation} rowW={cardW} others={0} onCross={onCardCrossRight}>
         <SwipeAction
           label="remove"
           fill={SWIPE_FILL_DIM}
           progress={progress}
-          grow="left"
+          grow="right"
           onPress={() => { cardSwipe.current?.close(); removeFromTrip?.(); }}
         >
           <Path d="M19 5 5 19" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
           <Path d="M5 5 19 19" fill="none" stroke={SWIPE_INK_DIM} strokeWidth={1.75} strokeLinecap="round" />
         </SwipeAction>
       </ExpandAction>
-      <SwipeAction
-        label="refresh"
-        fill={SWIPE_FILL_DIM}
-        progress={progress}
-        onPress={() => { cardSwipe.current?.close(); refreshFlightCard(); }}
-      >
-        {ICON_REFRESH}
-      </SwipeAction>
     </View>
   );
 
@@ -2228,7 +2266,9 @@ export function FlightCard({
                   ? undefined
                   : (tripVariant ? renderTripLeft : renderCardLeft)
               }
-              renderRightActions={mapVariant || tripVariant ? undefined : renderCardRight}
+              renderRightActions={
+                mapVariant ? undefined : (tripVariant ? renderTripRight : renderCardRight)
+              }
             >
               {/* AT THE AIRPORT. The specification table became the three
                   things somebody standing in a terminal actually looks for. The
@@ -2267,9 +2307,32 @@ export function FlightCard({
                   whole card body the first time one was opened from the map;
                   a touchable with nothing to do and no feedback is inert and
                   costs a wrapper nobody sees. */}
+              {/* -- AND ON A TRIP LEG THE HOLD COMES HERE TOO --
+                  THIS IS THE ROUTE CARD'S OWN PAIRING, MOVED TO A DIFFERENT
+                  ELEMENT. Tap opens the airport sheet, hold opens the map menu:
+                  the same two gestures on one surface that the route card has
+                  carried all along. The trip variant does not render a route
+                  card, and the menu's map row is the only path left to the map
+                  toggle once renderRouteLeft goes with it -- so this is not a
+                  convenience, it is the only binding.
+
+                  THE TWO DO NOT CONFLICT, for the reason the route card states
+                  where it does the same thing: ReanimatedSwipeable's pan takes
+                  the responder after about 10pt of horizontal travel and cancels
+                  the press, and a long press that has moved 10pt is a drag. A
+                  tap never reaches that threshold and a hold that does was never
+                  a hold.
+
+                  undefined RATHER THAN A GUARD INSIDE openMapMenu. The ordinary
+                  card and the map card both have a route card of their own and
+                  would otherwise answer the same hold twice. openMapMenu keeps
+                  its own flightRecord === null guard, which is why there is no
+                  `disabled` here the way the route card has one -- disabling
+                  this touchable would take the sheet with it. */}
               <TouchableOpacity
                 activeOpacity={mapVariant ? 1 : 0.7}
                 onPress={mapVariant ? undefined : openAirportSheet}
+                onLongPress={tripVariant ? openMapMenu : undefined}
                 onLayout={e => { cardW.value = e.nativeEvent.layout.width; }}
               >
               {/* HIDDEN WHILE THE SHEET IS UP, because the sheet is not a panel
@@ -2574,6 +2637,30 @@ export function FlightCard({
                   </View>
                 </View>
 
+                {/* THE BAR, ON A TRIP LEG, BECAUSE THERE IS NOWHERE ELSE FOR IT.
+                    It lives inside the route card on every other variant, on the
+                    argument that it measures the distance between the two
+                    airports named on either side of it and belongs with them.
+                    The trip variant renders no route card, and the bar is the
+                    one thing that block held which is not repeated in the sheet
+                    -- so it comes here rather than being lost.
+
+                    UNDER THE MOVEMENTS AND ABOVE THE RULE, which is where it
+                    still measures something the card has just said: the two
+                    times immediately above it are the ends of the distance it is
+                    drawing. Below the rule it would be sitting among the gate
+                    and the belt, which are facts about a building.
+
+                    SAME CONDITIONS, UNCHANGED. Hidden entirely when the flight
+                    state cannot place it -- see the route card's copy. */}
+                {tripVariant && progressValue !== null && (flight.status === 'ACTIVE' || flight.status === 'LANDED') && (
+                  <ProgressBar
+                    progress={progressValue}
+                    color={flight.statusColor}
+                    style={s.cardProgress}
+                  />
+                )}
+
                 <View style={s.airportRule} />
 
                 {/* Three tiles in one row, four as two by two. The layout and
@@ -2584,11 +2671,77 @@ export function FlightCard({
                   belt={flight.baggage}
                   desk={flight.checkinDesk}
                 />
+
+                {/* AND ON A TRIP LEG IT COMES BACK INSIDE, WHICH REVERSES THE
+                    NOTE FURTHER DOWN -- conditionally, and only for this variant.
+
+                    THAT NOTE IS NOT WRONG AND IS NOT BEING DELETED. It argues
+                    the line belongs to neither card and therefore to the page:
+                    last child of the result, under both cards, on no surface,
+                    which is what says it describes the whole result rather than
+                    any part of it. Every word of it holds where it was written
+                    -- and it was written when A ROUTE CARD SAT BETWEEN THE
+                    FLIGHT CARD AND THE PAGE. Scope over two things needs two
+                    things.
+
+                    THERE IS NO ROUTE CARD HERE. One line of 11pt mono alone on
+                    black under a single card does not read as scope; it reads as
+                    something that fell off the card above it. The same
+                    positioning that said "this is about the whole result" says
+                    "this is a stray" the moment the result is one card.
+
+                    SO THE ARGUMENT IS UNCHANGED AND ONLY THE ARRANGEMENT MOVED.
+                    It sits on the surface it describes, because on this screen
+                    that surface IS the whole result.
+
+                    hideStatus AND hideAbsolute ARE UNCHANGED, and both reasons
+                    survive the move intact. The word is in the card's own
+                    heading, four rows up. The absolute time the tail would
+                    append is a dep or arr clock -- and the movement lines print
+                    both of them, in full, on this very card; the route card was
+                    never the only thing repeating it.
+
+                    NO style, AND routeStatus IS NOT REUSED. That style is
+                    marginTop 8 stacked on resultWrap's gap of 10, which is a
+                    page gap holding a note clear of a pair of cards. Inside the
+                    card, airportCard's own gap of 14 is the interior rhythm --
+                    the same gap that already sits between the rule and the tiles
+                    -- and this is another of the card's rows. */}
+                {tripVariant && flightRecord !== null && (
+                  <StatusLine
+                    f={flightRecord}
+                    now={now}
+                    hideStatus
+                    hideAbsolute
+                    numberOfLines={1}
+                  />
+                )}
               </View>
               </TouchableOpacity>
             </ReanimatedSwipeable>
 
-            {!mapVariant && (
+            {/* -- NO ROUTE BLOCK ON A TRIP LEG, THE WAY THE MAP CARD ALREADY HAS
+                   NONE --
+                THE GATE IS ONE TEST AND IT TAKES BOTH CHILDREN, which is the
+                point of extending it rather than writing a second one inside:
+                the route card and the updated line are the pair this block IS,
+                and the trip variant wants neither of them here. The line has
+                moved up into the card above; see the note there.
+
+                WHAT IS ACTUALLY LOST IS ONE THING. The IATA codes and the
+                airport names are in the airport sheet, which the card's own tap
+                opens -- they are a tap further in, not gone. flight.duration is
+                dropped outright: it renders nowhere else in this file, it has no
+                slot on the card face, and it is not worth making one. The
+                progress bar was the only loss that mattered and it has been
+                moved inside the card.
+
+                renderRouteLeft AND routeSwipe GO WITH THE BLOCK and are not
+                deleted: every other variant still renders it. What goes with it
+                on THIS variant is the second path to the map toggle, which is
+                why openMapMenu is rebound to the flight card above -- the menu's
+                map row is now the only way to reach it. */}
+            {!mapVariant && !tripVariant && (
             <>
             {/* THE ROUTE IS A CARD AGAIN, AND THE GESTURE IS THE REASON.
                   It stood on the bare page because a surface exists to group
@@ -2707,7 +2860,14 @@ export function FlightCard({
 
                 hideStatus AND hideAbsolute ARE UNCHANGED and both notes still
                 hold: the word is in the card's heading, and the tail's departure
-                time would repeat one the route card prints in full above. */}
+                time would repeat one the route card prints in full above.
+
+                ONE VARIANT REVERSES THIS AND IT IS NOT A CONTRADICTION. A trip
+                leg has no route card, so the pair this line sits under is a
+                single card and the page position reads as a stray rather than as
+                scope. It renders inside the card there instead -- same props,
+                same reasons, one fewer surface to be between. See the note at
+                that copy. */}
             {flightRecord !== null && (
               <StatusLine
                 f={flightRecord}
@@ -2767,6 +2927,29 @@ const s = StyleSheet.create({
   // into, since the track itself is 3pt and the glyph is 20. The card's
   // CARD_PAD sits under it.
   routeProgress: { marginTop: 14, marginBottom: 0 },
+  // THE SAME BAR ON A CARD INTERIOR, AND ZERO IS NOT THE SAME AS NO STYLE.
+  //
+  // pg.wrap carries marginVertical 24 of its own, which is right when the bar is
+  // floating on black and far too much inside a card that is already padded.
+  // Something has to cancel it, exactly as routeProgress does; what differs is
+  // what replaces it.
+  //
+  // NOTHING REPLACES IT, BECAUSE airportCard ALREADY SPELLS THE GAP. That style
+  // carries gap: 14, so 14 is already standing between the movement lines and
+  // this. routeProgress has to spell its own 14 because the route card has no
+  // gap and stacks the bar directly under the row; adding that 14 on top of this
+  // card's would make 28 and open a hole in the middle of it.
+  //
+  // 14 IS THE FIGURE THAT MATTERS, and it is the same figure in both places.
+  // pg.plane sits at top: -11 with a 20pt glyph, so the plane riding the bar
+  // overhangs its wrapper upward by 11pt; 14 leaves it 3pt clear of the arrival
+  // time above, and anything under 11 would put a plane through it.
+  //
+  // marginBottom STAYS 0 for routeProgress's own reason: pg.track's 14 is not a
+  // gap but the height the wrapper needs for the glyph to descend into, since
+  // the track is 3pt and the plane is 20. The card's gap then sits between that
+  // and the rule.
+  cardProgress: { marginTop: 0, marginBottom: 0 },
   // 8 ON TOP OF resultWrap's GAP OF 10, so this line sits 18 below the route
   // card. At the bare 10 it read as a third card that had lost its surface
   // rather than as a note under the pair of them.
