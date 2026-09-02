@@ -55,6 +55,11 @@ import {
   OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
 } from '../lib/glass';
 import { useToast } from '../lib/toast';
+// THE APP'S ONE HAPTIC. components/swipe fires it when a full swipe arms and
+// when a long press becomes a menu -- both moments where a gesture turns into an
+// offer. Opening this menu is the same kind of moment, and a second weight for
+// it would be a second vocabulary.
+import { EXPAND_HAPTIC } from '../components/swipe';
 // THE ONE FRACTION, and it is the card's. A second implementation of "how far
 // along is this flight" would be a bar on this screen that disagrees with the bar
 // on the card for the same record.
@@ -382,8 +387,43 @@ function useOverlay(inMs: number, outMs: number) {
       }),
     ]).start();
   }, [open]);
-  // Animated out, then unmounted, exactly as closeArchive does it.
-  const dismiss = () => {
+  // -- ANIMATED OUT, THEN UNMOUNTED, AND onGone IS THE ONLY WAY TO FOLLOW IT --
+  //
+  // THIS IS NOT A NICETY ABOUT ANIMATION ORDER. It is the only way a second
+  // Modal can be opened from inside a first one, and getting it wrong is silent.
+  //
+  // WHAT GOES WRONG WITHOUT IT. setOpen(false) is the COMPLETION callback, so
+  // the Modal stays mounted for the whole exit. A caller that writes
+  //
+  //     menu.dismiss();
+  //     sheet.present();
+  //
+  // puts both overlays' `open` at true on the same commit, and React Native
+  // cannot present a Modal while another is up: on iOS a Modal is a presented
+  // view controller, and the second presentation is dropped. Nothing throws and
+  // nothing renders. That is exactly what "Import from watchlist does nothing"
+  // was -- the button worked as a plain page control and stopped the day it
+  // moved inside a menu.
+  //
+  // AND setOpen(false) ALONE IS NOT ENOUGH EITHER. React batches the updates in
+  // one callback, so a follow-up called straight after it would land in the SAME
+  // commit as the unmount and the Modal would still be up when the second one
+  // asked to present. requestAnimationFrame is what puts the follow-up on the
+  // frame AFTER the unmount has committed.
+  //
+  // A HANDLER IS CALLED WITH AN EVENT, so none of the five call sites may pass
+  // this bare any more: every onPress and onRequestClose that dismisses an
+  // overlay is wrapped in an arrow, or the event would arrive here as `onGone`
+  // and requestAnimationFrame would try to call it.
+  //
+  // TYPESCRIPT IS WHAT ENFORCES THAT, and it is a better guarantee than a
+  // runtime check: (onGone?: () => void) => void is not assignable to a
+  // NativeSyntheticEvent handler, so a bare `onPress={x.dismiss}` does not
+  // compile. It was caught that way rather than reasoned about.
+  //
+  // THE typeof GUARD STAYS ANYWAY, for the one path the compiler cannot see: a
+  // call that reaches this through an `any`.
+  const dismiss = (onGone?: () => void) => {
     Animated.parallel([
       Animated.timing(anim, {
         toValue: 0, duration: outMs, easing: EASE_IN, useNativeDriver: true,
@@ -391,7 +431,10 @@ function useOverlay(inMs: number, outMs: number) {
       Animated.timing(scrim, {
         toValue: 0, duration: SCRIM_OUT_MS, easing: EASE_IN, useNativeDriver: true,
       }),
-    ]).start(() => setOpen(false));
+    ]).start(() => {
+      setOpen(false);
+      if (typeof onGone === 'function') requestAnimationFrame(onGone);
+    });
   };
   return { open, present: () => setOpen(true), dismiss, anim, scrim };
 }
@@ -408,8 +451,8 @@ function Sheet({ sheet, title, children }: {
   sheet: Overlay; title: string; children: ReactNode;
 }) {
   return (
-    <Modal visible={sheet.open} transparent animationType="none" onRequestClose={sheet.dismiss}>
-      <Pressable style={g.routeCalScrim} onPress={sheet.dismiss}>
+    <Modal visible={sheet.open} transparent animationType="none" onRequestClose={() => sheet.dismiss()}>
+      <Pressable style={g.routeCalScrim} onPress={() => sheet.dismiss()}>
         {/* The dim alone, full screen and unblurred. The blur lives inside the
             sheet, so outside it the page stays sharp. */}
         <Animated.View
@@ -438,7 +481,7 @@ function Sheet({ sheet, title, children }: {
               <Text style={g.sheetTitle}>{title}</Text>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={sheet.dismiss}
+                onPress={() => sheet.dismiss()}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={g.sheetClose}
               >
@@ -475,8 +518,8 @@ function Sheet({ sheet, title, children }: {
 // dismisses.
 function Menu({ menu, children }: { menu: Overlay; children: ReactNode }) {
   return (
-    <Modal visible={menu.open} transparent animationType="none" onRequestClose={menu.dismiss}>
-      <Pressable style={g.routeCalScrim} onPress={menu.dismiss}>
+    <Modal visible={menu.open} transparent animationType="none" onRequestClose={() => menu.dismiss()}>
+      <Pressable style={g.routeCalScrim} onPress={() => menu.dismiss()}>
         <Animated.View
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: menu.scrim }]}
@@ -511,7 +554,9 @@ function MenuRow({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      onPress={onPress}
+      // THE HAPTIC LEADS THE ACTION, so the confirmation lands with the finger
+      // rather than after whatever the row goes on to do.
+      onPress={() => { EXPAND_HAPTIC(); onPress(); }}
       style={st.menuRow}
       accessibilityRole="button"
     >
@@ -594,17 +639,20 @@ export default function Flights() {
   // line: the tab bar already owns one and the search screen is where it types.
   // This sends you there rather than reimplementing it.
   //
-  // THE MENU CLOSES FIRST, THEN ACTS, which is chooseMapToggle's rule on the
-  // flight card and is here for the same reason: navigating or opening a sheet
-  // while the menu is still on screen leaves it animating out over the thing it
-  // just summoned.
+  // THE MENU IS GONE BEFORE EITHER OF THESE RUNS, AND THAT IS LOAD-BEARING
+  // RATHER THAN TIDY. See dismiss: a Modal cannot be presented while another is
+  // mounted, so `dismiss(); present();` on two lines opens nothing at all and
+  // says nothing about it. The callback is the only correct shape.
+  //
+  // THE NAVIGATION TAKES IT TOO. Pushing while the menu is still up is not
+  // silent in the same way -- the route changes -- but it leaves the menu
+  // animating out over the screen it just opened, which is the same fault
+  // wearing a less obvious face.
   const chooseSearch = () => {
-    addMenu.dismiss();
-    router.push('/search');
+    addMenu.dismiss(() => router.push('/search'));
   };
   const chooseImport = () => {
-    addMenu.dismiss();
-    importSheet.present();
+    addMenu.dismiss(() => importSheet.present());
   };
 
   // THE PLUS IS THE ONE GREEN THING ON AN EMPTY SCREEN, and that is within the
@@ -615,11 +663,13 @@ export default function Flights() {
     <TouchableOpacity
       style={st.addBtn}
       activeOpacity={0.7}
-      onPress={addMenu.present}
+      onPress={() => { EXPAND_HAPTIC(); addMenu.present(); }}
       accessibilityRole="button"
       accessibilityLabel="add your flight"
     >
-      <Svg width={16} height={16} viewBox="0 0 24 24">
+      {/* 20, UP FROM 16. The glyph is the half of this control that says what it
+          does; at 16 beside a 15pt label it read as a bullet. */}
+      <Svg width={20} height={20} viewBox="0 0 24 24">
         <Path d="M12 5v14" fill="none" stroke={CD_GREEN} strokeWidth={1.75} strokeLinecap="round" />
         <Path d="M5 12h14" fill="none" stroke={CD_GREEN} strokeWidth={1.75} strokeLinecap="round" />
       </Svg>
@@ -722,9 +772,6 @@ export default function Flights() {
           // offset from the title.
           <View style={st.emptyWrap}>
             <Text style={st.emptyHead}>{"Add the flight you're taking"}</Text>
-            <Text style={st.emptyBody}>
-              {'Gate, timing and everything else, in one place.'}
-            </Text>
             {addButton}
           </View>
         ) : (
@@ -770,7 +817,11 @@ const st = StyleSheet.create({
   // See the note at the ScrollView.
   scrollFill: { flexGrow: 1 },
   brand: { fontFamily: MONO_BOLD, color: CD_GREEN, fontSize: 15 },
-  title: { fontFamily: MONO, fontSize: 20, color: '#e2e2e2', marginTop: 36 },
+  // 24, MATCHING THE GREETING ON HOME (index.tsx:1689) IN SIZE ONLY. That line
+  // is SANS_SEMI because it is language spoken to a person; this is MONO because
+  // every screen's title in this app is MONO and a title is a label rather than
+  // a greeting. The colour is unchanged. Only the size moved.
+  title: { fontFamily: MONO, fontSize: 24, color: '#e2e2e2', marginTop: 36 },
 
   // ── THE EMPTY STATE ──
   // routeEmptyWrap's own padding, so a wrapped line breaks well short of the
@@ -781,13 +832,21 @@ const st = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  // -- routeEmptyHead, ONE STEP LARGER, AND THE DIVERGENCE IS DELIBERATE --
+  //
+  // THE FAMILY, THE COLOUR AND THE CENTRING ARE THAT STYLE'S, UNCHANGED: Inter
+  // regular at rgba(226,226,226,0.6), centred. What differs is the size, and the
+  // reason is what the two lines ARE. routeEmptyHead is a RESULT standing in for
+  // a list that came back empty -- it has a heading, controls and a whole screen
+  // of context above it. This is the entire subject of a page with nothing else
+  // on it but a button.
+  //
+  // 24 IS OFF THE 11/13/15/20 SCALE, and it is here for the same reason the
+  // greeting on home is off it: it is the largest thing on its page. Said out
+  // loud rather than left for someone to find.
   emptyHead: {
-    fontFamily: SANS, fontSize: 20, color: 'rgba(226,226,226,0.6)',
-    textAlign: 'center', lineHeight: 28,
-  },
-  emptyBody: {
-    fontFamily: SANS, fontSize: 11, color: DIM,
-    textAlign: 'center', lineHeight: 18, marginTop: 10,
+    fontFamily: SANS, fontSize: 24, color: 'rgba(226,226,226,0.6)',
+    textAlign: 'center', lineHeight: 32,
   },
 
   // THE FOCUS TRIP. CARD_GAP between legs, which is the gap between any two
@@ -837,16 +896,19 @@ const st = StyleSheet.create({
   // screen reads as a list item; this is a single act and should look like one.
   // 10 between the glyph and the word, the same gutter the card's menu row
   // leaves around its own icon.
+  // PRESENT RATHER THAN A ROW. At 12 and 16 with a 15pt label this read as a
+  // list item that happened to be centred; the padding, the glyph and the gap
+  // above it are what make it the one act on the screen.
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     alignSelf: 'center',
-    marginTop: 28,
+    marginTop: 32,
     backgroundColor: CARD_FILL,
     borderRadius: CARD_RADIUS,
-    paddingVertical: 12,
-    paddingHorizontal: CARD_PAD,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
   },
   addLabel: { fontFamily: SANS, fontSize: 15, color: '#e2e2e2' },
 
