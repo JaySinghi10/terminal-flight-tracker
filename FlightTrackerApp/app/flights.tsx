@@ -50,6 +50,9 @@ import {
   GlassLayers, g,
   EASE_OUT, EASE_IN, CAL_RISE,
   CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
+  // THE SMALL PANEL'S OWN MOTION. A menu is not a sheet: it travels less and
+  // arrives quicker. See Menu.
+  OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
 } from '../lib/glass';
 import { useToast } from '../lib/toast';
 // THE ONE FRACTION, and it is the card's. A second implementation of "how far
@@ -350,16 +353,19 @@ function Leg({ leg, now, onRemove }: {
   );
 }
 
-// ── THE SHEET, AND IT IS THE ARCHIVE SHEET'S STRUCTURE ──────────────────────
+// ── WHAT AN OVERLAY IS MADE OF ──────────────────────────────────────────────
 //
-// A COMPONENT RATHER THAN TWO COPIES, and nothing about the structure differs
-// from app/index.tsx's archive sheet: the same Modal flags, the same scrim
-// Pressable, the same full-screen dim on its own value, the same CAL_RISE / 0.96
-// rise-scale-fade on CAL_IN_MS and CAL_OUT_MS, the same shell, glass, edge and
-// swallowing body, the same head with its spacer, title and red close X. Two
-// sheets on one screen written out twice is exactly how the two would come to
-// differ.
-function useSheet() {
+// ONE HOOK FOR THE STATE AND THE TWO VALUES, and the DURATIONS ARE A PARAMETER
+// because this screen now has both kinds of overlay on it. A sheet takes
+// CAL_IN_MS and CAL_OUT_MS; a menu takes the panel's shorter pair. Everything
+// else -- the flag, the two Animated.Values, the parallel in, the parallel out,
+// the unmount-after-the-exit -- is identical, and writing it twice is how the
+// two would come to behave differently.
+//
+// THE RISE IS NOT HERE. It belongs to whichever component renders the surface,
+// because a sheet rises CAL_RISE and scales while a menu rises OVERLAY_RISE and
+// does not. See Sheet and Menu.
+function useOverlay(inMs: number, outMs: number) {
   const [open, setOpen] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
   const scrim = useRef(new Animated.Value(0)).current;
@@ -372,7 +378,7 @@ function useSheet() {
         toValue: 1, duration: SCRIM_IN_MS, easing: EASE_OUT, useNativeDriver: true,
       }),
       Animated.timing(anim, {
-        toValue: 1, duration: CAL_IN_MS, easing: EASE_OUT, useNativeDriver: true,
+        toValue: 1, duration: inMs, easing: EASE_OUT, useNativeDriver: true,
       }),
     ]).start();
   }, [open]);
@@ -380,7 +386,7 @@ function useSheet() {
   const dismiss = () => {
     Animated.parallel([
       Animated.timing(anim, {
-        toValue: 0, duration: CAL_OUT_MS, easing: EASE_IN, useNativeDriver: true,
+        toValue: 0, duration: outMs, easing: EASE_IN, useNativeDriver: true,
       }),
       Animated.timing(scrim, {
         toValue: 0, duration: SCRIM_OUT_MS, easing: EASE_IN, useNativeDriver: true,
@@ -390,8 +396,16 @@ function useSheet() {
   return { open, present: () => setOpen(true), dismiss, anim, scrim };
 }
 
+type Overlay = ReturnType<typeof useOverlay>;
+
+// ── THE SHEET, AND IT IS THE ARCHIVE SHEET'S STRUCTURE ──────────────────────
+//
+// Nothing about the structure differs from app/index.tsx's archive sheet: the
+// same Modal flags, the same scrim Pressable, the same full-screen dim on its
+// own value, the same CAL_RISE / 0.96 rise-scale-fade, the same shell, glass,
+// edge and swallowing body, the same head with its spacer, title and red close X.
 function Sheet({ sheet, title, children }: {
-  sheet: ReturnType<typeof useSheet>; title: string; children: ReactNode;
+  sheet: Overlay; title: string; children: ReactNode;
 }) {
   return (
     <Modal visible={sheet.open} transparent animationType="none" onRequestClose={sheet.dismiss}>
@@ -443,6 +457,69 @@ function Sheet({ sheet, title, children }: {
   );
 }
 
+// ── THE MENU, AND IT IS THE FLIGHT CARD'S LONG-PRESS MENU ───────────────────
+//
+// A MENU, NOT A SHEET, AND THE DIFFERENCE IS IN EVERY NUMBER. A sheet takes over
+// the screen, holds a list of unknown length, and therefore has a head, a title,
+// a close button and a 62% floor. This asks one question with two answers, so it
+// is the small floating panel components/FlightCard.tsx already uses for exactly
+// that: the overlay's rise rather than the sheet's, the panel's timings rather
+// than the calendar's, and no scale at all.
+//
+// THE SAME MATERIAL THOUGH. sheetShell, GlassLayers and sheetEdge, in that
+// order, exactly as every other floating surface in this app. A menu made of
+// something else would be a fifth material for one control.
+//
+// NO HEAD AND NO CLOSE BUTTON, for the reason stated at the card's own menu: a
+// title bar over two rows would be more chrome than content, and the scrim
+// dismisses.
+function Menu({ menu, children }: { menu: Overlay; children: ReactNode }) {
+  return (
+    <Modal visible={menu.open} transparent animationType="none" onRequestClose={menu.dismiss}>
+      <Pressable style={g.routeCalScrim} onPress={menu.dismiss}>
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: menu.scrim }]}
+        />
+        <Animated.View
+          style={[
+            g.sheetShell,
+            st.menu,
+            {
+              opacity: menu.anim,
+              transform: [{
+                translateY: menu.anim.interpolate({
+                  inputRange: [0, 1], outputRange: [OVERLAY_RISE, 0],
+                }),
+              }],
+            },
+          ]}
+        >
+          <GlassLayers />
+          <View style={g.sheetEdge} pointerEvents="none" />
+          {/* Swallows the tap so the scrim's dismiss does not fire through. */}
+          <Pressable style={st.menuBody}>{children}</Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ONE ROW OF THE MENU. Inter at 15, which is this app's working size for a thing
+// being chosen -- the same size and family the card's menu row uses.
+function MenuRow({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={st.menuRow}
+      accessibilityRole="button"
+    >
+      <Text style={st.menuLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function Flights() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -487,8 +564,9 @@ export default function Flights() {
     [savedFlights, now],
   );
 
-  const importSheet = useSheet();
-  const pastSheet = useSheet();
+  const importSheet = useOverlay(CAL_IN_MS, CAL_OUT_MS);
+  const pastSheet = useOverlay(CAL_IN_MS, CAL_OUT_MS);
+  const addMenu = useOverlay(PANEL_IN_MS, PANEL_OUT_MS);
 
   const remove = async (leg: SavedFlight) => {
     await disownFlight(leg);
@@ -505,32 +583,57 @@ export default function Flights() {
     showToast(OWN_MSG[outcome.remind]);
   };
 
-  // THE TWO WAYS IN, and neither of them is a text field. A search input here
-  // would be a second command line: the tab bar already owns one and the search
-  // screen is where it types. This sends you there rather than reimplementing it.
-  const addControls = (
-    <View style={st.adds}>
-      <TouchableOpacity
-        style={st.addRow}
-        activeOpacity={0.7}
-        onPress={() => router.push('/search')}
-        accessibilityRole="button"
-      >
-        <Text style={st.addText}>{'Search for a flight'}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={st.addRow}
-        activeOpacity={0.7}
-        onPress={importSheet.present}
-        accessibilityRole="button"
-      >
-        <Text style={st.addText}>{'Import from watchlist'}</Text>
-      </TouchableOpacity>
-    </View>
+  // ── ONE CONTROL, TWO WAYS IN BEHIND IT ────────────────────────────────────
+  //
+  // TWO BUTTONS STACKED WAS TWO ANSWERS TO A QUESTION NOBODY HAD ASKED YET. The
+  // screen's whole prompt is "add the flight you're taking"; how it gets added is
+  // a second decision, and putting it in front of the first made the empty state
+  // a menu with no heading. One button asks, and the menu answers.
+  //
+  // NEITHER WAY IS A TEXT FIELD. A search input here would be a second command
+  // line: the tab bar already owns one and the search screen is where it types.
+  // This sends you there rather than reimplementing it.
+  //
+  // THE MENU CLOSES FIRST, THEN ACTS, which is chooseMapToggle's rule on the
+  // flight card and is here for the same reason: navigating or opening a sheet
+  // while the menu is still on screen leaves it animating out over the thing it
+  // just summoned.
+  const chooseSearch = () => {
+    addMenu.dismiss();
+    router.push('/search');
+  };
+  const chooseImport = () => {
+    addMenu.dismiss();
+    importSheet.present();
+  };
+
+  // THE PLUS IS THE ONE GREEN THING ON AN EMPTY SCREEN, and that is within the
+  // rule rather than an exception to it: green means live and actionable, and on
+  // a page with no trips on it this is the only actionable thing there is. The
+  // label stays at the ordinary ink -- one mark, not a green button.
+  const addButton = (
+    <TouchableOpacity
+      style={st.addBtn}
+      activeOpacity={0.7}
+      onPress={addMenu.present}
+      accessibilityRole="button"
+      accessibilityLabel="add your flight"
+    >
+      <Svg width={16} height={16} viewBox="0 0 24 24">
+        <Path d="M12 5v14" fill="none" stroke={CD_GREEN} strokeWidth={1.75} strokeLinecap="round" />
+        <Path d="M5 12h14" fill="none" stroke={CD_GREEN} strokeWidth={1.75} strokeLinecap="round" />
+      </Svg>
+      <Text style={st.addLabel}>{'Add your flight'}</Text>
+    </TouchableOpacity>
   );
 
   return (
     <View style={[st.root, { paddingTop: insets.top + 12 }]}>
+      <Menu menu={addMenu}>
+        <MenuRow label="Search for a flight" onPress={chooseSearch} />
+        <MenuRow label="Import from watchlist" onPress={chooseImport} />
+      </Menu>
+
       <Sheet sheet={importSheet} title="Import">
         {importable.length === 0 ? (
           <Text style={st.sheetEmpty}>{'Nothing on your watchlist to import.'}</Text>
@@ -591,18 +694,39 @@ export default function Flights() {
           is home's treatment and its reasoning: a blur with nothing behind it is
           a grey pill, and the material only reads as glass while something is
           moving underneath it. */}
+      {/* flexGrow ON THE CONTENT CONTAINER, which is what lets the empty state
+          centre itself vertically: a flex: 1 child can only fill space its
+          parent actually has, and a scroll container sizes to its content
+          unless told to fill the viewport. It changes nothing when there IS
+          content -- there is no flexing child then, so everything sits at the
+          top exactly as before. */}
       <ScrollView
-        contentContainerStyle={[st.scroll, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[st.scroll, st.scrollFill, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={st.brand}>{'>_'}</Text>
         <Text style={st.title}>{'My Flights'}</Text>
 
         {current.length === 0 ? (
-          <>
-            <Text style={st.empty}>{"Add the flight you're taking."}</Text>
-            {addControls}
-          </>
+          // ── NOTHING YET, AND IT IS THE CENTRE OF THE SCREEN ──
+          //
+          // THE SEARCH SCREEN'S OWN NO-RESULTS TREATMENT, character for
+          // character: 20pt Inter REGULAR at 0.6 over 11pt Inter at 0.4, both
+          // centred, on routeEmptyHead's 28 and routeEmptyBody's 18 line
+          // heights. Not semibold -- an empty state that shouts reads as an
+          // error, and this is not one. See routeEmptyWrap in app/search.tsx.
+          //
+          // flex: 1 RATHER THAN A MARGIN. The block takes everything the header
+          // leaves and centres in it, so the copy sits on the optical centre of
+          // the space it has at any screen height rather than at a guessed
+          // offset from the title.
+          <View style={st.emptyWrap}>
+            <Text style={st.emptyHead}>{"Add the flight you're taking"}</Text>
+            <Text style={st.emptyBody}>
+              {'Gate, timing and everything else, in one place.'}
+            </Text>
+            {addButton}
+          </View>
         ) : (
           <>
             {/* THE FOCUS TRIP, IN FULL. current[0] is the journey with the
@@ -628,7 +752,7 @@ export default function Flights() {
               </View>
             )}
 
-            {addControls}
+            {addButton}
           </>
         )}
 
@@ -643,9 +767,28 @@ const st = StyleSheet.create({
   // 20 either side, so the brand mark sits in the same column as home's and the
   // profile screen's.
   scroll: { paddingHorizontal: 20 },
+  // See the note at the ScrollView.
+  scrollFill: { flexGrow: 1 },
   brand: { fontFamily: MONO_BOLD, color: CD_GREEN, fontSize: 15 },
   title: { fontFamily: MONO, fontSize: 20, color: '#e2e2e2', marginTop: 36 },
-  empty: { fontFamily: SANS, fontSize: 13, color: DIM, marginTop: 10 },
+
+  // ── THE EMPTY STATE ──
+  // routeEmptyWrap's own padding, so a wrapped line breaks well short of the
+  // edges rather than running the full width.
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyHead: {
+    fontFamily: SANS, fontSize: 20, color: 'rgba(226,226,226,0.6)',
+    textAlign: 'center', lineHeight: 28,
+  },
+  emptyBody: {
+    fontFamily: SANS, fontSize: 11, color: DIM,
+    textAlign: 'center', lineHeight: 18, marginTop: 10,
+  },
 
   // THE FOCUS TRIP. CARD_GAP between legs, which is the gap between any two
   // cards in this app.
@@ -688,15 +831,34 @@ const st = StyleSheet.create({
   others: { marginTop: 20, gap: 8 },
   otherLine: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.5)' },
 
-  // ── THE TWO ADD CONTROLS ──
-  adds: { marginTop: 20, gap: CARD_GAP },
-  addRow: {
+  // ── THE ONE ADD CONTROL ──
+  //
+  // CONTENT-SIZED AND CENTRED, not a full-width row. A button as wide as the
+  // screen reads as a list item; this is a single act and should look like one.
+  // 10 between the glyph and the word, the same gutter the card's menu row
+  // leaves around its own icon.
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    alignSelf: 'center',
+    marginTop: 28,
     backgroundColor: CARD_FILL,
     borderRadius: CARD_RADIUS,
-    paddingVertical: 16,
+    paddingVertical: 12,
     paddingHorizontal: CARD_PAD,
   },
-  addText: { fontFamily: SANS, fontSize: 13, color: '#e2e2e2' },
+  addLabel: { fontFamily: SANS, fontSize: 15, color: '#e2e2e2' },
+
+  // ── THE MENU ──
+  // The card's long-press menu exactly: centred so it is as wide as its longest
+  // row rather than the full width the scrim would give it, with a floor so two
+  // short rows do not make a stub.
+  menu: { alignSelf: 'center', minWidth: 220 },
+  // Tighter than g.sheetBody's 20, which is sized for a head and four groups.
+  menuBody: { padding: 16, gap: 12 },
+  menuRow: { paddingVertical: 4 },
+  menuLabel: { fontFamily: SANS, fontSize: 15, color: '#e2e2e2' },
 
   // ── THE SHEETS ──
   // A floor and a ceiling, exactly as the archive sheet carries: more than half
