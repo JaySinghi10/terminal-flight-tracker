@@ -363,88 +363,44 @@ function Leg({ leg, now, onRemove }: {
   );
 }
 
-// ── WHAT AN OVERLAY IS MADE OF ──────────────────────────────────────────────
+// ── ONE MODAL, AND WHICH THING IS IN IT ─────────────────────────────────────
 //
-// ONE HOOK FOR THE STATE AND THE TWO VALUES, and the DURATIONS ARE A PARAMETER
-// because this screen now has both kinds of overlay on it. A sheet takes
-// CAL_IN_MS and CAL_OUT_MS; a menu takes the panel's shorter pair. Everything
-// else -- the flag, the two Animated.Values, the parallel in, the parallel out,
-// the unmount-after-the-exit -- is identical, and writing it twice is how the
-// two would come to behave differently.
+// THREE MODALS BECAME ONE, AND THE SEQUENCING PROBLEM WENT WITH THEM.
 //
-// THE RISE IS NOT HERE. It belongs to whichever component renders the surface,
-// because a sheet rises CAL_RISE and scales while a menu rises OVERLAY_RISE and
-// does not. See Sheet and Menu.
-function useOverlay(inMs: number, outMs: number) {
-  const [open, setOpen] = useState(false);
-  const anim = useRef(new Animated.Value(0)).current;
-  const scrim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!open) return;
-    anim.setValue(0);
-    scrim.setValue(0);
-    Animated.parallel([
-      Animated.timing(scrim, {
-        toValue: 1, duration: SCRIM_IN_MS, easing: EASE_OUT, useNativeDriver: true,
-      }),
-      Animated.timing(anim, {
-        toValue: 1, duration: inMs, easing: EASE_OUT, useNativeDriver: true,
-      }),
-    ]).start();
-  }, [open]);
-  // -- ANIMATED OUT, THEN UNMOUNTED, AND onGone IS THE ONLY WAY TO FOLLOW IT --
-  //
-  // THIS IS NOT A NICETY ABOUT ANIMATION ORDER. It is the only way a second
-  // Modal can be opened from inside a first one, and getting it wrong is silent.
-  //
-  // WHAT GOES WRONG WITHOUT IT. setOpen(false) is the COMPLETION callback, so
-  // the Modal stays mounted for the whole exit. A caller that writes
-  //
-  //     menu.dismiss();
-  //     sheet.present();
-  //
-  // puts both overlays' `open` at true on the same commit, and React Native
-  // cannot present a Modal while another is up: on iOS a Modal is a presented
-  // view controller, and the second presentation is dropped. Nothing throws and
-  // nothing renders. That is exactly what "Import from watchlist does nothing"
-  // was -- the button worked as a plain page control and stopped the day it
-  // moved inside a menu.
-  //
-  // AND setOpen(false) ALONE IS NOT ENOUGH EITHER. React batches the updates in
-  // one callback, so a follow-up called straight after it would land in the SAME
-  // commit as the unmount and the Modal would still be up when the second one
-  // asked to present. requestAnimationFrame is what puts the follow-up on the
-  // frame AFTER the unmount has committed.
-  //
-  // A HANDLER IS CALLED WITH AN EVENT, so none of the five call sites may pass
-  // this bare any more: every onPress and onRequestClose that dismisses an
-  // overlay is wrapped in an arrow, or the event would arrive here as `onGone`
-  // and requestAnimationFrame would try to call it.
-  //
-  // TYPESCRIPT IS WHAT ENFORCES THAT, and it is a better guarantee than a
-  // runtime check: (onGone?: () => void) => void is not assignable to a
-  // NativeSyntheticEvent handler, so a bare `onPress={x.dismiss}` does not
-  // compile. It was caught that way rather than reasoned about.
-  //
-  // THE typeof GUARD STAYS ANYWAY, for the one path the compiler cannot see: a
-  // call that reaches this through an `any`.
-  const dismiss = (onGone?: () => void) => {
-    Animated.parallel([
-      Animated.timing(anim, {
-        toValue: 0, duration: outMs, easing: EASE_IN, useNativeDriver: true,
-      }),
-      Animated.timing(scrim, {
-        toValue: 0, duration: SCRIM_OUT_MS, easing: EASE_IN, useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setOpen(false);
-      if (typeof onGone === 'function') requestAnimationFrame(onGone);
-    });
-  };
-  return { open, present: () => setOpen(true), dismiss, anim, scrim };
-}
+// WHAT WAS WRONG, AND IT WAS NOT THE TIMING. The menu and the import sheet were
+// two Modals that had to hand off to each other, and React Native cannot present
+// one while another is mounted: on iOS a Modal is a presented view controller,
+// and the second presentation is dropped with nothing thrown and nothing shown.
+// Two fixes were tried against that -- a completion callback, then a
+// requestAnimationFrame after the unmount had committed -- and both were bets on
+// a native presentation lifecycle this code does not control. The JS ran
+// correctly in both: the state was set, the second Modal rendered, and nothing
+// appeared.
+//
+// SO THERE IS NOTHING TO HAND OFF ANY MORE. One state says WHICH overlay is up,
+// one Modal is mounted whenever any of them is, and going from the menu to a
+// sheet is a CONTENT SWAP INSIDE a Modal that never unmounts. There is no second
+// presentation for the platform to refuse.
+//
+// null IS "NOTHING IS UP", which is also the Modal's own visible test.
+type Overlay = 'menu' | 'import' | 'past' | null;
 
-type Overlay = ReturnType<typeof useOverlay>;
+// WHICH TIMINGS AN OVERLAY TAKES, DERIVED RATHER THAN STORED. A menu arrives and
+// leaves on the panel's pair; a sheet on the calendar's.
+//
+// THE RISE AND THE SCALE ARE NOT HERE. Each component spells its own, because
+// each knows its own shape -- a sheet rises CAL_RISE and scales, a menu rises
+// OVERLAY_RISE and does not -- and returning fields nothing reads would be a
+// second place for them to be kept in step.
+//
+// THREE READERS, WHICH IS WHY IT IS A FUNCTION AND NOT THREE TERNARIES:
+// openOverlay and swapOverlay take inMs, closeOverlay takes outMs, and inlining
+// would write the same branch three times, twice identically.
+function motionOf(o: Exclude<Overlay, null>) {
+  return o === 'menu'
+    ? { inMs: PANEL_IN_MS, outMs: PANEL_OUT_MS }
+    : { inMs: CAL_IN_MS, outMs: CAL_OUT_MS };
+}
 
 // ── THE SHEET, AND IT IS THE ARCHIVE SHEET'S STRUCTURE ──────────────────────
 //
@@ -452,27 +408,23 @@ type Overlay = ReturnType<typeof useOverlay>;
 // same Modal flags, the same scrim Pressable, the same full-screen dim on its
 // own value, the same CAL_RISE / 0.96 rise-scale-fade, the same shell, glass,
 // edge and swallowing body, the same head with its spacer, title and red close X.
-function Sheet({ sheet, title, children }: {
-  sheet: Overlay; title: string; children: ReactNode;
+//
+// THE Modal, THE SCRIM AND THE DIM ARE NOT HERE ANY MORE. They are the screen's,
+// mounted once above whichever panel is showing -- see Overlay. What is left is
+// the panel itself, which is all this component ever really was.
+function Sheet({ panel, title, onClose, children }: {
+  panel: Animated.Value; title: string; onClose: () => void; children: ReactNode;
 }) {
   return (
-    <Modal visible={sheet.open} transparent animationType="none" onRequestClose={() => sheet.dismiss()}>
-      <Pressable style={g.routeCalScrim} onPress={() => sheet.dismiss()}>
-        {/* The dim alone, full screen and unblurred. The blur lives inside the
-            sheet, so outside it the page stays sharp. */}
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: sheet.scrim }]}
-        />
         <Animated.View
           style={[
             g.sheetShell,
             st.sheet,
             {
-              opacity: sheet.anim,
+              opacity: panel,
               transform: [
-                { translateY: sheet.anim.interpolate({ inputRange: [0, 1], outputRange: [CAL_RISE, 0] }) },
-                { scale: sheet.anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                { translateY: panel.interpolate({ inputRange: [0, 1], outputRange: [CAL_RISE, 0] }) },
+                { scale: panel.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
               ],
             },
           ]}
@@ -486,7 +438,7 @@ function Sheet({ sheet, title, children }: {
               <Text style={g.sheetTitle}>{title}</Text>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => sheet.dismiss()}
+                onPress={onClose}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={g.sheetClose}
               >
@@ -500,8 +452,6 @@ function Sheet({ sheet, title, children }: {
             {children}
           </Pressable>
         </Animated.View>
-      </Pressable>
-    </Modal>
   );
 }
 
@@ -521,22 +471,18 @@ function Sheet({ sheet, title, children }: {
 // NO HEAD AND NO CLOSE BUTTON, for the reason stated at the card's own menu: a
 // title bar over two rows would be more chrome than content, and the scrim
 // dismisses.
-function Menu({ menu, children }: { menu: Overlay; children: ReactNode }) {
+//
+// THE Modal AND THE SCRIM ARE THE SCREEN'S, exactly as they are for the sheet.
+function Menu({ panel, children }: { panel: Animated.Value; children: ReactNode }) {
   return (
-    <Modal visible={menu.open} transparent animationType="none" onRequestClose={() => menu.dismiss()}>
-      <Pressable style={g.routeCalScrim} onPress={() => menu.dismiss()}>
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: menu.scrim }]}
-        />
         <Animated.View
           style={[
             g.sheetShell,
             st.menu,
             {
-              opacity: menu.anim,
+              opacity: panel,
               transform: [{
-                translateY: menu.anim.interpolate({
+                translateY: panel.interpolate({
                   inputRange: [0, 1], outputRange: [OVERLAY_RISE, 0],
                 }),
               }],
@@ -548,8 +494,6 @@ function Menu({ menu, children }: { menu: Overlay; children: ReactNode }) {
           {/* Swallows the tap so the scrim's dismiss does not fire through. */}
           <Pressable style={st.menuBody}>{children}</Pressable>
         </Animated.View>
-      </Pressable>
-    </Modal>
   );
 }
 
@@ -614,9 +558,74 @@ export default function Flights() {
     [savedFlights, now],
   );
 
-  const importSheet = useOverlay(CAL_IN_MS, CAL_OUT_MS);
-  const pastSheet = useOverlay(CAL_IN_MS, CAL_OUT_MS);
-  const addMenu = useOverlay(PANEL_IN_MS, PANEL_OUT_MS);
+  // ── WHAT IS UP, AND THE TWO VALUES THAT DRAW IT ───────────────────────────
+  //
+  // ONE STATE AND ONE PAIR OF VALUES for all three overlays. The panel value
+  // drives whichever surface is showing; the scrim value drives the dim behind
+  // it, and the two are separate because a SWITCH moves one and not the other.
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const panel = useRef(new Animated.Value(0)).current;
+  const scrim = useRef(new Animated.Value(0)).current;
+
+  // FROM NOTHING. Both values start at 0 BEFORE the state is set, so the frame
+  // the Modal mounts on is already invisible rather than showing the last
+  // overlay's resting position for one frame.
+  const openOverlay = (o: Exclude<Overlay, null>) => {
+    panel.setValue(0);
+    scrim.setValue(0);
+    setOverlay(o);
+    Animated.parallel([
+      Animated.timing(scrim, {
+        toValue: 1, duration: SCRIM_IN_MS, easing: EASE_OUT, useNativeDriver: true,
+      }),
+      Animated.timing(panel, {
+        toValue: 1, duration: motionOf(o).inMs, easing: EASE_OUT, useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // TO NOTHING. The state goes null in the completion callback, so the Modal is
+  // unmounted after the exit rather than cut off at the frame it started on.
+  //
+  // NO PARAMETER, AND THAT IS DELIBERATE. The version of this that took an
+  // "afterwards" callback existed to open a second Modal, and there is no second
+  // Modal any more. Leaving the parameter would leave the shape of the bug.
+  const closeOverlay = () => {
+    if (overlay === null) return;
+    Animated.parallel([
+      Animated.timing(panel, {
+        toValue: 0, duration: motionOf(overlay).outMs, easing: EASE_IN, useNativeDriver: true,
+      }),
+      Animated.timing(scrim, {
+        toValue: 0, duration: SCRIM_OUT_MS, easing: EASE_IN, useNativeDriver: true,
+      }),
+    ]).start(() => setOverlay(null));
+  };
+
+  // ── ONE PANEL OUT, THE NEXT IN, AND THE MODAL NEVER MOVES ─────────────────
+  //
+  // THIS IS THE WHOLE FIX. Nothing is dismissed and nothing is presented: the
+  // Modal stays mounted the entire time and only its CONTENTS change, so there
+  // is no second presentation for the platform to refuse.
+  //
+  // THE SCRIM STAYS UP AND IS NOT ANIMATED. It is the modal state itself -- "you
+  // are in something" -- and flashing it off and on between two panels would
+  // read as the screen being dismissed and immediately re-summoned, which is
+  // precisely the thing that is not happening.
+  //
+  // PANEL_OUT_MS FOR THE EXIT WHATEVER IS LEAVING, because the only switch this
+  // screen has is the menu handing over, and the menu's exit is the panel's.
+  const swapOverlay = (o: Exclude<Overlay, null>) => {
+    Animated.timing(panel, {
+      toValue: 0, duration: PANEL_OUT_MS, easing: EASE_IN, useNativeDriver: true,
+    }).start(() => {
+      setOverlay(o);
+      panel.setValue(0);
+      Animated.timing(panel, {
+        toValue: 1, duration: motionOf(o).inMs, easing: EASE_OUT, useNativeDriver: true,
+      }).start();
+    });
+  };
 
   const remove = async (leg: SavedFlight) => {
     await disownFlight(leg);
@@ -629,7 +638,7 @@ export default function Flights() {
   // paths into one action must not say different things about it. See OWN_MSG.
   const add = async (f: SavedFlight) => {
     const outcome = await ownFlight(f);
-    importSheet.dismiss();
+    closeOverlay();
     showToast(OWN_MSG[outcome.remind]);
   };
 
@@ -644,20 +653,21 @@ export default function Flights() {
   // line: the tab bar already owns one and the search screen is where it types.
   // This sends you there rather than reimplementing it.
   //
-  // THE MENU IS GONE BEFORE EITHER OF THESE RUNS, AND THAT IS LOAD-BEARING
-  // RATHER THAN TIDY. See dismiss: a Modal cannot be presented while another is
-  // mounted, so `dismiss(); present();` on two lines opens nothing at all and
-  // says nothing about it. The callback is the only correct shape.
+  // IMPORT IS A SWAP, NOT A HANDOFF. The Modal is already up; only what is in it
+  // changes. See swapOverlay for why that is the whole of the fix.
   //
-  // THE NAVIGATION TAKES IT TOO. Pushing while the menu is still up is not
-  // silent in the same way -- the route changes -- but it leaves the menu
-  // animating out over the screen it just opened, which is the same fault
-  // wearing a less obvious face.
+  // SEARCH IS NOT, BECAUSE THE SEARCH SCREEN IS NOT A MODAL. This closes and
+  // navigates in the same tick, which leaves the scrim fading over the search
+  // screen for the length of the exit. That is visible and it is accepted: the
+  // alternative is a completion callback sequencing an overlay against a
+  // navigation, which is the shape this change exists to remove -- and unlike
+  // the Modal case nothing is LOST here, it is only briefly overlapped.
   const chooseSearch = () => {
-    addMenu.dismiss(() => router.push('/search'));
+    closeOverlay();
+    router.push('/search');
   };
   const chooseImport = () => {
-    addMenu.dismiss(() => importSheet.present());
+    swapOverlay('import');
   };
 
   // THE PLUS IS THE ONE GREEN THING ON AN EMPTY SCREEN, and that is within the
@@ -668,7 +678,7 @@ export default function Flights() {
     <TouchableOpacity
       style={st.addBtn}
       activeOpacity={0.7}
-      onPress={() => { EXPAND_HAPTIC(); addMenu.present(); }}
+      onPress={() => { EXPAND_HAPTIC(); openOverlay('menu'); }}
       accessibilityRole="button"
       accessibilityLabel="add your flight"
     >
@@ -684,66 +694,98 @@ export default function Flights() {
 
   return (
     <View style={[st.root, { paddingTop: insets.top + 12 }]}>
-      <Menu menu={addMenu}>
-        <MenuRow label="Search for a flight" onPress={chooseSearch} />
-        <MenuRow label="Import from watchlist" onPress={chooseImport} />
-      </Menu>
+      {/* ── THE ONE MODAL ──
+          MOUNTED WHENEVER ANYTHING IS UP AND NEVER TWICE. The scrim, the dim and
+          the dismissing Pressable are here rather than inside each panel,
+          because they belong to the MODAL STATE rather than to whichever surface
+          happens to be showing -- which is also what lets a switch leave them
+          alone. See Overlay and swapOverlay. */}
+      <Modal
+        visible={overlay !== null}
+        transparent
+        animationType="none"
+        onRequestClose={closeOverlay}
+      >
+        <Pressable style={g.routeCalScrim} onPress={closeOverlay}>
+          {/* The dim alone, full screen and unblurred. The blur lives inside
+              each panel, so outside it the page stays sharp. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, g.routeCalDim, { opacity: scrim }]}
+          />
 
-      <Sheet sheet={importSheet} title="Import">
-        {importable.length === 0 ? (
-          <Text style={st.sheetEmpty}>{'Nothing on your watchlist to import.'}</Text>
-        ) : (
-          <ScrollView style={st.sheetList} showsVerticalScrollIndicator={false}>
-            {importable.map(f => (
-              <TouchableOpacity
-                key={f.id}
-                style={st.importRow}
-                activeOpacity={0.7}
-                onPress={() => add(f)}
-                accessibilityRole="button"
-                accessibilityLabel={`add ${f.flightNumber} to this trip`}
-              >
-                <View style={st.legHead}>
-                  <Text style={st.legNum}>{f.flightNumber}</Text>
-                  <Text style={st.legRoute} numberOfLines={1}>
-                    {`${f.from.iata} → ${f.to.iata}`}
-                  </Text>
-                </View>
-                <StatusLine f={f} now={now} numberOfLines={1} />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </Sheet>
+          {overlay === 'menu' && (
+            <Menu panel={panel}>
+              <MenuRow label="Search for a flight" onPress={chooseSearch} />
+              <MenuRow label="Import from watchlist" onPress={chooseImport} />
+            </Menu>
+          )}
 
-      {/* READ-ONLY, AND THAT IS THE WHOLE OF WHAT THIS SHEET IS. A finished trip
-          has nothing left to do to it: it cannot be left, its reminders are
-          spent, and removing it belongs to the watchlist rather than here. Rows
-          with no actions are rows nobody has to be careful around. */}
-      <Sheet sheet={pastSheet} title="Past flights">
-        {past.length === 0 ? (
-          <Text style={st.sheetEmpty}>{'Nothing here yet.'}</Text>
-        ) : (
-          <ScrollView style={st.sheetList} showsVerticalScrollIndicator={false}>
-            {past.map((legs, i) => (
-              <View key={legs[0].tripId ?? String(i)} style={st.pastTrip}>
-                {legs.map(l => (
-                  <View key={l.id} style={st.pastRow}>
-                    <View style={st.legHead}>
-                      <Text style={st.legNum}>{l.flightNumber}</Text>
-                      <Text style={st.legRoute} numberOfLines={1}>
-                        {`${l.from.iata} → ${l.to.iata}`}
-                      </Text>
-                      <Text style={st.pastDate}>{routeDateLabel(l.flightDate)}</Text>
+          {overlay === 'import' && (
+            <Sheet panel={panel} title="Import" onClose={closeOverlay}>
+              {importable.length === 0 ? (
+                <Text style={st.sheetEmpty}>{'Nothing on your watchlist to import.'}</Text>
+              ) : (
+                <ScrollView style={st.sheetList} showsVerticalScrollIndicator={false}>
+                  {importable.map(f => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={st.importRow}
+                      activeOpacity={0.7}
+                      onPress={() => add(f)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`add ${f.flightNumber} to this trip`}
+                    >
+                      <View style={st.legHead}>
+                        <Text style={st.legNum}>{f.flightNumber}</Text>
+                        <Text style={st.legRoute} numberOfLines={1}>
+                          {`${f.from.iata} → ${f.to.iata}`}
+                        </Text>
+                      </View>
+                      <StatusLine f={f} now={now} numberOfLines={1} />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </Sheet>
+          )}
+
+          {/* READ-ONLY, AND THAT IS THE WHOLE OF WHAT THIS SHEET IS. A finished
+              trip has nothing left to do to it: it cannot be left, its reminders
+              are spent, and removing it belongs to the watchlist rather than
+              here. Rows with no actions are rows nobody has to be careful
+              around.
+
+              AND UNREACHABLE. Its entry point was removed; `overlay` cannot
+              become 'past' today. It stays until one comes back. */}
+          {overlay === 'past' && (
+            <Sheet panel={panel} title="Past flights" onClose={closeOverlay}>
+              {past.length === 0 ? (
+                <Text style={st.sheetEmpty}>{'Nothing here yet.'}</Text>
+              ) : (
+                <ScrollView style={st.sheetList} showsVerticalScrollIndicator={false}>
+                  {past.map((legs, i) => (
+                    <View key={legs[0].tripId ?? String(i)} style={st.pastTrip}>
+                      {legs.map(l => (
+                        <View key={l.id} style={st.pastRow}>
+                          <View style={st.legHead}>
+                            <Text style={st.legNum}>{l.flightNumber}</Text>
+                            <Text style={st.legRoute} numberOfLines={1}>
+                              {`${l.from.iata} → ${l.to.iata}`}
+                            </Text>
+                            <Text style={st.pastDate}>{routeDateLabel(l.flightDate)}</Text>
+                          </View>
+                          <Text style={st.landed}>{'landed'}</Text>
+                        </View>
+                      ))}
                     </View>
-                    <Text style={st.landed}>{'landed'}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-        )}
-      </Sheet>
+                  ))}
+                </ScrollView>
+              )}
+            </Sheet>
+          )}
+        </Pressable>
+      </Modal>
 
       {/* THE BOTTOM PADDING RUNS THE LAST CONTENT UNDER THE FLOATING BAR, which
           is home's treatment and its reasoning: a blur with nothing behind it is
