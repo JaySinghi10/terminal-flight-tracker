@@ -1680,11 +1680,21 @@ export default function Index() {
           <View style={[s.header, effectiveName === null && { marginBottom: 16 }]}>
             <View>
               <Text style={{ fontFamily: MONO_BOLD, color: '#4ade80', fontSize: 15 }}>{'>_'}</Text>
+              {/* 24, UP FROM 20. It is the first line a person reads on
+                  opening the app and it was the same size as a card's flight
+                  number, which put a greeting and a datum on one footing. The
+                  clock below moves with it -- see the note there -- so the
+                  two grow together and the hierarchy between them is kept. */}
               {effectiveName !== null && (
-                <Text style={{ fontFamily: SANS_SEMI, fontSize: 20, color: '#e2e2e2', marginTop: 10 }}>{`${greetingPrefix(now, greetingIndex)}, ${effectiveName}`}</Text>
+                <Text style={{ fontFamily: SANS_SEMI, fontSize: 24, color: '#e2e2e2', marginTop: 10 }}>{`${greetingPrefix(now, greetingIndex)}, ${effectiveName}`}</Text>
               )}
+              {/* 15, UP FROM 13, WHICH KEEPS IT THE SMALLER OF THE TWO.
+                  20:13 was 1.54; 24:15 is 1.60, so the gap widens slightly
+                  rather than closing -- the greeting is still plainly the
+                  heading and this is still plainly the line under it. The 0.4
+                  alpha does the rest of the separating and is unchanged. */}
               {effectiveName !== null && (
-                <Text style={{ fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.4)', marginTop: 3 }}>{formatClock(now)}</Text>
+                <Text style={{ fontFamily: MONO, fontSize: 15, color: 'rgba(226,226,226,0.4)', marginTop: 3 }}>{formatClock(now)}</Text>
               )}
             </View>
             {/* The modal has its own TextInput and its own KeyboardAvoidingView

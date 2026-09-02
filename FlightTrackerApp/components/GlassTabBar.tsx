@@ -1534,6 +1534,21 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     pressAmt.value = withSpring(0, PRESS_SPRING);
   };
 
+  // ── HOW LONG IS LEFT OF THIS PRESS'S HOLD ─────────────────────────────────
+  //
+  // ONE EXPRESSION, READ BY EVERY RELEASE IN THIS FILE. It was written out three
+  // times, identically, which is three numbers kept equal by hand -- and the
+  // moment a fourth caller wants "as long as the pill holds" that is exactly the
+  // way the two drift apart. Now there is one place the hold is computed and the
+  // callers share the ANSWER rather than the arithmetic.
+  //
+  // releaseAt IS THE PRESS'S OWN DEADLINE, absolute rather than a duration,
+  // because it is written at press-in and read at an unknown time afterwards.
+  // PRESS_RELEASE_DELAY is the floor: a press held past its own deadline still
+  // gets a beat between the lift and the collapse, rather than snapping shut
+  // under the finger.
+  const holdRemaining = () => Math.max(releaseAt.current - Date.now(), PRESS_RELEASE_DELAY);
+
   // THE LARGER OF THE TWO WAITS, and never less than the drag's window.
   //
   // IT CANNOT STRAND THE PILL AT FULL SIZE, and that is four separate paths
@@ -1550,8 +1565,7 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // a way out of them.
   const schedulePressRelease = () => {
     cancelPressRelease();
-    const wait = Math.max(releaseAt.current - Date.now(), PRESS_RELEASE_DELAY);
-    pressOutTimer.current = setTimeout(releasePress, wait);
+    pressOutTimer.current = setTimeout(releasePress, holdRemaining());
   };
 
   // -- AND THE SEARCH GLYPHS RELEASE WITHOUT THE GUARD -----------------------
@@ -1586,16 +1600,31 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   // departure. Only the guard is gone.
   const scheduleGlyphRelease = () => {
     cancelPressRelease();
-    const wait = Math.max(releaseAt.current - Date.now(), PRESS_RELEASE_DELAY);
     pressOutTimer.current = setTimeout(() => {
       pressOutTimer.current = null;
       pressAmt.value = withSpring(0, PRESS_SPRING);
-    }, wait);
+    }, holdRemaining());
   };
 
+  // ── AND THE MAGNIFIER'S ARRIVAL HAS ITS OWN TIMER ─────────────────────────
+  //
+  // A SECOND REF AND NOT pressOutTimer, WHICH IS THE ONE THING THIS MUST NOT
+  // SHARE. The press that turns search mode on is live at the moment the glyph
+  // arrives: the Search item's own onPressOut is about to call
+  // schedulePressRelease, which cancels whatever is in pressOutTimer before
+  // arming its own. One ref between them means whichever runs second silently
+  // disarms the first, and the loser's value is stranded raised -- the exact
+  // failure this file has spent three rounds removing.
+  //
+  // THE DEADLINE IS STILL SHARED. Two timers, one holdRemaining, so they fire
+  // together without being told to.
+  const magArrivalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // A timer that outlives the component would call withSpring on a value whose
-  // component has gone.
+  // component has gone. BOTH TIMERS IN ONE CLEANUP: they are two refs because
+  // they must not disarm each other, not because they have different lifetimes.
   useEffect(() => () => {
+    if (magArrivalTimer.current !== null) clearTimeout(magArrivalTimer.current);
     if (pressOutTimer.current !== null) clearTimeout(pressOutTimer.current);
   }, []);
   // The fallback pill's frost, faded rather than swapped. See capsuleInner.
@@ -1988,6 +2017,48 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   const homeGlyphStyle = glyphGrow(homeGlyphAmt);
   const magGlyphStyle = glyphGrow(magGlyphAmt);
   const chipPressStyle = glyphGrow(chipAmt);
+
+  // -- THE MAGNIFIER ARRIVES THE WAY THE PILL LANDS -------------------------
+  //
+  // ENTERING SEARCH MODE IS AN ARRIVAL AND SHOULD LOOK LIKE ONE. The pill
+  // expands as it reaches the tab it was sent to; this glyph simply appeared,
+  // at rest, in a bar that had just done something. One beat of the same
+  // expansion is what says the two are the same event.
+  //
+  // ITS OWN SPRING AND ITS OWN SCALE, AND NOT A SECOND PAIR. This writes
+  // magGlyphAmt, which magGlyphStyle already reads through glyphGrow, on
+  // PRESS_SPRING -- exactly what the glyph's own onPressIn and onPressOut use.
+  // There is no new constant here and no new animated style; only a new reason
+  // for the existing one to move.
+  //
+  // THE PILL'S OWN HOLD, AND NOT A SEQUENCE. withSequence held the glyph up for
+  // however long the first spring took to settle -- an emergent number nobody
+  // chose, owned by PRESS_SPRING's damping rather than by any decision about
+  // timing, and visibly longer than the pill beside it. The hold is a DEADLINE
+  // in this file, not a duration: the press writes releaseAt and every release
+  // reads it. So this does the same two things the pill does, in the same order,
+  // off the same two values -- rise behind PRESS_TRAVEL_LEAD, fall at
+  // holdRemaining().
+  //
+  // releaseAt IS ALREADY THIS PRESS'S OWN. The Search item writes it at the top
+  // of the same onPressIn that calls setSearchMode(true), and this effect runs
+  // after that render -- so the value read here is not a copy of the pill's
+  // deadline, it IS the pill's deadline, for this press. Change PRESS_HOLD_MS or
+  // PRESS_TRAVEL_SETTLE_MS and both move together because there is nothing to
+  // keep in step.
+  //
+  // ONLY ON THE WAY IN. The guard is a condition on the statement, and false is
+  // the release -- which brings the bar back and must not be given a second
+  // animation of its own.
+  useEffect(() => {
+    if (!searchMode) return;
+    magGlyphAmt.value = withDelay(PRESS_TRAVEL_LEAD, withSpring(1, PRESS_SPRING));
+    if (magArrivalTimer.current !== null) clearTimeout(magArrivalTimer.current);
+    magArrivalTimer.current = setTimeout(() => {
+      magArrivalTimer.current = null;
+      magGlyphAmt.value = withSpring(0, PRESS_SPRING);
+    }, holdRemaining());
+  }, [searchMode]);
 
   // -- WHAT THE CHIP SHOWS, TRIMMED -----------------------------------------
   //
