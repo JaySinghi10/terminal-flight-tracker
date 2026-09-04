@@ -140,6 +140,24 @@ export const SHEET_RULE = 'rgba(255,255,255,0.07)';
 //
 // It is a sibling rather than a border on sheetShell so that adding it costs no
 // layout: a border there would inset the content box by 1pt on every side.
+//
+// ── AND IT IS A DELIBERATE EXCEPTION TO THE ELEVATION SCALE ─────────────────
+//
+// lib/cards.ts now names one edge for every flat surface in the app, at 0.10.
+// This is NOT that value and must not be moved to it.
+//
+// A BLURRED SURFACE READS AT A DIFFERENT PERCEIVED CONTRAST THAN A FLAT ONE.
+// Behind a hairline on a card there is one colour, so the line has one thing to
+// be measured against. Behind this one there is a blur of whatever the page
+// happens to be showing, which is brighter and busier and varies as the surface
+// moves -- so the same white reads heavier here than it does on a card. An edge
+// weight that is right on flat is wrong on glass.
+//
+// AND IT IS HALF OF A PAIR. The paragraphs above set 0.08 against SHEET_RULE's
+// 0.07 on purpose, so the outline of a sheet and the rule under its heading
+// carry about the same weight and neither outranks the content. Moving this to
+// 0.10 to make a constant tidy would break that pair and make every sheet in
+// the app look wrong in exchange for a consistent number.
 export const SHEET_EDGE = 'rgba(255,255,255,0.08)';
 
 // THE SCRIM behind every glass surface. One value, three users: the archive

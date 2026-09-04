@@ -17,7 +17,7 @@
 // the app's own notification schedule printed as if it were content. The card
 // knows the gate, the belt, the times, the delay and the progress; this screen
 // decides which flights get one and what a swipe on it does.
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
   Modal, Animated,
@@ -27,6 +27,9 @@ import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import {
   SavedFlight, savedFlightFromApi, ISO_DAY_RE, MAX_MAP_ROUTES,
+  // SavedFlightEndpoint AND makeFlightId ARE THE DEVELOPMENT MOCK'S, and go
+  // with it. See the block marked DEVELOPMENT MOCK below.
+  SavedFlightEndpoint, makeFlightId,
 } from '../lib/storage';
 // THE STORE AND ITS RULES. tripsOf, isOwned and isArchived are pure functions of
 // a list and a clock; the two callbacks are the only things here that write.
@@ -38,6 +41,12 @@ import {
   effectiveStatus,
   sortSavedByRelevance,
   flightUrl,
+  // THE TWO INSTANTS A LAYOVER IS THE DISTANCE BETWEEN, and they are imported
+  // rather than rebuilt: both resolve actual, then estimate, then schedule
+  // against the airport's own zone, and a second copy of that precedence here
+  // would be a layover that disagrees with the cards either side of it.
+  arrivalTs,
+  departureTs,
   OWN_MSG,
 } from '../lib/saved';
 // WHICH ROUTES ARE DRAWN, and the one conversion that builds a route from a
@@ -46,10 +55,19 @@ import {
 // code, and a second copy here would break that on the first read.
 import { useMapRoutes } from '../lib/maproutes';
 import { mapRouteFor } from '../lib/flightcard';
+// THE ORIGIN'S OWN WALL CLOCK, as text. clock24 rather than clockInZone or a
+// Date: the stored *_iso carries the departure airport's local digits already,
+// so this is a read rather than a conversion. See the note at the top of
+// lib/time.ts for why the two must never be confused.
+import { clock24 } from '../lib/time';
+// THE COUNTRY OF AN AIRPORT, which is the only thing this screen asks of the
+// dataset. airportByCode is the accessor; the rows are not exported and must
+// not be. See showsBelt.
+import { airportByCode } from '../lib/airports';
 // formatClock IS HOME'S HEADER LINE, and it is imported rather than restated
 // because this screen now wears the same header. See the note where it lives.
 import { StatusLine, routeDateLabel, formatClock, CD_GREEN } from '../lib/flightstatus';
-import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG } from '../lib/cards';
+import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, SURFACE_EDGE } from '../lib/cards';
 import {
   GlassLayers, g,
   EASE_OUT, EASE_IN, CAL_RISE,
@@ -67,7 +85,17 @@ import { EXPAND_HAPTIC } from '../components/swipe';
 // THE CARD ITSELF, one per leg, and the adapter that builds one from a stored
 // record. flightDataFromSaved is what the map's own card already uses -- see the
 // note there: every RULE it needs is exported and it is field mapping alone.
-import { FlightCard, flightDataFromSaved } from '../components/FlightCard';
+// hasTime IS THE APP'S ONE READING OF "IS THIS A REAL VALUE": not null, not
+// blank, and not the "N/A" the backend writes for a field it has nothing for.
+// The near leg shows nothing where a field is absent, and this is what decides
+// absent. Imported rather than restated -- its own note calls itself the file's
+// only implementation, and a second one here would be the same rule twice.
+// movementTimeCell IS THE CARD'S OWN CHOICE OF WHICH TIME TO SHOW and what to
+// call it: actual, then estimate, then the schedule, labelled accordingly. The
+// next leg's row prints a departure and the card prints the same departure, so
+// they take the same function -- a second precedence here would be the row and
+// the card disagreeing about one flight on one screen.
+import { FlightCard, flightDataFromSaved, hasTime, movementTimeCell } from '../components/FlightCard';
 
 // Declared here rather than imported from a screen or a component, exactly as
 // every module in lib/ declares its own. These are the family names _layout
@@ -89,6 +117,37 @@ const DIM = 'rgba(226,226,226,0.4)';
 // not render either. Neither can be called, and a named no-op says so where two
 // bare arrows would only look like something forgotten.
 const NOT_REACHABLE = () => {};
+
+// ── THE THREAD DOWN THE LEFT OF A TRIP ──────────────────────────────────────
+//
+// FOUR CARDS IN A COLUMN WITH EQUAL GAPS ARE FOUR OBJECTS. They are one journey,
+// and the gaps between them are not nothing -- they are the waits. A line
+// running through the whole trip says the legs are joined; a duration written on
+// that line says what the join costs.
+//
+// GEOMETRY ONLY, AND ALL OF IT HERE. Every number the thread needs is one of
+// these three, so tuning it is editing this block rather than hunting literals
+// through a stylesheet. The COLOUR is not here because it is not new: the line
+// and the duration on it are both DIM, which is the file's existing dim tone,
+// and they share it because they are one element rather than two.
+//
+// RAIL_X is the line's own offset from the trip block's left edge. RAIL_INSET is
+// where the cards begin, which leaves the strip between them as the gutter the
+// line lives in. The duration's label starts at RAIL_INSET too, so its text
+// lines up with the cards' left edge while its background reaches back past the
+// line and breaks it -- which is what puts the words ON the thread rather than
+// beside it.
+const RAIL_X = 6;
+const RAIL_W = 1;
+const RAIL_INSET = 22;
+
+// __DEV__ IS THE DEVELOPMENT MOCK'S and goes with it. Metro defines it in every
+// build and folds the branch away in a production one, but nothing in this
+// project's TYPES declares it: react-native's only declaration is Flow's, in
+// interface.js, which TypeScript never reads. So it is declared here, and it is
+// HERE rather than inside the block because an ambient declaration is not legal
+// in a function body -- TS1184.
+declare const __DEV__: boolean;
 
 // ── ONE MODAL, AND WHICH THING IS IN IT ─────────────────────────────────────
 //
@@ -241,10 +300,449 @@ function MenuRow({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
+// ── HOW MUCH OF A LEG IS WORTH DRAWING ──────────────────────────────────────
+//
+// FOUR STATES, AND EVERY ONE OF THEM IS A CLAIM ABOUT WHAT IS STILL ACTIONABLE.
+//
+//   LANDED    it is over. Number, airline, route -- and a belt, if showsBelt
+//             still allows one. Nothing else.
+//   DISTANT   it is further down the journey. Identity, date, and how long
+//             until it leaves.
+//   NEXT      it is the one after the open leg -- the flight you go to when
+//             this one is done. The above, plus the departure time as the card
+//             would print it.
+//   CURRENT   the card itself.
+//
+// LANDED IS THE STATE THAT WAS MISSING, and its absence was a bug of exactly the
+// kind the belt rule exists to prevent. A leg that had flown fell through to the
+// next-flight layout and printed a date, a terminal and a gate for a flight that
+// was over -- operational data that was true once, presented in the shape the
+// app uses for things to act on. A gate number from four hours ago is not a
+// gate number; it is a place somebody already left.
+//
+// landedAt IS THE FACT, and effectiveStatus is not consulted for it. That
+// function decides what WORD to print: it demotes a stored "landed" when the
+// arrival instant is still ahead, because a badge must not claim what the clock
+// contradicts. It is a rule about a label. This is a rule about whether an
+// aircraft is on the ground, and the only record of that is landedAt -- set by
+// saveFlight and touchSavedFlight the first time a refresh came back landed, and
+// never guessed from a schedule.
+//
+// legs ARE ALREADY ORDERED. legsOfTrip sorted them by departure instant before
+// any of this sees them, so "first" and "previous" mean what they say.
+type LegState = 'landed' | 'distant' | 'next' | 'current';
+
+// UNDER A DAY THE FIRST LEG IS THE THING YOU ARE DOING. That is the window in
+// which a trip stops being a plan and becomes a journey: bags get packed, a taxi
+// gets booked, the gate gets assigned. Opening the card earlier would put a
+// full-height surface on the screen for a flight there is nothing to do about.
+const CURRENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+// AND THREE DAYS IS WHERE THE FIRST LEG STOPS BEING NEXT -- the first leg, and
+// no other. Inside it a departure time is worth printing because it is nearly
+// settled; outside it the provider is quoting a timetable, and a time that will
+// move is better left to the countdown, which cannot be wrong about an interval.
+//
+// IT IS NOT A RULE FOR CLASSIFYING LEGS, and reading it as one was the bug. Both
+// windows exist to place the FIRST leg of a trip on the day it comes round;
+// applied to every leg they made NEXT mean "departs within three days", which on
+// a four-leg journey is most of the journey. See nextLegIndex.
+const NEXT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+// WHICH LEG OPENS, BY THE JOURNEY'S OWN RECKONING, or -1 for none.
+//
+// TWO RULES, AND THE FIRST ONE WINS. A leg whose PREVIOUS leg has landed is the
+// one the traveller has arrived for, whatever the clock says -- that is the
+// handover from one flight to the next and it is a fact rather than a threshold.
+// Only when no such leg exists does the window apply, and it applies to the
+// FIRST leg alone: a middle leg does not open early just because its departure
+// is near, because the leg before it has not put the traveller there yet.
+//
+// -1 IS A REAL ANSWER. A trip five days out has no open card at all, and neither
+// does one whose every leg has landed. Both are correct: there is nothing to be
+// at an airport for, and a screen that always opens something would be opening
+// it for the sake of the layout.
+function currentLegIndex(legs: SavedFlight[], now: number): number {
+  for (let i = 1; i < legs.length; i++) {
+    if (legs[i].landedAt === null && legs[i - 1].landedAt !== null) return i;
+  }
+  if (legs.length > 0 && legs[0].landedAt === null) {
+    const t = departureTs(legs[0]);
+    if (t !== null && t - now < CURRENT_WINDOW_MS) return 0;
+  }
+  return -1;
+}
+
+// WHICH LEG IS NEXT, AND IT IS A POSITION RATHER THAN A DURATION.
+//
+// THE ONE AFTER THE OPEN LEG. "Next" means the flight you go to when this one is
+// done, which is a fact about ORDER -- so it is exactly one leg, whatever the
+// clock says about any of them. A leg two hops away is not next however soon it
+// departs, and the leg after the open one is next even if it leaves in a week.
+//
+// THIS WAS THE BUG, and it was a rule written as a threshold. legState used to
+// ask "does this leg depart within three days" of every leg, so on a journey
+// taken over two days every remaining leg answered yes and three of four rows
+// claimed to be the one to be at an airport for. The windows were only ever
+// meant to decide where the FIRST leg of a trip sits.
+//
+// IT FOLLOWS THE OPEN LEG RATHER THAN THE JOURNEY'S OWN, and that is deliberate:
+// openIdx is whatever is CURRENT, including a leg the user has tapped. "The one
+// after the open leg" stays true of what is on screen, so tapping down the trip
+// walks the highlight with it rather than leaving it pinned to a card that is no
+// longer open.
+//
+// AND WITH NOTHING OPEN THE WINDOW DECIDES THE FIRST LEG, alone. That is the one
+// case the thresholds are for: a trip nobody has started, where leg one is next
+// if it is inside three days and distant beyond. Legs after it are distant
+// regardless -- there is no open leg for them to follow.
+//
+// -1 IS A REAL ANSWER AND MEANS NO LEG IS NEXT. The open leg is the last one; or
+// nothing is open and the first leg is more than three days out; or every leg
+// has landed. In each of those there is genuinely no next flight to name.
+function nextLegIndex(legs: SavedFlight[], now: number, openIdx: number): number {
+  if (openIdx >= 0) return openIdx + 1 < legs.length ? openIdx + 1 : -1;
+  if (legs.length > 0 && legs[0].landedAt === null) {
+    const t = departureTs(legs[0]);
+    if (t !== null && t - now < NEXT_WINDOW_MS) return 0;
+  }
+  return -1;
+}
+
+// AND WHAT EACH LEG THEREFORE DRAWS.
+//
+// BOTH INDICES ARE PASSED IN rather than recomputed, because the user can
+// overrule the open leg by tapping -- see focusOverride -- and a second
+// computation here would ignore that and open two legs at once.
+//
+// LANDED OUTRANKS NEXT, which is what stops a flown leg reading as a forthcoming
+// one. It does NOT outrank the open leg: tapping a landed leg still opens its
+// card, because that is the user asking to see it rather than the screen
+// deciding to show it.
+//
+// WHICH MEANS THE NEXT SLOT CAN COME BACK EMPTY. If the leg after the open one
+// has already landed, LANDED wins and no leg is next -- correctly, because the
+// flight to go to has been taken.
+//
+// DISTANT IS THE DEFAULT AND ASKS NOTHING. It no longer reads a clock at all:
+// everything that is not open, not landed and not the one after the open leg is
+// distant, whatever its departure time.
+function legState(leg: SavedFlight, i: number, openIdx: number, nextIdx: number): LegState {
+  if (i === openIdx) return 'current';
+  if (leg.landedAt !== null) return 'landed';
+  return i === nextIdx ? 'next' : 'distant';
+}
+
+// ── HOW LONG UNTIL SOMETHING HAPPENS ────────────────────────────────────────
+//
+// TO THE DEPARTURE, THEN TO THE ARRIVAL, THEN NOTHING. Before the flight leaves,
+// the interval a traveller is living in is the one before the gate closes; once
+// it is in the air, the only interval left is until it is down. When it has
+// landed there is no interval at all and the line goes -- see the LANDED state,
+// which does not ask for one.
+//
+// AIRBORNE IS effectiveStatus, NOT THE CLOCK. A departure time passing does not
+// mean an aircraft left: it can sit an hour at the gate. That function never
+// promotes a status on the clock -- see its note in lib/saved.tsx -- so this
+// switches to the arrival only when the provider has actually said the flight is
+// active, and a flight nobody has reported on keeps counting to its departure.
+//
+// A PAST TARGET RENDERS NOTHING. If the departure has gone by and no one has
+// said the flight is airborne, there is no honest interval to state: counting
+// up from a departure that may not have happened is a number about our own
+// ignorance. The row simply drops the line.
+//
+// gapLabel IS THE LAYOVER'S OWN FORMATTER, reused deliberately. Both are "how
+// long is this gap", both cross a day, and two spellings of a duration on one
+// screen is how "2h 14m" and "2 hr 14 min" come to sit six points apart.
+function countdown(leg: SavedFlight, now: number): { label: string; value: string } | null {
+  if (leg.landedAt !== null) return null;
+  const airborne = effectiveStatus(leg, now) === 'active';
+  const target = airborne ? arrivalTs(leg) : departureTs(leg);
+  if (target === null || target <= now) return null;
+  return { label: airborne ? 'Lands in' : 'Departs in', value: gapLabel(target - now) };
+}
+
+// ── WHETHER A LEG'S BELT IS WORTH PRINTING ──────────────────────────────────
+//
+// AN HOUR AFTER LANDING. The belt is the one fact on a finished leg that is
+// still actionable, and it stops being actionable once the bags are off it.
+const BAG_WINDOW_MS = 60 * 60 * 1000;
+// lib/airports.ts carries FULL COUNTRY NAMES, not codes -- see the Airport type.
+// Spelled once so the two comparisons below cannot drift apart.
+const US_COUNTRY = 'United States';
+
+// A BELT ON A CONNECTION SENDS THE PASSENGER THE WRONG WAY, and that is the
+// whole of why this is not simply "is there a belt number".
+//
+// Checked bags are through-checked to the final destination, so on an
+// intermediate leg the bag is not on any belt -- it is being moved airside. A
+// carousel number printed there would send somebody to baggage reclaim instead
+// of to their next gate, which costs them the connection.
+//
+// THE UNITED STATES IS THE EXCEPTION, and it is a real one rather than a
+// hedge. CBP requires every passenger to collect their bags and recheck them at
+// the FIRST US port of entry, even in transit -- so on a leg that ARRIVES in the
+// US from outside it, the belt is exactly what the passenger needs.
+//
+// AND FAILING MEANS NO BELT. An airport this dataset does not know cannot be
+// placed in a country, so the country test cannot be answered -- and the two
+// wrong answers are not symmetric. Hiding a belt costs a passenger a glance at
+// a sign; showing one on a connection costs them a flight.
+//
+// THE LAST LEG NEEDS NO COUNTRY TEST AT ALL. It is the final destination by
+// construction, so the bag is on a belt there whatever the dataset knows about
+// either airport -- which is why isLast is answered before the lookups rather
+// than after them.
+//
+// EXTRACTED FROM showsBelt RATHER THAN COPIED, because the flight card now asks
+// the same question. The card takes bagsClaimedHere -- see its note -- and this
+// is the only thing that can answer it: the question is about a leg's POSITION
+// IN A TRIP, and this screen is where the trip is.
+//
+// IT DOES NOT READ THE CLOCK OR THE BELT NUMBER. Eligibility is a fact about
+// the journey's shape and stays true whether or not the flight has landed;
+// showsBelt below is what adds the landing and the hour. Keeping them apart is
+// what lets the card be handed the half it cannot work out and keep the half it
+// can.
+function bagEligible(legs: SavedFlight[], i: number): boolean {
+  if (i === legs.length - 1) return true;
+  const leg = legs[i];
+  const from = airportByCode(leg.from.iata);
+  const to = airportByCode(leg.to.iata);
+  if (from === null || to === null) return false;
+  return to.country === US_COUNTRY && from.country !== US_COUNTRY;
+}
+
+function showsBelt(legs: SavedFlight[], i: number, now: number): boolean {
+  const leg = legs[i];
+  if (leg.to.baggage === null) return false;
+  if (leg.landedAt === null) return false;
+  if (now - leg.landedAt >= BAG_WINDOW_MS) return false;
+  return bagEligible(legs, i);
+}
+
+// ── THE WAIT BETWEEN TWO LEGS ───────────────────────────────────────────────
+//
+// A DURATION, AND NOTHING ELSE. It said four things once -- how long, where,
+// whether the terminal changed, and what kind of connection it was -- and three
+// of them were already on the screen. The airport is named by the leg above it
+// and the leg below it; the connection type is those same two routes read
+// together; and the terminal is printed by the card DIRECTLY BENEATH, which is
+// the one place a traveller will actually look for it. A row that restates its
+// neighbours is noise wearing the shape of information.
+//
+// SO IT IS THE ONE FACT THAT IS NOWHERE ELSE: the gap between two flights,
+// which neither card can state because neither card knows about the other.
+//
+// STILL NOT ONE WORD OF ADVICE. It does not say whether the gap is enough, and
+// nothing here may ever start to. Deciding a layover is tight needs the
+// airport's minimum connection time, the gate close time, and how long it takes
+// to walk between two specific gates -- and this app has none of the three. A
+// verdict built from what IS here would be a guess wearing the authority of the
+// screen it is printed on, and a traveller who reads "you have time" and misses
+// the flight was told so by us.
+//
+// SO THERE IS NO COLOUR, NO ICON AND NO ADJECTIVE. 55 minutes and 5 hours are
+// rendered identically. The reader does the arithmetic, because the reader knows
+// things this app does not: whether they have bags, whether they have flown
+// through here before, whether they walk quickly.
+
+// ── HOW LONG, IN UNITS A PERSON CAN HOLD ───────────────────────────────────
+//
+// TWENTY-FOUR HOURS IS THE THRESHOLD, and the reason is arithmetic the reader
+// should not have to do. "93h 10m" is a true statement of a four-day gap and an
+// unreadable one: to know what it means you have to divide by 24, which is work
+// this label exists to save. Under a day, hours are the unit somebody already
+// thinks in -- a wait is "about five hours" -- and above it days are.
+//
+// AND THE DAY IS WHERE THE BOUNDARY BELONGS rather than at some larger round
+// number. It is not a taste about legibility; it is the point where the gap
+// stops fitting inside one span of being awake and starts being a different
+// date. 23h and 25h are close as durations and completely different as plans.
+//
+// MINUTES GO WITH THE CHANGE. "3d 21h 10m" is three units where two will do,
+// and nobody plans a four-day wait to the minute -- the precision would be real
+// and useless. Under a day they stay, because at that scale ten minutes is the
+// difference between making a connection and not.
+//
+// THE HOURS ARE ROUNDED AND THE CARRY IS HANDLED. Rounding 23h 45m up gives 24,
+// which would print "3d 24h"; the guard turns that into the next day with none.
+// Flooring instead would have been simpler and would under-report by up to 59
+// minutes on every gap this branch touches.
+//
+// PADDED UNDER A DAY, so the column does not jitter between "5m" and "45m".
+// Above it there is nothing to pad: hours never reach three digits.
+//
+// NOTHING GUARDS AGAINST null OR A NEGATIVE HERE, and nothing should. Layover
+// resolves both before it calls this and renders no row at all -- see its own
+// note -- so this function only ever sees a duration that exists.
+function gapLabel(ms: number): string {
+  const total = Math.round(ms / 60000);
+  if (total >= 24 * 60) {
+    const whole = Math.floor(total / (24 * 60));
+    const hours = Math.round((total - whole * 24 * 60) / 60);
+    return hours === 24 ? `${whole + 1}d 0h` : `${whole}d ${hours}h`;
+  }
+  return `${Math.floor(total / 60)}h ${String(total % 60).padStart(2, '0')}m`;
+}
+
+function Layover({ prev, next }: { prev: SavedFlight; next: SavedFlight }) {
+  // THE GAP IS ARRIVAL TO DEPARTURE, both as INSTANTS rather than as clocks --
+  // which is the only way it can be right when the two legs are in different
+  // zones, and a connection through Frankfurt usually is.
+  //
+  // NULL WHEN IT CANNOT BE READ, and that includes a NEGATIVE gap. A null is a
+  // pre-v3 record or a missing timezone; a negative is a stored contradiction,
+  // two legs that overlap. Neither is a duration, and printing "0h 00m" for
+  // either would be inventing the one number this row exists to state.
+  const arr = arrivalTs(prev);
+  const dep = departureTs(next);
+  const gap = arr !== null && dep !== null && dep >= arr ? dep - arr : null;
+
+  // AND WITH THE DURATION GONE THERE IS NO ROW. It was the last thing left after
+  // the other three lines came out, so an unreadable gap leaves an empty label
+  // sitting on the thread -- a break in the line marking nothing. The line runs
+  // unbroken past a leg it cannot time, which is the honest drawing of it.
+  if (gap === null) return null;
+
+  return (
+    <View style={st.layover}>
+      <Text style={st.layoverTime}>{gapLabel(gap)}</Text>
+    </View>
+  );
+}
+
+// ── EVERY LEG THAT IS NOT THE ONE YOU ARE ON ────────────────────────────────
+//
+// ONE COMPONENT, THREE STATES, AND THE CARD'S OWN GRID UNDER ALL OF THEM.
+//
+// THE ROWS USED TO BE THREE LINES FLUSH LEFT with the right half of the surface
+// empty, sitting under a card that used both halves. They read as a different
+// component stacked below the card because that is what they were: same fill,
+// same radius, same padding, unrelated interior. A trip is one thing at four
+// sizes and the interior is what has to say so.
+//
+// SO THE GRID IS components/FlightCard.tsx's, matched rather than approximated:
+//
+//   THE LEFT COLUMN IS IDENTITY, content-sized, no flex, gap 3. The date leads
+//   at 20 MONO_BOLD white with 7 under it; the number and the airline follow at
+//   13, mono and sans, both in the label grey. That is airportIdent exactly --
+//   the date frames the pair rather than joining it, which is what the extra 7
+//   buys.
+//
+//   THE RIGHT COLUMN IS EVERYTHING TIMED, flex 1, paddingLeft 12 to hold it off
+//   the identity column, paddingRight 8, alignItems flex-end, gap 12. Every
+//   entry is a label over a value, both right-aligned: 11 SANS in the label grey
+//   over 15 MONO_BOLD in white. That is airportMovements and airportTimeRow.
+//
+//   THE ROUTE HEADS THAT COLUMN at the value's own size and weight, and the
+//   times sit UNDER it rather than beside it. On the card the right column's
+//   first thing is a movement; here it is where the flight goes, and what
+//   follows is when -- read down, not across.
+//
+// NO NEW SIZES AND NO NEW COLOURS. 11, 13, 15 and 20; white and DIM, which is
+// the same rgba(226,226,226,0.4) the card's own labels carry.
+//
+// THE RULE AND THE TILE ROW ARE NOT COPIED, and that is the difference between
+// matching a grid and cloning a card. The card divides its tiles evenly across
+// one row because it has three or four facts of one kind; a row has at most one
+// -- a belt -- and a single tile in a four-column grid is a grid with three
+// holes in it. It goes in the right column as one more label-and-value.
+//
+// THE SURFACE IS UNCHANGED: compactLeg's fill, radius and padding, and cardEdge
+// over it. Only the interior moved.
+function CollapsedLeg({ leg, state, belt, now, onPress }: {
+  leg: SavedFlight;
+  state: Exclude<LegState, 'current'>;
+  belt: boolean;
+  now: number;
+  onPress: () => void;
+}) {
+  const landed = state === 'landed';
+
+  // NOTHING WHERE THERE IS NOTHING. Each of these is null when the field is
+  // absent and its line does not render -- no em dash, no "N/A", no placeholder
+  // holding a slot. The card's tile row does the opposite on purpose, because a
+  // dash under "Gate" is news that a gate is coming; on a row there is no slot
+  // being held and a dash would just be a smaller way of saying nothing.
+  //
+  // NO DATE ON A LANDED LEG. It is the date of a flight that is over, and the
+  // whole point of that state is to stop printing facts that have expired.
+  //
+  // ISO_DAY_RE BEFORE routeDateLabel, as everywhere else: flightDate is the
+  // literal string "unknown" on a record filed without one -- see makeFlightId
+  // -- and that helper passes through what it cannot parse.
+  const dated = !landed && ISO_DAY_RE.test(leg.flightDate)
+    ? routeDateLabel(leg.flightDate).toUpperCase()
+    : null;
+
+  // THE COUNTDOWN IS ABOVE THE CLOCK, AND THAT ORDER IS THE POINT. "2h 14m" and
+  // "Estimated Departure 05:30" are nearly the same sentence, and side by side
+  // they read as one fact stated twice. Stacked, the interval is what the eye
+  // lands on first and the clock is what it checks against -- which is the order
+  // somebody actually uses them in.
+  const cd = landed ? null : countdown(leg, now);
+
+  // ONLY THE NEXT LEG PRINTS A CLOCK. Further out it would be a timetable entry
+  // quoted as though it were settled; the countdown says the same thing without
+  // claiming a precision the provider has not committed to. See NEXT_WINDOW_MS.
+  const depCell = state === 'next'
+    ? movementTimeCell(
+        clock24(leg.from.actualIso, leg.from.actual),
+        clock24(leg.from.estimatedIso, leg.from.estimated),
+        clock24(leg.from.scheduledIso, leg.from.scheduled),
+        true,
+      )
+    : null;
+
+  return (
+    <TouchableOpacity style={st.compactLeg} activeOpacity={0.7} onPress={onPress} accessibilityRole="button">
+      <View style={st.cardEdge} pointerEvents="none" />
+      <View style={st.legSplit}>
+        <View style={st.legIdent}>
+          {dated !== null && <Text style={st.legDate}>{dated}</Text>}
+          <Text style={st.legIdentNum} numberOfLines={1}>{leg.flightNumber}</Text>
+          {leg.airline !== '' && (
+            <Text style={st.legIdentName} numberOfLines={1}>{leg.airline}</Text>
+          )}
+        </View>
+        <View style={st.legTimes}>
+          <Text style={st.legTimeValue} numberOfLines={1}>
+            {`${leg.from.iata} → ${leg.to.iata}`}
+          </Text>
+          {cd !== null && (
+            <View style={st.legTimeRow}>
+              <Text style={st.legTimeLabel}>{cd.label}</Text>
+              <Text style={st.legTimeValue}>{cd.value}</Text>
+            </View>
+          )}
+          {depCell !== null && hasTime(depCell.value) && (
+            <View style={st.legTimeRow}>
+              <Text style={st.legTimeLabel}>{depCell.label}</Text>
+              <Text style={st.legTimeValue}>{depCell.value}</Text>
+            </View>
+          )}
+          {/* THE BELT, WHEN showsBelt ALLOWS ONE AND NOT OTHERWISE. That rule is
+              untouched and lives in one place; this asks nothing and decides
+              nothing. It can only ever be true on a landed leg, which is why it
+              is the one thing that state carries beyond its identity. */}
+          {belt && (
+            <View style={st.legTimeRow}>
+              <Text style={st.legTimeLabel}>{'Belt'}</Text>
+              <Text style={st.legTimeValue}>{leg.to.baggage}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function Flights() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { savedFlights, ownFlight, disownFlight, refreshOne } = useSaved();
+  // handleUnsave IS THE DEVELOPMENT MOCK'S and goes with it. See that block.
+  const { savedFlights, ownFlight, disownFlight, refreshOne, handleUnsave } = useSaved();
   const { showToast } = useToast();
   const { isOnMap, addRoute, removeRoute } = useMapRoutes();
 
@@ -276,6 +774,83 @@ export default function Flights() {
     () => trips.filter(legs => legs.every(l => isArchived(l, now))),
     [trips, now],
   );
+
+  // ── WHICH LEG IS OPEN, AND WHO DECIDED ────────────────────────────────────
+  //
+  // A LEG ID, OR NOTHING, AND NOTHING IS THE ORDINARY STATE. Null means the
+  // screen is following the journey: focus is wherever currentLegIndex puts it
+  // and it MOVES as legs land. A non-null id means the user has overruled that
+  // by opening a different leg, and the screen holds still until they say
+  // otherwise.
+  //
+  // AN ID RATHER THAN AN INDEX. Legs are ordered by departure instant and that
+  // order can change under a delay, so an index would silently come to name a
+  // different leg. An id names the record.
+  const [focusOverride, setFocusOverride] = useState<string | null>(null);
+
+  // WHERE THE FOCUS TRIP'S ATTENTION SITS, and it is asked once rather than
+  // inside a map. current[0] is the journey being taken -- tripsOf decided that
+  // -- and every leg's state is measured against it.
+  //
+  // AN INDEX, because NEXT is the leg after this one and "after" is a position.
+  // It was an id while the states were decided per leg from the clock; now that
+  // one of them is defined relative to another, the list order is the thing both
+  // questions are asked of.
+  //
+  // THE OVERRIDE ONLY WINS WHILE IT NAMES A LEG THAT IS SHOWING. A miss falls
+  // through to currentLegIndex here rather than waiting for the effect below to
+  // clear it, so the render is already correct on the frame the trip changes.
+  //
+  // -1 WHEN NOTHING OPENS, which is an ordinary outcome rather than an empty-list
+  // guard: a trip more than a day out opens no card at all. See currentLegIndex.
+  //
+  // `now` IS A DEPENDENCY, because the window is a clock reading. It moves once a
+  // minute, which is exactly how often the answer can change.
+  const openIdx = useMemo(() => {
+    if (current.length === 0) return -1;
+    const legs = current[0];
+    if (focusOverride !== null) {
+      const i = legs.findIndex(l => l.id === focusOverride);
+      if (i >= 0) return i;
+    }
+    return currentLegIndex(legs, now);
+  }, [current, focusOverride, now]);
+
+  // AND THE ONE AFTER IT, WHICH IS THE ONLY LEG THAT MAY BE NEXT. Derived from
+  // openIdx rather than computed alongside it, so the two cannot disagree about
+  // which leg is open. See nextLegIndex.
+  const nextIdx = useMemo(
+    () => (current.length === 0 ? -1 : nextLegIndex(current[0], now, openIdx)),
+    [current, now, openIdx],
+  );
+
+  // AND IT IS DROPPED WHEN IT STOPS MEANING ANYTHING. The trip can change under
+  // it: a leg is removed, the whole journey finishes and leaves `current`, or
+  // tripsOf puts a different trip first. Holding an id that names nothing on
+  // screen would pin the screen to a leg the user cannot see, and the next trip
+  // to contain that id would inherit somebody else's decision.
+  //
+  // IN AN EFFECT RATHER THAN IN THE MEMO ABOVE, because a render must not write
+  // state. The memo already falls through, so this only tidies up.
+  useEffect(() => {
+    if (focusOverride === null) return;
+    const showing = current.length > 0 && current[0].some(l => l.id === focusOverride);
+    if (!showing) setFocusOverride(null);
+  }, [current, focusOverride]);
+
+  // TAPPING A COLLAPSED LEG OPENS IT, AND TAPPING THE ONE THE JOURNEY WOULD
+  // HAVE CHOSEN ANYWAY GIVES CONTROL BACK.
+  //
+  // The second half is what stops this being a one-way door. Setting the
+  // override to the natural leg's own id would LOOK identical and would quietly
+  // stop the screen following the journey -- the next landing would move
+  // currentLegIndex and the override would pin focus to the leg behind it. Null
+  // is a different state from "the same index by coincidence", and it is the
+  // one that keeps tracking.
+  const openLeg = (legs: SavedFlight[], leg: SavedFlight) => {
+    const i = currentLegIndex(legs, now);
+    setFocusOverride(i >= 0 && legs[i].id === leg.id ? null : leg.id);
+  };
 
   // WHAT CAN BE IMPORTED: watched, not already owned, not already archived.
   // Sorted by the list's own relevance rule so the sheet reads in the same order
@@ -461,6 +1036,7 @@ export default function Flights() {
       accessibilityRole="button"
       accessibilityLabel="add your flight"
     >
+      <View style={st.cardEdge} pointerEvents="none" />
       {/* 20, UP FROM 16. The glyph is the half of this control that says what it
           does; at 16 beside a 15pt label it read as a bullet. */}
       <Svg width={20} height={20} viewBox="0 0 24 24">
@@ -470,6 +1046,359 @@ export default function Flights() {
       <Text style={st.addLabel}>{'Add your flight'}</Text>
     </TouchableOpacity>
   );
+
+  // ==========================================================================
+  // ###  DEVELOPMENT MOCK -- NOT A FEATURE. DELETE BEFORE RELEASE.  ###
+  // ==========================================================================
+  //
+  // WHAT IT IS: one button that writes ONE JOURNEY into the real store, and
+  // takes it out again. Four legs, Indore to Seattle, mid-flight:
+  //
+  //   IDR -> DEL   landed, forty minutes ago
+  //     2h 10m at Delhi
+  //   DEL -> FRA   the next flight, boarding soon
+  //     1h 40m at Frankfurt
+  //   FRA -> SFO   the long one
+  //     3h 05m at San Francisco
+  //   SFO -> SEA   the last one
+  //
+  // IT WAS FOUR UNRELATED FLIGHTS SHARING A tripId. Each sat at a different
+  // point in a flight's life so the card could be seen in four states, and that
+  // served its purpose -- but it was not a trip, and the screen has since grown
+  // things that only mean anything on one: a thread down the left connecting the
+  // legs, a wait written on that thread, and three levels of attention measured
+  // as distance from the leg you are actually on. A row of strangers exercises
+  // none of it honestly. The gaps were 5h45m, 39h40m and 93h10m -- the last two
+  // are not connections, they are a fortnight's itinerary pretending to be one.
+  //
+  // NOW IT IS A REAL SHAPE. Legs in departure order, each arriving before the
+  // next departs, every layover between one and four hours, and a mix of
+  // domestic and international so bagEligible's US-arrival exception has
+  // something to be right about. FRA -> SFO is the first US port of entry and is
+  // bag-eligible; the two Indian legs are not.
+  //
+  // ONE LEG HAS LANDED, which is what puts the focus in the middle rather than
+  // at the top: currentLegIndex takes the first leg with no landedAt, so DEL ->
+  // FRA is the open card, IDR -> DEL and FRA -> SFO are the near rows either
+  // side of it, and SFO -> SEA is the far one. All three levels, in one screen.
+  //
+  // NOTHING DEPENDS ON THIS. It is not a seed, not a demo mode and not a
+  // fixture.
+  //
+  // __DEV__ GATES THE BUTTON so that forgetting to delete this cannot ship it.
+  // The gate is on the control rather than on the data, because the data is
+  // inert without it -- and a gate on the render is the one place a stray
+  // reference cannot get round.
+  //
+  // TO DELETE, in full, in this file only:
+  //   1. everything between this rule and the END rule below;
+  //   2. the single {mockButton} in the ScrollView;
+  //   3. SavedFlightEndpoint and makeFlightId from the storage import;
+  //   4. handleUnsave from the useSaved destructure;
+  //   5. the `declare const __DEV__` line above, and its note.
+  // Nothing else in the app refers to any of it.
+  //
+  // -- FAKE DESIGNATORS, REAL ROUTES, AND THE PREFIX IS THE WHOLE SAFETY. --
+  //
+  // MOK IS THREE CHARACTERS AND AN IATA AIRLINE DESIGNATOR IS TWO, so none of
+  // these can name a real flight. Real numbers were tried here for one round and
+  // taken out again for exactly the reason they were wrong: this block exists to
+  // hold the card still in four states, and a refresh that resolved one of them
+  // would move the thing being looked at.
+  //
+  // A FAILED LOOKUP NEVER WRITES, which is the guarantee that actually matters
+  // and it is checkable rather than assumed. refreshLeg returns on
+  // `data.error || !res.ok` before it reaches refreshOne; refreshFlights counts
+  // a failure and continues without calling touchSavedFlight. So the ONLY way a
+  // mock record can be overwritten is a SUCCESSFUL lookup for that exact number
+  // on that exact date, and there is no flight numbered MOK821.
+  //
+  // THE ROUTES AND THE AIRLINE NAMES STAY REAL. IDR-DEL on IndiGo, DEL-FRA and
+  // FRA-SFO on Lufthansa, SFO-SEA on Alaska -- so the cards carry realistic city
+  // pairs, realistic block times and realistic name lengths.
+  //
+  // THE NUMBER AND THE AIRLINE THEREFORE DISAGREE, and that is deliberate rather
+  // than an oversight: the prefix buys unrefreshability, the name keeps the row
+  // the right shape, and a card reading "MOK821 / IndiGo" is a card that says
+  // out loud it is not real. Six characters, which is the length of a real
+  // 6E6821 -- the identity column is sized off the date and the number is
+  // numberOfLines={1}, so a longer invented number would have tested a width no
+  // real flight can produce.
+  //
+  // THE TIMES ARE COMPUTED, NOT WRITTEN DOWN. Every instant is an offset from
+  // the moment the button is pressed, so the four phases stay four phases
+  // however long this block survives, rather than aging into four landed
+  // flights a week from now.
+  const MOCK_TRIP_ID = 'trip:mock:phases';
+  // REMOVAL MATCHES THE PREFIX, NOT THE ID, AND THAT IS FOR THE ID THAT JUST
+  // CHANGED. A device carrying the old trip:mock:idr-sfo legs would otherwise
+  // have no way to get rid of them: the button would not see them and would
+  // offer to add on top. Every mock this block has ever written begins
+  // trip:mock:, so every one of them is removable by the same press.
+  const MOCK_PREFIX = 'trip:mock:';
+  const MOCK_ON = savedFlights.some(f => f.tripId?.startsWith(MOCK_PREFIX) === true);
+
+  // AN INSTANT, AS THE FLIGHT DTO SPELLS ONE. lib/time.ts's note at the top is
+  // the whole specification: the stored *_iso fields carry LOCAL WALL-CLOCK
+  // DIGITS under a bogus +00:00, and the airport's IANA zone on the endpoint is
+  // what makes them an instant again. Writing a true offset here would produce
+  // records unlike every other record in the store, which would make the mock
+  // test the wrong thing.
+  //
+  // Intl DIRECTLY RATHER THAN lib/time's CACHE. zonedIsoToTs and clockInZone
+  // both answer questions ABOUT a stored field; this GENERATES one, which is
+  // something no shipping code does and nothing in lib/ should learn to do for
+  // a control that is being deleted.
+  const mockIso = (ts: number, tz: string): string => {
+    const p: Record<string, string> = {};
+    for (const part of new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(ts))) p[part.type] = part.value;
+    // % 24 for the reason lib/time gives: hour12 false reports midnight as 24
+    // on some ICU versions, and 24:05 is not a clock.
+    const hh = String(Number(p.hour) % 24).padStart(2, '0');
+    return `${p.year}-${p.month}-${p.day}T${hh}:${p.minute}:00+00:00`;
+  };
+
+  // EVERY FIELD SavedFlightEndpoint DECLARES, and the return type is what
+  // enforces that rather than my counting them.
+  //
+  // AN OPTIONS OBJECT, because the phases differ by WHICH FIELDS ARE ABSENT and
+  // that is the whole subject of this mock. A positional call would spell the
+  // absences as a run of nulls nobody can read; omitting a key says the airport
+  // has not decided yet, which is the thing being looked at.
+  //
+  // WHERE THE CARD READS EACH OF THEM, because it is not symmetric and getting
+  // it wrong would put a phase on the wrong side of the flight. See
+  // flightDataFromSaved: terminal, gate and desk are the DEPARTURE's; belt is
+  // the ARRIVAL's.
+  //
+  // AN ABSENT TERMINAL, GATE OR BELT RENDERS AS AN EM DASH, not as a missing
+  // tile -- AirportTiles always draws those three. Only Desk is conditional.
+  // That dash IS the "not decided yet" state these phases exist to show.
+  //
+  // flown MEANS THE MOVEMENT HAPPENED, so it carries an actual time. On time, so
+  // the actual is the schedule and delay stays null -- which flightLineSegments
+  // reads as "on time" rather than as "nothing to say".
+  const mockEnd = (e: {
+    iata: string; airport: string; city: string; short: string;
+    tz: string; iso: string;
+    terminal?: string; gate?: string; desk?: string; belt?: string;
+    flown?: boolean;
+  }): SavedFlightEndpoint => ({
+    iata: e.iata,
+    airport: e.airport,
+    city: e.city,
+    shortName: e.short,
+    terminal: e.terminal ?? null,
+    gate: e.gate ?? null,
+    scheduled: e.iso.slice(11, 16),
+    actual: e.flown === true ? e.iso.slice(11, 16) : 'N/A',
+    estimated: 'N/A',
+    delay: null,
+    scheduledIso: e.iso,
+    estimatedIso: null,
+    actualIso: e.flown === true ? e.iso : null,
+    timezone: e.tz,
+    checkinDesk: e.desk ?? null,
+    baggage: e.belt ?? null,
+    actualSource: null,
+    estimatedSource: null,
+  });
+
+  // EVERY FIELD SavedFlight DECLARES, same argument. The one value that had to
+  // be spelled rather than imported is schemaVersion: SCHEMA_VERSION is private
+  // to lib/storage and this is not worth exporting it for. 11 is current; if it
+  // drifts, normalizeRecord bumps a stale version on the next read, which is
+  // exactly what it is for. It must not be 0 -- that is the pre-v2 marker and
+  // would trip the one-time backup path in readKey.
+  //
+  // THE DATE IS READ OFF THE DEPARTURE ISO rather than passed in, so the id, the
+  // record's flightDate and the times it shows cannot come to disagree.
+  // makeFlightId is imported for the same reason: normalizeRecord recomputes the
+  // id on every read, and a hand-built one that differs would be rewritten on
+  // first load.
+  const mockFlight = (f: {
+    number: string; airline: string; model: string; reg: string;
+    status: string; raw: string;
+    from: SavedFlightEndpoint; to: SavedFlightEndpoint;
+    landedAt?: number;
+  }): SavedFlight => {
+    const date = String(f.from.scheduledIso).slice(0, 10);
+    return {
+      id: makeFlightId(f.number, date),
+      flightNumber: f.number,
+      airline: f.airline,
+      flightDate: date,
+      status: f.status,
+      from: f.from,
+      to: f.to,
+      aircraftModel: f.model,
+      aircraftRegistration: f.reg,
+      savedAt: Date.now(),
+      updatedAt: Date.now(),
+      landedAt: f.landedAt ?? null,
+      archivedAt: null,
+      remindersSetAt: null,
+      // CARRIED ON THE RECORD AS WELL AS PASSED TO ownFlight. ownFlight writes it
+      // through setTrip either way; having it here too means the object is a
+      // coherent record on its own rather than one that is only correct after a
+      // second call.
+      tripId: MOCK_TRIP_ID,
+      rawStatus: f.raw,
+      schemaVersion: 11,
+    };
+  };
+
+  // THE ZONES AND THE AIRPORT AND CITY STRINGS ARE lib/airports.ts's, read off
+  // the rows rather than guessed: IDR and DEL are Asia/Kolkata, FRA is
+  // Europe/Berlin, SFO and SEA are America/Los_Angeles.
+  //
+  // rawStatus IS NOT DECORATION. displayStatus trusts it only while it agrees
+  // with the mapped status, and the badge prints it -- so "Expected", "CheckIn"
+  // and "Arrived" are three different badges on three of these cards, which is
+  // part of what there is to look at.
+  const mockFlights = (): SavedFlight[] => {
+    const MIN = 60000;
+    const IN = 'Asia/Kolkata', DE = 'Europe/Berlin', US = 'America/Los_Angeles';
+    const IDR = { iata: 'IDR', airport: 'Devi Ahilya Bai Holkar International Airport', city: 'Indore', short: 'Indore', tz: IN };
+    const DEL = { iata: 'DEL', airport: 'Indira Gandhi International Airport', city: 'New Delhi', short: 'Delhi', tz: IN };
+    const FRA = { iata: 'FRA', airport: 'Frankfurt Main Airport', city: 'Frankfurt am Main', short: 'Frankfurt', tz: DE };
+    const SFO = { iata: 'SFO', airport: 'San Francisco International Airport', city: 'San Francisco', short: 'San Francisco', tz: US };
+    const SEA = { iata: 'SEA', airport: 'Seattle–Tacoma International Airport', city: 'Seattle', short: 'Seattle', tz: US };
+    // OFFSETS FROM NOW, rounded to five minutes so the cards read like a
+    // timetable rather than like the moment the button was pressed.
+    const at = (ms: number) => Math.round((Date.now() + ms) / (5 * MIN)) * (5 * MIN);
+
+    // ── THE ITINERARY, ANCHORED ON THE ONE LEG THAT HAS FLOWN ──
+    //
+    // EVERY INSTANT IS DERIVED FROM arr1 AND A BLOCK OR A LAYOVER, so the shape
+    // is correct BY CONSTRUCTION rather than by four independent offsets from
+    // now happening to line up -- which is exactly how the previous version came
+    // to have a 93-hour "layover" in it. Each leg departs after the one before
+    // it lands because the arithmetic says so, not because the numbers were
+    // chosen carefully.
+    //
+    // FORTY MINUTES AGO for the landing: inside showsBelt's one-hour window and
+    // nowhere near the six-hour archive rule, so the trip is live and the leg
+    // behind you is still recent enough to have a belt if it were eligible.
+    const arr1 = at(-40 * MIN);
+    const dep1 = arr1 - 95 * MIN;                        // IDR -> DEL, 1h35
+    const dep2 = arr1 + 130 * MIN;                       // 2h10 at Delhi
+    const arr2 = dep2 + 530 * MIN;                       // DEL -> FRA, 8h50
+    const dep3 = arr2 + 100 * MIN;                       // 1h40 at Frankfurt
+    const arr3 = dep3 + 690 * MIN;                       // FRA -> SFO, 11h30
+    const dep4 = arr3 + 185 * MIN;                       // 3h05 at San Francisco
+    const arr4 = dep4 + 135 * MIN;                       // SFO -> SEA, 2h15
+
+    return [
+      // LEG 1, LANDED. Domestic India. Both movements carry an actual time, and
+      // a belt is set at Delhi -- which showsBelt will correctly REFUSE to
+      // print, because an intermediate arrival outside the United States is a
+      // leg whose bags are through-checked. The field is here so that the rule
+      // is being exercised against a real value rather than against a null.
+      //
+      // landedAt IS THE ARRIVAL INSTANT, not the moment the button was pressed:
+      // it is meant to record when we first saw it land, and saveFlight only
+      // fills it with the clock when it is missing.
+      mockFlight({
+        number: 'MOK821', airline: 'IndiGo', model: 'Airbus A320neo', reg: 'VT-IZB',
+        status: 'landed', raw: 'Arrived', landedAt: arr1,
+        from: mockEnd({ ...IDR, iso: mockIso(dep1, IN), terminal: '1', gate: 'A3', desk: '12-14', flown: true }),
+        to: mockEnd({ ...DEL, iso: mockIso(arr1, IN), terminal: '2', belt: '6', flown: true }),
+      }),
+      // LEG 2, THE ONE YOU ARE ABOUT TO TAKE. International. This is the leg
+      // currentLegIndex lands on -- the first with no landedAt -- so it is the
+      // open card, and the desk is set on it because a four-tile row only
+      // appears on a leg that has a check-in desk as well as a gate.
+      mockFlight({
+        number: 'MOK645', airline: 'Lufthansa', model: 'Airbus A350-900', reg: 'D-AIXA',
+        status: 'scheduled', raw: 'CheckIn',
+        from: mockEnd({ ...DEL, iso: mockIso(dep2, IN), terminal: '3', gate: '22', desk: 'F' }),
+        to: mockEnd({ ...FRA, iso: mockIso(arr2, DE), terminal: '1' }),
+      }),
+      // LEG 3, THE LONG ONE. International, and the FIRST UNITED STATES PORT OF
+      // ENTRY -- so bagEligible returns true for it even though it is not the
+      // last leg. That is the CBP exception, and this is the leg that exercises
+      // it. Terminal and gate at Frankfurt, no desk.
+      mockFlight({
+        number: 'MOK509', airline: 'Lufthansa', model: 'Boeing 747-8', reg: 'D-ABYA',
+        status: 'scheduled', raw: 'Expected',
+        from: mockEnd({ ...FRA, iso: mockIso(dep3, DE), terminal: '1', gate: 'Z24' }),
+        to: mockEnd({ ...SFO, iso: mockIso(arr3, US), terminal: 'I' }),
+      }),
+      // LEG 4, THE LAST ONE. Domestic United States, and the far row -- two away
+      // from the focus, so all it draws is its head line. No gate: a leg a day
+      // out has not been assigned one, which is what the near row's "show
+      // nothing rather than a dash" rule is for when this leg becomes the focus.
+      mockFlight({
+        number: 'MOK762', airline: 'Alaska Airlines', model: 'Boeing 737-900ER', reg: 'N493AS',
+        status: 'scheduled', raw: 'Expected',
+        from: mockEnd({ ...SFO, iso: mockIso(dep4, US), terminal: '2' }),
+        to: mockEnd({ ...SEA, iso: mockIso(arr4, US) }),
+      }),
+    ];
+  };
+
+  // ── THE WRITE PATH, AND IT IS THE STORE'S OWN ──
+  //
+  // ownFlight(record, tripId) DOES EXACTLY THIS ALREADY and nothing had to be
+  // added for it. Its own note says tripId is optional and "passing one is how
+  // a second leg joins a trip that already exists" -- which is four records
+  // joining one grouping, which is this. It saves the record when it is not
+  // already on the watchlist, registers the watch, writes the tripId through
+  // setTrip, and turns reminders on. Every one of those is a step the real
+  // ownership path takes, which is the point: a mock written round the store
+  // would exercise the screen and nothing underneath it.
+  //
+  // SEQUENTIAL, and the stale closure over savedFlights inside ownFlight is
+  // harmless here: none of the four ids is in the list when the loop starts, so
+  // all four take the save path, and saveFlight re-reads storage on every call
+  // rather than trusting what it was handed.
+  //
+  // THE LANDED ONE GETS NO REMINDERS AND NEEDS NO EXCEPTION. ownFlight calls
+  // enableReminders on it like the rest, and reminderTimes returns two nulls for
+  // a departure that is eight hours past -- so nothing is scheduled and nothing
+  // is written. The store already refuses; this does not have to.
+  //
+  // REMOVAL IS handleUnsave, NOT disownFlight. Disowning only clears tripId,
+  // which would leave four records on the watchlist for the refresh loop to keep
+  // asking about. These should not survive the mock at all. handleUnsave also
+  // deregisters the watch and opens the undo window, which is what cancels the
+  // notifications ownFlight scheduled.
+  const toggleMockFlights = async () => {
+    if (MOCK_ON) {
+      for (const f of savedFlights.filter(f => f.tripId?.startsWith(MOCK_PREFIX) === true)) {
+        await handleUnsave(f);
+      }
+      showToast('mock flights removed');
+      return;
+    }
+    for (const f of mockFlights()) await ownFlight(f, MOCK_TRIP_ID);
+    showToast('mock flights added');
+  };
+
+  // INLINE STYLES, DELIBERATELY. Two entries in st would be two more things to
+  // find when this is deleted, and a development control has earned no place in
+  // the screen's stylesheet. Dim enough to read as machinery rather than as an
+  // action: 11pt mono at 0.3, under everything.
+  const mockButton = !__DEV__ ? null : (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => { void toggleMockFlights(); }}
+      style={{ alignSelf: 'center', marginTop: 28, paddingVertical: 8, paddingHorizontal: 12 }}
+      accessibilityRole="button"
+    >
+      <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.3)' }}>
+        {MOCK_ON ? 'remove mock flights' : 'add mock flights'}
+      </Text>
+    </TouchableOpacity>
+  );
+  // ==========================================================================
+  // ###  END OF THE DEVELOPMENT MOCK  ###
+  // ==========================================================================
 
   return (
     <View style={[st.root, { paddingTop: insets.top + 12 }]}>
@@ -515,6 +1444,7 @@ export default function Flights() {
                       accessibilityRole="button"
                       accessibilityLabel={`add ${f.flightNumber} to this trip`}
                     >
+                      <View style={st.cardEdge} pointerEvents="none" />
                       <View style={st.legHead}>
                         <Text style={st.legNum}>{f.flightNumber}</Text>
                         <Text style={st.legRoute} numberOfLines={1}>
@@ -547,6 +1477,7 @@ export default function Flights() {
                     <View key={legs[0].tripId ?? String(i)} style={st.pastTrip}>
                       {legs.map(l => (
                         <View key={l.id} style={st.pastRow}>
+                          <View style={st.cardEdge} pointerEvents="none" />
                           <View style={st.legHead}>
                             <Text style={st.legNum}>{l.flightNumber}</Text>
                             <Text style={st.legRoute} numberOfLines={1}>
@@ -607,13 +1538,72 @@ export default function Flights() {
           </View>
         ) : (
           <>
-            {/* THE FOCUS TRIP, IN FULL. current[0] is the journey with the
-                earliest leg still to fly — tripsOf decided that — so it is the
-                one being taken, and it is the only one this screen opens out. */}
-            <View style={st.trip}>
-              {current[0].map(leg => (
+            {/* ── THE FOCUS TRIP, AT THREE LEVELS OF ATTENTION ──
+                current[0] is the journey with the earliest leg still to fly —
+                tripsOf decided that — so it is the one being taken, and it is
+                the only one this screen opens out.
+
+                IT USED TO OPEN OUT EVERY LEG EQUALLY, and that was the mistake.
+                A four-leg journey was four full cards, each with its own gate,
+                belt, terminal and progress bar, all shouting at the same volume
+                — so the leg the traveller was actually standing in an airport
+                for looked exactly like the one six days away. A screen about
+                where you ARE has to say where you are.
+
+                THE DISTANCE FROM THE CURRENT LEG IS THE WHOLE RULE. Zero is
+                the card; one either side is a row that can carry a belt;
+                everything beyond is the same row without one. See
+                currentLegIndex for what "current" means and why it is not a
+                question about status, and CollapsedLeg for why the last two are
+                one component rather than two.
+
+                ONE EITHER SIDE RATHER THAN ONE AHEAD. The leg just flown is
+                still live for as long as its bags are: showsBelt can only be
+                true on a leg that has landed, and the row behind you is where
+                that lands. */}
+            {/* ── ONE THREAD, AND THE LEGS HANG OFF IT ──
+                THE LINE IS A SIBLING OF THE COLUMN, not a border on it and not a
+                segment inside each row. Absolutely positioned at top 0 bottom 0
+                of this wrapper, it spans exactly the trip: it begins at the top
+                edge of the first card and ends at the bottom edge of the last,
+                because the wrapper's height IS the column's. A per-row segment
+                would have to be stitched across every gap and would come apart
+                at the first row that changed height.
+
+                IT IS DRAWN FIRST so everything after it paints over it, which is
+                what lets the layover's label break the line by simply having a
+                background. See st.rail and st.layoverTime.
+
+                THE MARGIN IS ON EACH LEG, NOT ON THE COLUMN. An absolutely
+                positioned child is placed against its parent's PADDING box, so
+                padding here would move the line along with the cards and leave
+                no gutter at all. Insetting the legs individually leaves the
+                column's own left edge at zero, which is where the line and the
+                layover label both need to measure from. */}
+            <View style={st.tripWrap}>
+              <View style={st.rail} pointerEvents="none" />
+              <View style={st.trip}>
+              {current[0].map((leg, i) => {
+                // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
+                // indices and the landing; nothing below re-derives any of them,
+                // and no clock is consulted here at all -- both windows were
+                // spent deciding openIdx and nextIdx above.
+                //
+                // showsBelt IS ASKED UNCONDITIONALLY AND NEEDS NO STATE GUARD:
+                // its own first two conditions are a belt number and a landing,
+                // so it is already false on every state but landed. Gating it
+                // here would be the same rule written twice.
+                const state = legState(leg, i, openIdx, nextIdx);
+                const card = state !== 'current' ? (
+                    <CollapsedLeg
+                      leg={leg}
+                      state={state}
+                      belt={showsBelt(current[0], i, now)}
+                      now={now}
+                      onPress={() => openLeg(current[0], leg)}
+                    />
+                ) : (
                 <FlightCard
-                  key={leg.id}
                   flight={flightDataFromSaved(leg, effectiveStatus(leg, now))}
                   flightRecord={leg}
                   now={now}
@@ -635,8 +1625,48 @@ export default function Flights() {
                   refreshFlightCard={() => { void refreshLeg(leg); }}
                   closeFlightCard={NOT_REACHABLE}
                   tripVariant
+                  // THE HALF OF THE BELT QUESTION THE CARD CANNOT ANSWER. See
+                  // bagEligible above and the prop's own note on the card: it is
+                  // about this leg's position in the trip, and the trip is here.
+                  // The card still decides the other half, which is whether the
+                  // flight has landed.
+                  bagsClaimedHere={bagEligible(current[0], i)}
+                  // THE SAME COUNTDOWN THE COLLAPSED ROWS TAKE, from the same
+                  // function on the same tick. The open card and the row above
+                  // it must not disagree about how long is left, and one
+                  // implementation is how that is guaranteed rather than
+                  // checked. See the prop's note on the card.
+                  countdown={countdown(leg, now)}
                 />
-              ))}
+                );
+                // THE KEY MOVED TO THE FRAGMENT, which is why neither element
+                // above carries one any more: a leg now renders as a PAIR --
+                // itself, and the gap that follows it -- and React keys the
+                // thing that is returned.
+                //
+                // AFTER EVERY LEG BUT THE LAST. A layover is what sits between
+                // two legs, so there are always exactly one fewer of them than
+                // there are legs, and a trailing one would be the space after
+                // the journey ends.
+                //
+                // A Fragment ADDS NO VIEW. Its children become direct children
+                // of st.trip, so CARD_GAP falls between the card and the row
+                // exactly as it falls between two cards.
+                return (
+                  <Fragment key={leg.id}>
+                    {/* THE SLOT IS WHAT HOLDS THE LEG OFF THE THREAD. The card
+                        itself cannot carry the margin -- FlightCard's root is a
+                        Swipeable this screen does not style -- so both levels
+                        are wrapped, which also keeps the two variants the same
+                        distance from the line. */}
+                    <View style={st.legSlot}>{card}</View>
+                    {i < current[0].length - 1 && (
+                      <Layover prev={leg} next={current[0][i + 1]} />
+                    )}
+                  </Fragment>
+                );
+              })}
+              </View>
             </View>
 
             {/* EVERY OTHER TRIP, AS ONE LINE. They exist and are worth seeing;
@@ -658,6 +1688,9 @@ export default function Flights() {
         )}
 
         {/* The past-flights sheet is still mounted above and has no way in yet. */}
+
+        {/* DEVELOPMENT MOCK. Delete this line with the block. */}
+        {mockButton}
       </ScrollView>
     </View>
   );
@@ -716,7 +1749,39 @@ const st = StyleSheet.create({
 
   // THE FOCUS TRIP. CARD_GAP between legs, which is the gap between any two
   // cards in this app.
-  trip: { marginTop: 20, gap: CARD_GAP },
+  //
+  // THE MARGIN MOVED UP TO tripWrap, so the thread's top: 0 is the top of the
+  // first card rather than 20 points above it.
+  tripWrap: { marginTop: 20 },
+  trip: { gap: CARD_GAP },
+  // THE THREAD. One pixel in the gutter, in DIM -- the same tone the duration
+  // written on it takes, because the line and the label are one element. See
+  // RAIL_X and RAIL_INSET for why the numbers are constants rather than literals.
+  rail: {
+    position: 'absolute',
+    left: RAIL_X, top: 0, bottom: 0,
+    width: RAIL_W,
+    backgroundColor: DIM,
+  },
+  legSlot: { marginLeft: RAIL_INSET },
+  // ── THE WAIT, WRITTEN ON THE THREAD ──
+  //
+  // NO SURFACE AND NO INSET OF ITS OWN: the row starts at the column's left
+  // edge, which is where the line is, and the label's own padding is what
+  // carries its text across to the cards' margin.
+  layover: { flexDirection: 'row', alignItems: 'center' },
+  // PAGE_BG BEHIND IT IS THE WHOLE TRICK. The line is drawn first and this is
+  // drawn over it, so the background punches a hole in the thread exactly as
+  // wide as the words -- which is what makes the duration read as being ON the
+  // line rather than beside it.
+  //
+  // paddingLeft: RAIL_INSET puts the text's own left edge level with the cards
+  // above and below, while the background still reaches back over RAIL_X.
+  layoverTime: {
+    fontFamily: MONO_BOLD, fontSize: 13, color: DIM,
+    backgroundColor: PAGE_BG,
+    paddingLeft: RAIL_INSET, paddingRight: 8, paddingVertical: 2,
+  },
   legHead: { flexDirection: 'row', alignItems: 'center' },
   legNum: { fontFamily: MONO_BOLD, fontSize: 13, color: '#ffffff' },
   // flex so it takes the middle and pushes the remove control to the edge.
@@ -724,6 +1789,74 @@ const st = StyleSheet.create({
     fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.6)',
     flex: 1, marginLeft: 12,
   },
+
+  // ── THE HAIRLINE, AS A SIBLING ──
+  //
+  // g.sheetEdge's PATTERN, not a border on the surface itself, and lib/glass.tsx
+  // states why at SHEET_EDGE: React Native draws a border from the layer's own
+  // radius as one unbroken rounded rectangle ONLY while all four sides share a
+  // colour, and a border on the surface would also inset its content box by 1pt
+  // on every side. An absolutely positioned sibling at the same radius costs no
+  // layout and cannot split a corner arc.
+  //
+  // WHY THE SURFACE NEEDED ONE AT ALL: at 4.5% white on a near-black page a fill
+  // alone barely registers, which is what made these read as text on the page
+  // rather than as cards. One pixel of 10% white is what turns a tint into a
+  // shape. See the elevation scale in lib/cards.ts.
+  //
+  // ONE ENTRY, FOUR SURFACES. compactLeg, addBtn, importRow and pastRow are all
+  // a card on the page at CARD_RADIUS, so they take one edge rather than four
+  // identical ones.
+  cardEdge: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 1, borderColor: SURFACE_EDGE, borderRadius: CARD_RADIUS,
+  },
+
+  // ── THE LEG BESIDE THE CURRENT ONE ──
+  //
+  // importRow AND pastRow'S SURFACE, through the same three constants and no
+  // new ones. The gap is 6 rather than those rows' own, because the only thing
+  // that can sit under the first line here is a single belt.
+  compactLeg: {
+    backgroundColor: CARD_FILL,
+    borderRadius: CARD_RADIUS,
+    padding: CARD_PAD,
+    gap: 6,
+  },
+  // ── THE ROW'S INTERIOR, WHICH IS THE CARD'S GRID ──
+  //
+  // EVERY ENTRY BELOW IS components/FlightCard.tsx's, matched value for value so
+  // that scanning down the trip the left column stays a left column and the
+  // right stays a right one. The card's names are in brackets; nothing here is
+  // a new number or a new colour. See the note at CollapsedLeg for why the rule
+  // and the tile row are deliberately NOT among them.
+  //
+  // WHAT WENT: compactClock and compactClockFlown, which put a departure time at
+  // the end of the head line -- the right column carries it now, under the
+  // route; and nearRow, nearFact, nearFacts, factRow, factLabel and factValue,
+  // which were the near leg's flush-left detail block and the label-and-value
+  // pair it shared with the belt. All six are replaced by legTimeRow and its
+  // two texts, which are the card's own pairing rather than a smaller one.
+  legSplit: { flexDirection: 'row' },                                    // airportSplit
+  legIdent: { gap: 3 },                                                  // airportIdent
+  // 20 white with 7 under it: the date frames the number and the airline rather
+  // than joining them, and better than three times their own gap is what says
+  // so. airportDate's own arithmetic, unchanged.
+  legDate: { fontFamily: MONO_BOLD, fontSize: 20, color: '#ffffff', marginBottom: 7 },
+  legIdentNum: { fontFamily: MONO, fontSize: 13, color: DIM },           // airportIdentNum
+  legIdentName: { fontFamily: SANS, fontSize: 13, color: DIM },          // airportIdentName
+  // The remainder of the row, held off the identity column by 12 and off the
+  // card's own padding by 8. flex-end right-aligns the boxes; the textAlign on
+  // the two styles below right-aligns the lines inside them, and both are needed
+  // -- without the first a single-line label sits left in a full-width column.
+  // airportMovements composed with airportTimes' gap of 12.
+  legTimes: { flex: 1, paddingLeft: 12, paddingRight: 8, alignItems: 'flex-end', gap: 12 },
+  legTimeRow: { gap: 3, alignItems: 'flex-end', alignSelf: 'stretch' },  // airportTimeRow
+  legTimeLabel: { fontFamily: SANS, fontSize: 11, color: DIM, textAlign: 'right' },
+  // ALSO THE ROUTE'S STYLE, which is not a shortcut: the route is the value at
+  // the head of this column and takes the column's value treatment. One entry
+  // rather than two identical ones.
+  legTimeValue: { fontFamily: MONO_BOLD, fontSize: 15, color: '#ffffff', textAlign: 'right' },
 
   // ── THE OTHER TRIPS ──
   others: { marginTop: 20, gap: 8 },

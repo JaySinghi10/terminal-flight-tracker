@@ -4,6 +4,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // HOME'S HEADER LINE. Imported rather than restated, and from lib rather than
 // from a screen -- see the note where it lives.
 import { formatClock } from '../lib/flightstatus';
+// THE PAGE. Imported rather than declared, unlike the font names above: those
+// are registered by a sibling ROUTE and copying them keeps two peers
+// uncoupled, whereas this is lib's, and lib is where a shared value belongs.
+// See the elevation scale in lib/cards.ts.
+import { PAGE_BG } from '../lib/cards';
 
 // Declared here rather than imported, as profile.tsx does: a screen reaching
 // into a sibling screen for a string constant would couple two routes that are
@@ -14,7 +19,6 @@ const SANS = 'Inter_400Regular';
 // The semibold face, loaded in _layout with the rest. The title alone uses it.
 const SANS_SEMI = 'Inter_600SemiBold';
 
-const PAGE_BG = '#050505';
 
 // THE HEADER IS REAL. THE BODY IS STILL A PLACEHOLDER.
 //

@@ -22,6 +22,10 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 // is a SHEET's radius and the field is a capsule, so it takes half its own
 // height instead. lib/glass.tsx is untouched and still owns the 16 for sheets.
 import { SHEET_EDGE, SHEET_BLUR } from '../lib/glass';
+// THE PAGE, IN COMPONENT FORM, AND ONE LEVEL OF THE ELEVATION SCALE. See
+// lib/cards.ts: the search circle's fill is a surface on the bar, and the home
+// button's fill is the page at 82%.
+import { PAGE_RGB, SURFACE_2 } from '../lib/cards';
 // THE TYPED QUERY, WHICH IS THE ONE PIECE OF THIS BAR'S STATE THAT IS NOT
 // ABOUT THE BAR. Everything else here describes what the control is doing;
 // this is a string another screen will read. It is its OWN context and not
@@ -4190,10 +4194,16 @@ const st = StyleSheet.create({
   // so the pill's own BlurView samples it. Four separate greyings in this file
   // have come from white behind a blur, and there is no reason to add a fifth
   // for a layer order that composites to the same thing either way.
+  //
+  // SURFACE_2, BECAUSE IT SITS ON THE BAR. The paragraph above is what decides
+  // that: this fill is IN FRONT of the blur, so it is a surface of its own
+  // resting on the glass rather than a tint the blur samples. st.capsule's own
+  // 0.03 is the other case and stays a literal for exactly that reason -- it is
+  // behind a blur, which is not a level on any scale.
   searchObjFill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: SEARCH_CIRCLE / 2,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: SURFACE_2,
   },
   // The same hairline the pill and the oval draw, at the same radius.
   searchObjEdge: {
@@ -4261,7 +4271,7 @@ const st = StyleSheet.create({
   //
   // FOUR LAYERS, IN THE ORDER EVERY GLASS SURFACE IN THIS APP USES: a clip
   // holding the blur, the near-opaque fill over it, the hairline over that, and
-  // the glyph last. The fill is rgba(5,5,5,0.82) -- the same value the map's
+  // the glyph last. The fill is the page at 82% -- the same value the map's
   // home button and the consent strip already carry, so the three read as one
   // material rather than three.
   //
@@ -4283,7 +4293,7 @@ const st = StyleSheet.create({
   glyphFill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 25,
-    backgroundColor: 'rgba(5,5,5,0.82)',
+    backgroundColor: `rgba(${PAGE_RGB},0.82)`,
   },
   glyphEdge: {
     ...StyleSheet.absoluteFillObject,

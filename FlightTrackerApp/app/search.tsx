@@ -87,7 +87,10 @@ import {
   PANEL_IN_MS, PANEL_OUT_MS, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
   g,
 } from '../lib/glass';
-import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c } from '../lib/cards';
+import {
+  CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c,
+  PAGE_RGB, SURFACE_EDGE,
+} from '../lib/cards';
 // WHAT THE TAB BAR'S FIELD HAS BEEN GIVEN. This screen reads it and never writes
 // it, except to clear it — see clearResultView.
 import { useQuery } from '../lib/query';
@@ -3474,6 +3477,7 @@ export default function Search() {
         // did not. Same batch, same frame, same effect.
         onPress={() => { Keyboard.dismiss(); setChatResponse(null); runFlightLookup(r.flight_number, false, rowDate, origin || null); }}
       >
+        <View style={s.routeFlatRowEdge} pointerEvents="none" />
         <View style={s.routeFlatBody}>
           {/* Identity and flags. Everything variable-width lives on this line so
               the times below keep the whole row to flex into; the airline is the
@@ -5242,9 +5246,30 @@ const HOME_BTN_BLUR = 32;
 // blur of the page; this one has to stop a map showing through a 22px glyph, so
 // it is doing the work the bar's fill never had to. Black cannot lighten
 // anything — the only white on the surface is the hairline, drawn over the blur.
-const HOME_BTN_FILL = 'rgba(5,5,5,0.82)';
-// The same hairline every other surface in this app draws.
-const HOME_BTN_EDGE = 'rgba(255,255,255,0.08)';
+// THE PAGE AT 82%, WRITTEN AS THE PAGE. It was rgba(5,5,5,0.82) -- the old page
+// colour, spelled by hand -- and a near-opaque fill that does not move with the
+// page bands against it. See PAGE_RGB in lib/cards.ts for why the scale carries
+// a component form as well as a hex.
+const HOME_BTN_FILL = `rgba(${PAGE_RGB},0.82)`;
+// SHEET_EDGE, AND THIS IS THE GLASS EXCEPTION AFTER ALL.
+//
+// IT WAS BRIEFLY SURFACE_EDGE, on the argument that the fill under it is opaque
+// rather than glass. That was wrong twice over. There IS a blur under it --
+// HOME_BTN_BLUR, four lines up -- and the fill is only NEAR-opaque, so this is a
+// blurred surface by construction. And the paragraph above already says what the
+// hairline is for: black cannot lighten anything, so the line is the only white
+// on the control and the only thing separating a dark disc from moving terrain.
+//
+// WHICH MATTERS BECAUSE THE SCALE'S EDGE IS NOW TRANSPARENT. A flat surface on
+// the page separates by TONE -- see SURFACE_EDGE in lib/cards.ts -- and tone is
+// the one thing a control over a map does not have, because what is behind it
+// changes as the map moves. A card can lose its outline and still be a card; the
+// home button loses its outline and becomes a hole.
+//
+// THREE SURFACES READ THIS, not one: the home button, the consent strip and the
+// past-arcs pill. All three are 40pt of glass in open space over the map, so
+// they take the glass edge for the same reason a sheet does.
+const HOME_BTN_EDGE = SHEET_EDGE;
 // The map's pin is #e2e2e2; these are that ink at the two weights the glyph
 // needs, so the button and the mark it returns you to are the same colour.
 const HOME_BTN_INK_RING = 'rgba(226,226,226,0.5)';
@@ -5266,7 +5291,7 @@ const ap = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: 1,
     color: 'rgba(226,226,226,0.95)',
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   // 0.7 UNDER A FINGER, which is this app's press state everywhere else --
@@ -5334,7 +5359,7 @@ const ap = StyleSheet.create({
     lineHeight: 19,
     letterSpacing: 0.5,
     color: 'rgba(226,226,226,0.95)',
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   // GREEN, AND IT IS THE MAP'S GREEN. These two codes name the dots the map has
@@ -5346,7 +5371,7 @@ const ap = StyleSheet.create({
     letterSpacing: 1,
     color: '#4ade80',
     marginTop: 4,
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   // The local clock, at the panel's dim tier, because it is a reading rather
@@ -5356,7 +5381,7 @@ const ap = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(226,226,226,0.55)',
     marginTop: 2,
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   // Aligned to the CITIES rather than centred on the block, so it sits between
@@ -5368,7 +5393,7 @@ const ap = StyleSheet.create({
     lineHeight: 22,
     color: 'rgba(226,226,226,0.45)',
     paddingHorizontal: 10,
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   country: {
@@ -5376,7 +5401,7 @@ const ap = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(226,226,226,0.5)',
     marginTop: 2,
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   // A short rule rather than a full-width one: it separates the name from the
@@ -5395,7 +5420,7 @@ const ap = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: 'rgba(226,226,226,0.72)',
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   monoDim: {
@@ -5403,7 +5428,7 @@ const ap = StyleSheet.create({
     fontSize: 11,
     lineHeight: 17,
     color: 'rgba(226,226,226,0.45)',
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   codes: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 11 },
@@ -5426,8 +5451,8 @@ const ap = StyleSheet.create({
     paddingHorizontal: 11,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(5,5,5,0.82)',
+    borderColor: SURFACE_EDGE,
+    backgroundColor: `rgba(${PAGE_RGB},0.82)`,
   },
   // Mono, because the panel below the rule is machine data and this is a
   // command in that register. Label ink for the words, so the code is what the
@@ -5446,7 +5471,7 @@ const ap = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1,
     color: 'rgba(226,226,226,0.45)',
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
   codeOn: {
@@ -5454,7 +5479,7 @@ const ap = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1,
     color: '#4ade80',
-    textShadowColor: '#050505',
+    textShadowColor: PAGE_BG,
     textShadowRadius: 6,
   },
 });
@@ -5670,6 +5695,23 @@ const s = StyleSheet.create({
     borderRadius: CARD_RADIUS,
     marginBottom: CARD_GAP,
   },
+  // ── THE HAIRLINE, AS A SIBLING ──
+  //
+  // g.sheetEdge's PATTERN, not a border on the surface itself, and lib/glass.tsx
+  // states why at SHEET_EDGE: React Native draws a border from the layer's own
+  // radius as one unbroken rounded rectangle ONLY while all four sides share a
+  // colour, and a border on the surface would also inset its content box by 1pt
+  // on every side. An absolutely positioned sibling at the same radius costs no
+  // layout and cannot split a corner arc.
+  //
+  // WHY THE SURFACE NEEDED ONE AT ALL: at 4.5% white on a near-black page a fill
+  // alone barely registers, which is what made these read as text on the page
+  // rather than as cards. One pixel of 10% white is what turns a tint into a
+  // shape. See the elevation scale in lib/cards.ts.
+  routeFlatRowEdge: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 1, borderColor: SURFACE_EDGE, borderRadius: CARD_RADIUS,
+  },
   // See routeLastKey. The hidden-count and truncation notes below the list keep
   // their own spacing, so dropping the gap leaves nothing touching.
   routeFlatRowLast: { marginBottom: 0 },
@@ -5764,7 +5806,7 @@ const s = StyleSheet.create({
   routeResetBtn: {
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: SURFACE_EDGE,
     borderRadius: 4,
     paddingVertical: 5,
     paddingHorizontal: 10,
@@ -5845,10 +5887,15 @@ const s = StyleSheet.create({
   // So one thing translates, and it is the one that reads as material rather
   // than as size: the hairline, at the same 0.08 as every other glass edge,
   // down from its own 0.12.
+  //
+  // THE EDGE STAYS SHEET_EDGE AND THE FILL BECOMES SURFACE_1. The two are not
+  // inconsistent: this control opens a glass panel and wears that panel's edge
+  // on purpose, while the surface it sits on is the page. See the exception
+  // note at SHEET_EDGE in lib/glass.tsx.
   routeDrop: {
     borderWidth: 1,
     borderColor: SHEET_EDGE,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: CARD_FILL,
     borderRadius: 8,
     paddingVertical: 5,
     paddingHorizontal: 8,

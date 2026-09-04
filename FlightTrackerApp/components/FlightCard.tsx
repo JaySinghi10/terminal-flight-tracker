@@ -98,7 +98,7 @@ import {
   EASE_OUT, EASE_IN, CAL_RISE, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
   OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
 } from '../lib/glass';
-import { CARD_RADIUS, CARD_PAD, CARD_FILL, PAGE_BG } from '../lib/cards';
+import { CARD_RADIUS, CARD_PAD, CARD_FILL, PAGE_BG, SURFACE_EDGE } from '../lib/cards';
 // HOW FAR THE BLACK TAKES TO BECOME GLASS, in points, measured from the bottom
 // of the cutout downward.
 //
@@ -541,15 +541,30 @@ export function airportFullLabel(shortName: string | null, city: string | null, 
 }
 
 // ONE FACT ABOUT THE AIRPORT, and it keeps its place when it has nothing to
-// say.
+// say — with one exception, which is the belt.
 //
 // A tile with no value RECEDES, it does not disappear and it does not shrink.
 // Gate is where gate is, whether or not there is a gate yet, so a glance at the
 // same spot answers the same question every time — and the moment a gate is
-// assigned it appears where the eye already is rather than shoving Terminal and
-// Belt sideways. An em dash says "nothing yet" without the shout of the word
-// N/A, which is three characters of noise claiming the same weight as a real
-// answer.
+// assigned it appears where the eye already is rather than shoving Terminal
+// sideways. An em dash says "nothing yet" without the shout of the word N/A,
+// which is three characters of noise claiming the same weight as a real answer.
+//
+// THE BELT IS NOT ONE OF THOSE, AND THIS NOTE USED TO SAY IT WAS. It named
+// Gate, Terminal and Belt together as three tiles that hold their slots, on the
+// argument above. That argument was right about two of them and wrong about the
+// third, and the difference is what the dash MEANS.
+//
+// A DASH UNDER "GATE" IS NEWS: the gate is not assigned yet, it will be, and
+// this is where it will appear. A dash under "BELT" before the aircraft is on
+// the ground is not news about a belt — no belt has been decided because there
+// is nothing to put on one, and there will not be for hours. It is a slot held
+// open for an answer nobody is waiting for, and on a two- or three-tile row it
+// costs the tiles that DO have something to say a third of the width.
+//
+// So the Belt tile is not rendered at all until the flight has landed. See
+// AirportTiles, which is where that is decided; a tile that is present still
+// behaves exactly as this note describes.
 //
 // "N/A" is what the backend writes for an absent value — see flightDataFromApi,
 // where gate, terminal and baggage all fall back to it — so it is a sentinel to
@@ -567,8 +582,13 @@ export function airportFullLabel(shortName: string | null, city: string | null, 
 // by the tile and drawn on its left edge, it wraps with the tile it belongs to,
 // and `first` — the tile that starts a visual row — simply does not draw one.
 // It is still a View with a background colour rather than a border.
-function AirportTile({ label, value, wide, first, sheet }: {
-  label: string; value: string | null; wide: boolean; first: boolean;
+//
+// cols IS THE COUNT OF THE WHOLE ROW, not a width. The tile turns it into a
+// flexBasis — a half, a third or a quarter — and into whether it is the tight
+// case. A boolean could say "half or third" and cannot say "or quarter", which
+// is why the flag it replaces is gone rather than joined by a second one.
+function AirportTile({ label, value, cols, first, sheet }: {
+  label: string; value: string | null; cols: number; first: boolean;
   // THE SHEET'S TREATMENT OF THIS ROW, which differs from the card's in two
   // ways, both carried by this one flag rather than by a flag each. It was
   // `small` when the size was the only difference; the name went with the second
@@ -590,10 +610,14 @@ function AirportTile({ label, value, wide, first, sheet }: {
   sheet?: boolean;
 }) {
   const empty = !hasTime(value);
+  // FOUR IS THE ONLY TIGHT CASE, and 63pt a column is why. See AirportTiles.
+  const tight = cols === 4;
   return (
     <View style={[
       s.airportTile,
-      wide ? s.airportTileHalf : s.airportTileThird,
+      cols === 2 ? s.airportTileHalf : cols === 3 ? s.airportTileThird : s.airportTileQuarter,
+      // BEFORE airportTileFirst, so the first tile's paddingLeft: 0 still wins.
+      tight && s.airportTileTight,
       first && s.airportTileFirst,
     ]}>
       {!first && <View style={s.airportTileRule} />}
@@ -616,7 +640,7 @@ function AirportTile({ label, value, wide, first, sheet }: {
         {label}
       </Text>
       <Text
-        style={[s.airportTileValue, sheet === true && s.airportTileValueSmall]}
+        style={[s.airportTileValue, (sheet === true || tight) && s.airportTileValueSmall]}
         numberOfLines={1}
       >
         {empty ? '\u2014' : value}
@@ -916,42 +940,61 @@ function SheetGroup({ title, items }: {
   );
 }
 
-// THREE ACROSS, OR TWO BY TWO, decided by the tile count and nothing else.
+// ONE ROW, ALWAYS, HOWEVER MANY TILES THERE ARE.
 //
-// The row is flexWrap, and each tile's flexBasis is a percentage of it: 33.33%
-// when there are three, so 99.99% fits on one line, and 50% when there are
-// four, so the third tile has nowhere to go but the next line. No screen width
-// is consulted and nothing is measured — the count is known at render time and
-// the count is the whole input.
+// IT USED TO BE THREE ACROSS OR TWO BY TWO, decided by whether a check-in desk
+// was present. That worked while the count was three or four and never
+// anything else. It is now two, three or four — the Belt tile comes and goes
+// with the landing and the Desk tile comes and goes with the provider — and a
+// wrapping grid over a variable count means the row changes SHAPE as facts
+// arrive, not just contents. A card that reflows from one line to two while you
+// are looking at it is a card that has moved the thing you were reading.
 //
-// FOUR ACROSS WAS THE THING TO AVOID. At 320pt the card's interior is 252, and
-// four columns leave about 63 each before padding, which is brittle exactly
-// where most phones are. Two rows of two give each tile 126.
+// SO THE BASIS IS 100/count AND THE ROW DOES NOT WRAP. 50, 33.33 or 25 per
+// tile, which sums to at most 100 and therefore fits one line; nowrap makes
+// that structural rather than arithmetic, so a rounding error cannot put one
+// tile on a line of its own. No screen width is consulted and nothing is
+// measured — the count is known at render time and the count is the whole
+// input.
 //
-// `first` is index % cols, which is what tells a tile it starts a visual row —
-// 0 of three, or 0 and 2 of four — and therefore draws no left rule.
-function AirportTiles({ gate, terminal, belt, desk, sheet }: {
+// FOUR ACROSS USED TO BE THE THING TO AVOID, and the arithmetic that said so is
+// still true: at 320pt the card's interior is 252, so four columns are 63 each
+// and 51 once the rule's padding is taken off. What changed is that four is now
+// the RARE case rather than the case whenever a desk exists — it needs a landed
+// flight that still carries a check-in desk. It is handled by tightening rather
+// than by wrapping: see the `cols` prop on AirportTile, which drops the value to
+// the 15 the sheet already uses and the padding to 8. A long belt like "960-968"
+// still ellipsises at that width, and that is accepted — the row stays a row.
+//
+// `first` IS index === 0 NOW, not index % cols. There is one visual row, so
+// exactly one tile starts it and exactly one draws no left rule.
+//
+// showBelt IS THE CALLER'S ANSWER, not this component's. See the note at
+// AirportTile for why the belt does not hold a slot, and the note at
+// bagsClaimedHere for the half of the question a card cannot answer.
+function AirportTiles({ gate, terminal, belt, showBelt, desk, sheet }: {
   gate: string; terminal: string; belt: string; desk: string | null;
+  showBelt: boolean;
   // Passed straight down. See AirportTile.
   sheet?: boolean;
 }) {
   const tiles: { label: string; value: string | null }[] = [
     { label: 'Gate', value: gate },
     { label: 'Terminal', value: terminal },
-    { label: 'Belt', value: belt },
   ];
+  if (showBelt) tiles.push({ label: 'Belt', value: belt });
   // The same guard this row has always had, in the one place that now needs it.
   if (desk !== null) tiles.push({ label: 'Desk', value: desk });
-  const cols = tiles.length === 4 ? 2 : 3;
+  const cols = tiles.length;
   return (
-    <View style={s.airportTiles}>
+    <View style={[s.airportTiles, s.airportTilesRow]}>
       {tiles.map((t, i) => (
         <AirportTile
           key={t.label}
           label={t.label}
           value={t.value}
-          wide={cols === 2}
-          first={i % cols === 0}
+          cols={cols}
+          first={i === 0}
           sheet={sheet}
         />
       ))}
@@ -1179,6 +1222,65 @@ type FlightCardProps = {
   // card is only what is drawn in it, and putting the gesture here would mean a
   // Pan handler that has to be disabled on every other screen.
   mapVariant?: boolean;
+  // ── ARE THE BAGS CLAIMED AT THIS FLIGHT'S ARRIVAL ─────────────────────────
+  //
+  // TRUE EVERYWHERE ELSE, AND THAT IS THE CONTRACT, exactly as tripVariant's
+  // and mapVariant's are. Home and the search results pass nothing, get true,
+  // and see precisely the behaviour the landing rule alone describes: the Belt
+  // tile appears once the flight is down and not before. This flag can only
+  // ever take a tile AWAY, never add one, so every read of it is
+  // additive-by-omission.
+  //
+  // WHY IT EXISTS. A belt number on a CONNECTION sends the passenger to baggage
+  // reclaim instead of to their next gate. Checked bags are through-checked to
+  // the final destination, so on an intermediate leg the bag is not on any belt
+  // — it is being moved airside — and printing a carousel for it costs somebody
+  // a connection. The exception is a first US port of entry, where CBP requires
+  // every passenger to collect and recheck even in transit.
+  //
+  // WHY THE CARD CANNOT ANSWER IT ITSELF, which is the whole reason this is a
+  // prop and not a rule in this file. The question is "is this the last leg of
+  // the journey, or the first one that enters the United States" — and both
+  // halves are about a leg's POSITION IN A TRIP. This component holds one
+  // flight. It has no trip, no sibling legs, no ordering and no way to acquire
+  // any: flightRecord is a single record and nothing on it names the legs
+  // either side. A card that tried would have to reach into the store, which
+  // the note at the top of this file forbids for exactly this class of reason.
+  //
+  // SO THE SCREEN THAT HAS THE TRIP ANSWERS IT. app/flights.tsx holds the
+  // ordered legs and passes bagEligible(legs, i); every other caller has a
+  // flight rather than a journey and correctly says nothing.
+  bagsClaimedHere?: boolean;
+  // ── HOW LONG UNTIL THIS FLIGHT DOES SOMETHING ─────────────────────────────
+  //
+  // ABSENT EVERYWHERE ELSE, AND THAT IS THE CONTRACT, exactly as tripVariant's
+  // and bagsClaimedHere's are. Home, search and the map pass nothing and get
+  // nothing: the card they render is unchanged to the pixel. It is read in one
+  // place, behind tripVariant, and every read is additive-by-omission.
+  //
+  // A PROP RATHER THAN A COMPUTATION, and the reason is that there is already
+  // one of these. app/flights.tsx computes it for the collapsed rows -- counts
+  // to the departure, switches to the arrival once effectiveStatus says the
+  // flight is active, returns null once it has landed -- and the open card and
+  // the row above it must never disagree about how long is left. Computing it
+  // here would be a second implementation of a rule that is already written,
+  // which is the one thing this file's own header forbids more strongly than
+  // reaching into a store.
+  //
+  // AND THE CONTRACT ALLOWS EITHER, WHICH IS WHY IT IS WORTH SAYING WHY NOT.
+  // The card holds flightRecord and now, and lib/saved's departureTs, arrivalTs
+  // and effectiveStatus are RULES rather than state -- so it could work this out
+  // legitimately. Duplication is the objection, not access.
+  //
+  // IT UPDATES BECAUSE `now` DOES. app/flights.tsx keeps a minute tick, passes
+  // it to this card, and recomputes the countdown on every one of those renders,
+  // so the value arrives already fresh. Nothing here schedules anything.
+  //
+  // { label, value } RATHER THAN A NUMBER. The label is "Departs in" or "Lands
+  // in" and only the caller knows which, because only the caller knows whether
+  // the flight is airborne. A card handed milliseconds would have to ask that
+  // question again to caption it.
+  countdown?: { label: string; value: string } | null;
 };
 
 export function FlightCard({
@@ -1196,6 +1298,13 @@ export function FlightCard({
   closeFlightCard,
   tripVariant = false,
   mapVariant = false,
+  // TRUE BY DEFAULT. A caller with no trip is not withholding an answer, it is
+  // saying the question does not arise -- and where it does not arise the bags
+  // are on the belt at the arrival airport, which is the ordinary case.
+  bagsClaimedHere = true,
+  // NULL BY DEFAULT, which is the same thing a landed flight gets: no interval
+  // to state, so no line. See the prop's note.
+  countdown = null,
 }: FlightCardProps) {
   // CALLED UNCONDITIONALLY, read only when mapVariant. A hook behind an if is
   // not a hook.
@@ -1580,6 +1689,28 @@ export function FlightCard({
     ]).start();
   }, [mapMenuOpen]);
 
+  // ── WHETHER THE BELT TILE IS RENDERED AT ALL ──────────────────────────────
+  //
+  // TWO CONDITIONS, AND THEY ARE ASKED IN ONE PLACE because the card's tile row
+  // and the sheet's are two renders of one decision. Spelling it at both call
+  // sites is how they would come to disagree.
+  //
+  // flight.status === 'LANDED' IS THE LANDING SIGNAL, and it is the one this
+  // card was already using: the progress bar tests the identical expression to
+  // decide whether to draw a completed arc. It is badgeLabel's output, so it is
+  // 'LANDED' whether the provider said "Arrived" or the stored status said
+  // "landed" and the fallback uppercased it.
+  //
+  // AND IT IS THE ONLY SIGNAL AVAILABLE ON EVERY PATH. flightRecord is null on a
+  // search result that has not been saved, so anything read off the record --
+  // landedAt, effectiveStatus -- answers nothing on the screen where most cards
+  // are seen. FlightData is what every caller has.
+  //
+  // 'LANDING' AND 'DIVERTED' ARE NOT 'LANDED', and both readings are right.
+  // Approaching is not down. A diverted flight's bags are at an airport this
+  // card is not describing.
+  const showBelt = flight.status === 'LANDED' && bagsClaimedHere;
+
   // THE HAPTIC IS THE THRESHOLD'S, the same one a full swipe fires when it arms.
   // Both are the moment a gesture becomes an offer, and they should feel like
   // the same event.
@@ -1929,6 +2060,7 @@ export function FlightCard({
                     gate={flight.gate}
                     terminal={flight.terminal}
                     belt={flight.baggage}
+                    showBelt={showBelt}
                     desk={flight.checkinDesk}
                     sheet
                   />
@@ -2384,6 +2516,15 @@ export function FlightCard({
                   // of the ramp, where it is nearly transparent, which is where
                   // it should have been all along.
                   mapVariant && { paddingTop: insets.top + CARD_PAD },
+                  // THE TRIP VARIANT IS FLAT, AND THIS IS THE ONE PLACE
+                  // sheetShell's "NO backgroundColor" DOES NOT APPLY. That rule
+                  // exists because a fill on this view would be BLURRED into the
+                  // result and flatten it -- and it is exactly right while there
+                  // is a blur. There is not one here: see the fill branch below,
+                  // where GlassLayers is skipped for this variant. With no
+                  // BlurView in the tree there is nothing to sample the
+                  // background and nothing for it to flatten.
+                  tripVariant && s.airportCardFlat,
                   airportSheetOpen && s.airportCardStood,
                 ]}
               >
@@ -2509,6 +2650,25 @@ export function FlightCard({
                       pointerEvents="none"
                     />
                   </>
+                ) : tripVariant ? (
+                  // ── AND ON A TRIP LEG THERE IS NO GLASS AT ALL ──
+                  //
+                  // NULL, NOT A DIMMER GlassLayers. My Flights draws the legs
+                  // either side of this one as flat cards at CARD_FILL, and the
+                  // open leg is the same leg at a different size -- so it is the
+                  // same material at a different size, which means no blur and
+                  // no tint rather than less of them. A glass card between two
+                  // flat ones reads as a different kind of object, which is the
+                  // opposite of what the focus rule is saying.
+                  //
+                  // THE FILL IS ON THE SURFACE ITSELF, above, because with no
+                  // BlurView here there is nothing that a background would be
+                  // sampled into. One flat colour, drawn once.
+                  //
+                  // HOME AND SEARCH ARE UNTOUCHED. tripVariant is false there
+                  // and the branch below is the one they take, exactly as
+                  // before; mapVariant keeps its ramp and its cap.
+                  null
                 ) : (
                   <GlassLayers />
                 )}
@@ -2531,6 +2691,23 @@ export function FlightCard({
                     rgba(255,255,255,0.08) either side of the cutout, which is
                     about twenty levels of grey in exactly the place the island
                     is being compared against. Squaring them ends it. */}
+                {/* ── AND NO EDGE AT ALL ON A TRIP LEG ──
+                    NOT RENDERED, rather than drawn in a colour that paints
+                    nothing. The collapsed legs either side of this card carry
+                    SURFACE_EDGE, which lib/cards.ts has set to zero alpha
+                    because flat surfaces on this page separate by TONE -- so an
+                    outline here would be the open leg wearing a treatment its
+                    own neighbours do not, which is the same mismatch the flat
+                    fill above exists to remove, moved from the middle of the
+                    card to its rim.
+
+                    THE OTHER TWO VARIANTS KEEP IT UNTOUCHED. Home and search
+                    render a glass card and glass keeps its own edge -- see the
+                    exception at SHEET_EDGE in lib/glass.tsx -- and mapVariant
+                    keeps the whole arrangement below, which exists to get the
+                    edge out of the Dynamic Island's band rather than off the
+                    card. */}
+                {!tripVariant && (
                 <View
                   style={[
                     g.sheetEdge, s.airportCardEdge,
@@ -2552,6 +2729,7 @@ export function FlightCard({
                   ]}
                   pointerEvents="none"
                 />
+                )}
                 {/* THE WORD SITS IN THE HEADING'S ROW, centred on the CARD
                     rather than on the space beside the heading — which is what
                     the absolute positioning is for. left 0 and right 0 span the
@@ -2592,6 +2770,10 @@ export function FlightCard({
                       two — because neither changes while the flight is in the
                       air.
 
+                      ON A TRIP LEG THE DATE IS NOT HERE and the countdown has
+                      its slot, so the two paragraphs below describe every
+                      variant BUT that one. See the note inside the column.
+
                       CONTENT-SIZED, no flex, and the DATE is what sizes it: 120.0pt
                       at 20pt mono against the widest airline's 111.8, so this
                       column is 120 whatever carrier it holds. It had its own
@@ -2602,8 +2784,70 @@ export function FlightCard({
                       helper passes through what it cannot parse, so "N/A" would
                       survive formatting and render as a date. */}
                   <View style={s.airportIdent}>
-                    {hasTime(flight.date) && (
-                      <Text style={s.airportDate}>{routeDateLabel(flight.date).toUpperCase()}</Text>
+                    {/* ── THE DATE GOES AND THE COUNTDOWN TAKES ITS PLACE ──
+                        ON A TRIP LEG ONLY. Everywhere else this is a card the
+                        user searched for, where the date is what tells them
+                        WHICH instance of a flight number they are looking at --
+                        AI2758 on the 29th and on the 31st are two records. On a
+                        trip the leg is already placed: the rail above it, the
+                        layover before it and the legs either side all say when
+                        it is, and the largest thing on the card was telling a
+                        traveller two hours from a gate what day it is.
+
+                        THE SAME TREATMENT, NOT A NEW ONE. airportDate's 20pt
+                        MONO_BOLD in white with 7 under it, unchanged -- so the
+                        countdown inherits the slot's weight and its spacing
+                        rather than inventing a size. It is the only thing on
+                        this card at that treatment, which is what makes it read
+                        first.
+
+                        WHAT THE COLUMN'S WIDTH DOES: it shrinks, and that is a
+                        gain rather than a cost. This column is content-sized and
+                        the date was what sized it at 120pt -- the note below
+                        says so and calls the 120 what the movements PAY. The
+                        widest thing left is the airline at 13pt (about 90 for
+                        "Alaska Airlines") or the countdown at 20pt (84 at its
+                        longest, "12h 05m"), so the column settles near 90 and
+                        the movements gain about 30 points of width they have
+                        wanted since they were put here.
+
+                        AND IT DOES NOT JITTER. gapLabel emits six or seven
+                        characters -- "2h 14m", "12h 05m", "3d 21h" -- so the
+                        countdown crosses one width boundary in the life of a
+                        flight, not one per minute, and on any carrier with a
+                        name longer than seven mono characters it never sizes
+                        the column at all. */}
+                    {tripVariant ? (
+                      countdown !== null && (
+                        <Text style={s.airportDate}>{countdown.value}</Text>
+                      )
+                    ) : (
+                      hasTime(flight.date) && (
+                        <Text style={s.airportDate}>{routeDateLabel(flight.date).toUpperCase()}</Text>
+                      )
+                    )}
+                    {/* ── AND THE ROUTE, SECOND ──
+                        IT WAS DROPPED WHEN A TRIP MEANT ONE FLIGHT. The route
+                        card came out of this variant because the user had just
+                        searched for the flight and knew where it went; on a
+                        four-leg journey the open card was the only element on
+                        the screen not saying that. Every collapsed row says it.
+
+                        A LINE, NOT THE ROUTE CARD. That block is a second
+                        surface with its own swipe and its own progress bar, and
+                        restoring it would put a card inside a card. This is the
+                        two codes at the trip variant's value treatment -- one
+                        step under the countdown, level with the times opposite.
+
+                        NO DURATION. It was dropped alongside the route and the
+                        layout does not need it back: the two movement times are
+                        the same fact stated at both ends, and a third figure
+                        between two codes would be competing with the countdown
+                        for the one thing this card is now about. */}
+                    {tripVariant && (
+                      <Text style={s.airportTripValue} numberOfLines={1}>
+                        {`${flight.from} → ${flight.to}`}
+                      </Text>
                     )}
                     <Text style={s.airportIdentNum} numberOfLines={1}>{flight.flight}</Text>
                     <Text style={s.airportIdentName} numberOfLines={1}>{flight.airline}</Text>
@@ -2634,6 +2878,29 @@ export function FlightCard({
                     <MovementLine
                       cell={movementTile(flight.arrTimeLabel, flight.arrTimeValue, flight.arrDelay)}
                     />
+                    {/* ── THE GATE COMES UP HERE ──
+                        IT WAS IN THE TILE ROW UNDER THE RULE, two levels down
+                        the card from the estimated departure, and the two are
+                        one thought: when to be somewhere, and where. Separated,
+                        the reader assembles them; together they are a single
+                        instruction.
+
+                        THE MOVEMENTS' OWN PAIRING, not a tile: airportTimeRow
+                        with its label and value, so it sits in the column it
+                        joined rather than looking like a tile that wandered up.
+                        No delay colour -- a gate is not late, and the two tones
+                        either side of it mean something this line cannot.
+
+                        hasTime, BECAUSE "N/A" IS WHAT THE BACKEND WRITES for a
+                        gate it has none of. The tile row prints an em dash there
+                        on purpose; a pair in this column has no slot to hold, so
+                        it goes. */}
+                    {tripVariant && hasTime(flight.gate) && (
+                      <View style={s.airportTimeRow}>
+                        <Text style={s.airportTimeLabel}>{'Gate'}</Text>
+                        <Text style={s.airportTimeValue}>{flight.gate}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
 
@@ -2661,16 +2928,70 @@ export function FlightCard({
                   />
                 )}
 
-                <View style={s.airportRule} />
+                {/* ── THE RULE AND WHAT IS UNDER IT, ON A TRIP LEG ──
+                    THE BAND WAS BUYING TWELVE CHARACTERS A FULL WIDTH. Gate,
+                    Terminal and Desk divided the whole card between them at
+                    20pt, which is the treatment the countdown now has alone --
+                    so the row was both the widest and the loudest thing under a
+                    ladder it sits at the bottom of.
 
-                {/* Three tiles in one row, four as two by two. The layout and
-                    the rules both live in AirportTiles; see the note there. */}
-                <AirportTiles
-                  gate={flight.gate}
-                  terminal={flight.terminal}
-                  belt={flight.baggage}
-                  desk={flight.checkinDesk}
-                />
+                    WITH THE GATE GONE UP, what is left is a terminal, sometimes
+                    a belt and sometimes a desk: two or three short values that
+                    have no reason to be spread across 252 points. They are a
+                    content-sized row now, wrapping if they must, at the trip
+                    variant's value treatment -- one step down from the tiles'
+                    20 and level with the route and the times.
+
+                    THE RULE GOES WITH THEM. It separated the ladder from the
+                    band; with nothing to separate on a leg that has no terminal,
+                    no belt and no desk, it would be a line under the last thing
+                    on the card. Both are gated on there being something to draw.
+
+                    EVERY OTHER VARIANT KEEPS AirportTiles EXACTLY, and that is
+                    why this is a branch rather than an edit to the component:
+                    home, search and the map still render the evenly divided row
+                    with its dashes and its own rules. */}
+                {tripVariant ? (
+                  (hasTime(flight.terminal) || (showBelt && hasTime(flight.baggage))
+                    || flight.checkinDesk !== null) && (
+                    <>
+                      <View style={s.airportRule} />
+                      <View style={s.airportFacts}>
+                        {hasTime(flight.terminal) && (
+                          <View style={s.airportFact}>
+                            <Text style={s.airportTileLabel}>{'Terminal'}</Text>
+                            <Text style={s.airportTripValue}>{flight.terminal}</Text>
+                          </View>
+                        )}
+                        {showBelt && hasTime(flight.baggage) && (
+                          <View style={s.airportFact}>
+                            <Text style={s.airportTileLabel}>{'Belt'}</Text>
+                            <Text style={s.airportTripValue}>{flight.baggage}</Text>
+                          </View>
+                        )}
+                        {flight.checkinDesk !== null && (
+                          <View style={s.airportFact}>
+                            <Text style={s.airportTileLabel}>{'Desk'}</Text>
+                            <Text style={s.airportTripValue}>{flight.checkinDesk}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <View style={s.airportRule} />
+                    {/* Three tiles in one row, four as two by two. The layout and
+                        the rules both live in AirportTiles; see the note there. */}
+                    <AirportTiles
+                      gate={flight.gate}
+                      terminal={flight.terminal}
+                      belt={flight.baggage}
+                      showBelt={showBelt}
+                      desk={flight.checkinDesk}
+                    />
+                  </>
+                )}
 
                 {/* AND ON A TRIP LEG IT COMES BACK INSIDE, WHICH REVERSES THE
                     NOTE FURTHER DOWN -- conditionally, and only for this variant.
@@ -2815,6 +3136,7 @@ export function FlightCard({
                   as. This wraps only what is drawn. */}
               <Animated.View style={routePressStyle}>
               <View style={s.routeCard}>
+                <View style={s.routeCardEdge} pointerEvents="none" />
                 <View style={s.routeRow}>
                   <View style={s.routeLeft}>
                     <Text style={s.routeIATA}>{flight.from}</Text>
@@ -2968,6 +3290,23 @@ const s = StyleSheet.create({
     borderRadius: CARD_RADIUS,
     padding: CARD_PAD,
   },
+  // ── THE HAIRLINE, AS A SIBLING ──
+  //
+  // g.sheetEdge's PATTERN, not a border on the surface itself, and lib/glass.tsx
+  // states why at SHEET_EDGE: React Native draws a border from the layer's own
+  // radius as one unbroken rounded rectangle ONLY while all four sides share a
+  // colour, and a border on the surface would also inset its content box by 1pt
+  // on every side. An absolutely positioned sibling at the same radius costs no
+  // layout and cannot split a corner arc.
+  //
+  // WHY THE SURFACE NEEDED ONE AT ALL: at 4.5% white on a near-black page a fill
+  // alone barely registers, which is what made these read as text on the page
+  // rather than as cards. One pixel of 10% white is what turns a tint into a
+  // shape. See the elevation scale in lib/cards.ts.
+  routeCardEdge: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 1, borderColor: SURFACE_EDGE, borderRadius: CARD_RADIUS,
+  },
   // THE ROW, WHICH IS THE OLD routeCard UNDER A NAME THAT SAYS WHAT IT IS.
   // Character for character what it was; only the key changed, because the
   // surface above took the old one.
@@ -3039,6 +3378,9 @@ const s = StyleSheet.create({
   // bottom of the cutout, and it is alpha 1, so nothing under it composites
   // either.
   mapCardCap: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#000000' },
+  // See the note at the tripVariant branch: the trip's open leg is a flat card
+  // rather than glass, so it carries the same fill its collapsed neighbours do.
+  airportCardFlat: { backgroundColor: CARD_FILL },
   // Invisible but still laid out. See the note at the card.
   airportCardStood: { opacity: 0 },
   // detailsTitle's treatment, as its own style. NOT detailsTitle itself: that
@@ -3100,6 +3442,11 @@ const s = StyleSheet.create({
   // to add up to the row exactly, and a gap between them would push the third
   // tile onto a second line when three were meant to fit.
   airportTiles: { flexDirection: "row", flexWrap: "wrap", alignItems: "stretch", rowGap: 14 },
+  // ONE LINE, STRUCTURALLY. Composed onto airportTiles by AirportTiles alone --
+  // the archive sheet's own tile row reads airportTiles directly and still
+  // wraps, which is what airportTileFull below is for. Two readers, one of which
+  // wants nowrap, so the override is a second entry rather than an edit.
+  airportTilesRow: { flexWrap: "nowrap" },
   // No flex and no grow — the basis below is the whole of the sizing, which is
   // what makes the wrap predictable. paddingLeft holds the text off the rule on
   // its left edge; the tile that starts a visual row has neither.
@@ -3108,9 +3455,16 @@ const s = StyleSheet.create({
   // breaks after the second. Two constants, no arithmetic at render time.
   airportTileThird: { flexBasis: "33.33%" },
   airportTileHalf: { flexBasis: "50%" },
+  // 25 x 4 = 100%, exactly one line. See the note at AirportTiles for what four
+  // columns cost on a 320pt screen and what is done about it.
+  airportTileQuarter: { flexBasis: "25%" },
+  // FOUR COLUMNS ONLY. 12 to 8 gives each of the three non-first tiles 4pt more
+  // for its value, which is the cheapest width there is: the rule is 1pt and the
+  // gap either side of it is what is being spent.
+  airportTileTight: { paddingLeft: 8 },
   // The whole row, so it wraps onto a line of its own whatever precedes it.
-  // Only the sheet uses this; the card's three and four tile rows both divide
-  // evenly and have nothing that needs the full width.
+  // Only the archive sheet's tiles use this; the card's rows of two, three and
+  // four all divide evenly and have nothing that needs the full width.
   airportTileFull: { flexBasis: "100%" },
   airportTileFirst: { paddingLeft: 0 },
   // Absolutely positioned, so Yoga skips it when it measures the tile and the
@@ -3141,6 +3495,11 @@ const s = StyleSheet.create({
   // every other value in the sheet uses — the same figure archiveTileValue
   // carries, reached by overriding rather than by pointing the card's component
   // at a sheet-named style.
+  //
+  // TWO READERS NOW. The card's own tile row also takes it when there are FOUR
+  // tiles, where 20pt in a 51pt column ellipsises anything longer than four
+  // characters. The name is still right: it is the small value, and which
+  // surface asked for it is the caller's business.
   airportTileValueSmall: { fontSize: 15 },
   // 15, AND IT HAS BEEN BOTH. It went to 20 to match the card's tiles, on the
   // argument that a smaller value here read as the more deliberate one because
@@ -3287,6 +3646,24 @@ const s = StyleSheet.create({
   airportDate: {
     fontSize: 20, color: "#ffffff", fontFamily: MONO_BOLD, marginBottom: 7,
   },
+  // ── THE TRIP VARIANT'S VALUE TREATMENT ──
+  //
+  // 15 WHITE MONO_BOLD, WHICH IS airportTimeValue's WITHOUT THE textAlign. Two
+  // readers: the route line in the identity column and the terminal, belt and
+  // desk under the rule. Both are values that read from the left, where the
+  // times read from the right, and that is the only difference between them.
+  //
+  // 15 AND NOT 20 IS THE WHOLE HIERARCHY. The tiles were 20 -- the date's own
+  // size -- so the card had five things at its loudest treatment and nothing
+  // led. One thing is 20 now and it is the countdown.
+  airportTripValue: { fontSize: 15, color: "#ffffff", fontFamily: MONO_BOLD },
+  // CONTENT-SIZED AND WRAPPING, which is the opposite of the tile row it
+  // replaces on a trip leg. columnGap holds two facts apart at the tiles' own
+  // rhythm; rowGap only matters on a narrow screen carrying all three.
+  airportFacts: { flexDirection: "row", flexWrap: "wrap", columnGap: 24, rowGap: 10 },
+  // The tile's own label-over-value gap, so a fact here and a tile elsewhere are
+  // set the same way.
+  airportFact: { gap: 4 },
   // The identifiers, in the label grey. Mono for the number because it is a
   // code, sans for the carrier because it is a name — the same split the sheet's
   // header makes, one step down the scale.

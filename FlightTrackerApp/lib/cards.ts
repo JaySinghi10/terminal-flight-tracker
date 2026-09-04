@@ -54,7 +54,69 @@ const SANS_SEMI = 'Inter_600SemiBold';
 // What does change is that the times no longer align with the group headings
 // above them, which sit at the page margin. That is correct: the heading labels
 // the cards, it is not one of them.
-export const CARD_FILL = 'rgba(255,255,255,0.03)';
+// ── THE ELEVATION SCALE ──────────────────────────────────────────────────────
+//
+// FOUR VALUES, AND THEY DESCRIBE WHAT SITS ON WHAT. Nine different white alphas
+// were spread across the app before this -- 0.03, 0.05, 0.06, 0.07, 0.08, 0.10,
+// 0.12, 0.16, 0.18 -- one of them named and the rest picked per file. The result
+// was not that surfaces looked wrong individually; it was that adjacent ones sat
+// at accidental distances, so nothing read as distinct from anything else, and
+// the page could not be adjusted without breaking whichever literals happened to
+// have been tuned against it.
+//
+// THE PAGE IS NOT BLACK, AND THAT IS THE FIRST THING THE SCALE BUYS. #0a0a0a
+// rather than #000000, because pure black cannot show elevation: nothing sits
+// below it, so a surface laid on it has nothing to lift away FROM. Ten levels of
+// headroom is not enough to see on its own and is exactly enough to let a 4.5%
+// white read as raised rather than as a stain.
+//
+// SURFACE_1 IS WHAT SITS ON THE PAGE. Cards and rows -- a watchlist row, a
+// result row, a trip leg, a button on an otherwise empty screen.
+//
+// SURFACE_2 IS WHAT SITS ON A SURFACE_1. A control inside a card, a sheet or a
+// menu over the page, a pill on the tab bar. It is defined by what is UNDER it
+// rather than by which file draws it: the same control is level 2 in a card and
+// level 1 on the page.
+//
+// SURFACE_EDGE IS TRANSPARENT, AND THAT IS A DECISION RATHER THAN AN ABSENCE.
+//
+// THE SURFACES SEPARATE BY TONE, NOT BY EDGE. A level 1 fill on a page that is
+// no longer pure black is already a step of its own, and a level 2 on a level 1
+// is another; drawing a line around each as well states the same boundary a
+// second time, in a louder voice than the boundary deserves. Two devices saying
+// one thing is how a card starts to read as a control.
+//
+// SO THE VALUE IS ZERO ALPHA AND NOT `transparent`, and it is not removed. The
+// hairline is still composed, still positioned, still rendered -- every sibling
+// View that draws it is in place across index, search, flights and the flight
+// card -- and it draws nothing. Written this way the whole treatment comes back
+// by changing one number here, which is the only reason it was worth keeping the
+// render sites at all. Deleting them would have made this a decision to re-make
+// rather than a value to reverse.
+//
+// IT WAS 0.10 AND MAY BE AGAIN. The argument for it stands on its own terms: at
+// these alphas a fill alone barely registers, and one pixel of 10% white is what
+// turns a tint into a shape. What settled it was seeing both at once -- tone and
+// line together was more than the hierarchy needed.
+//
+// FLAT AND OPAQUE ONLY, AND THIS IS THE SCALE'S ONE BOUNDARY. Glass keeps its
+// own edge: a blurred surface reads at a different perceived contrast than a
+// flat one, so it needs its own weight, and SHEET_EDGE is tuned as a PAIR with
+// SHEET_RULE rather than being free to move. See the note at SHEET_EDGE in
+// lib/glass.tsx, which states the same exception from the other end.
+//
+// WHAT IS NOT ON THE SCALE: text, dividers, progress tracks, scrims, and any
+// fill that sits BEHIND a blur for the blur to sample. Those answer different
+// questions and a shared constant would only make them look related.
+export const SURFACE_1 = 'rgba(255,255,255,0.045)';
+export const SURFACE_2 = 'rgba(255,255,255,0.08)';
+export const SURFACE_EDGE = 'rgba(255,255,255,0)';
+
+// KEPT, AND POINTED AT THE SCALE RATHER THAN CARRYING ITS OWN VALUE. Five files
+// import this name and every one of them means "a card on the page", which is
+// SURFACE_1. Renaming it at every call site would be a large diff that changed
+// nothing, and deleting it would break them all.
+export const CARD_FILL = SURFACE_1;
 export const CARD_RADIUS = 12;
 export const CARD_GAP = 8;
 export const CARD_PAD = 14;
@@ -63,7 +125,21 @@ export const CARD_PAD = 14;
 // the static row fill under the flight card, and the animated one the saved
 // rows now use, which spells it inside a worklet where a StyleSheet entry
 // cannot be read.
-export const PAGE_BG = '#050505';
+export const PAGE_BG = '#0a0a0a';
+
+// THE PAGE, AS COMPONENTS RATHER THAN AS A HEX STRING.
+//
+// THREE FILLS ARE "THE PAGE AT SOME OPACITY" and a hex cannot serve them: the
+// map's home button, the search panel's own button, and the tab bar's. All three
+// are near-opaque black laid over something that must not show through, and all
+// three must move WITH the page or they band against it -- a 0.82 fill of rgb(5)
+// sitting on a rgb(10) page is a rectangle you can see the edge of.
+//
+// A STRING OF THE THREE CHANNELS, interpolated into an rgba() by the caller,
+// because that is the only form a template can compose an alpha onto. It is the
+// same colour as PAGE_BG and the two are written next to each other so they
+// cannot come apart.
+export const PAGE_RGB = '10,10,10';
 
 // THE TWO ENTRIES BOTH SCREENS READ, and the only reason this file now declares
 // a stylesheet at all.

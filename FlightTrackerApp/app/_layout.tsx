@@ -35,6 +35,11 @@ import { MapRoutesProvider } from "../lib/maproutes";
 // raises the flag is a screen -- the two are siblings and this is the only place
 // that contains both. See lib/chrome.
 import { ChromeProvider } from "../lib/chrome";
+// THE PAGE, FROM THE ONE PLACE THAT NAMES IT. This was a hardcoded "#050505"
+// and it is the navigator's own scene background -- the colour every screen is
+// drawn onto. A page colour spelled twice is a page colour that can be changed
+// once.
+import { PAGE_BG } from "../lib/cards";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -92,7 +97,7 @@ export default function Layout() {
               <ToastProvider>
                 <Tabs
                   tabBar={props => <GlassTabBar {...props} />}
-                  screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#050505" } }}
+                  screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: PAGE_BG } }}
                 />
               </ToastProvider>
             </QueryProvider>

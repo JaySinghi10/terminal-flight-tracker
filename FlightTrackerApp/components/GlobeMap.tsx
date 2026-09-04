@@ -28,6 +28,8 @@ import { useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'r
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { allAirports, airportByCode } from '../lib/airports';
+// THE PAGE. The sea is the page and follows it; see OCEAN below.
+import { PAGE_BG } from '../lib/cards';
 import {
   timezoneHome, HOME_ZOOM_POSITION, HOME_ZOOM_FALLBACK, HOME_ZOOM_MAX,
   type HomeView,
@@ -36,11 +38,17 @@ import {
 // ── THE INK ─────────────────────────────────────────────────────────────────
 //
 // THE SAME PALETTE THE REST OF THE APP USES, so the map is a surface of this app
-// rather than a map someone embedded in it. #050505 is the page, which is also
-// the sea; #121212 is land, thirteen levels above it and deliberately at the
-// edge of visible. No blue, no green, no map palette — green is reserved for
-// live and actionable, which here is exactly one thing: an airport.
-const OCEAN = '#050505';
+// rather than a map someone embedded in it. The sea IS the page; #121212 is
+// land, a dozen or so levels above it and deliberately at the edge of visible.
+// No blue, no green, no map palette — green is reserved for live and
+// actionable, which here is exactly one thing: an airport.
+//
+// PAGE_BG RATHER THAN A LITERAL, and this is the one constant in this file that
+// genuinely means "the page". The globe fills the screen, so if the sea and the
+// page ever differ the map reads as a disc sitting ON the app rather than as
+// part of it -- and the two were only equal before because both were written
+// #050505 by hand. See the elevation scale in lib/cards.ts.
+const OCEAN = PAGE_BG;
 const LAND = '#121212';
 const COUNTRY_LINE = 'rgba(255,255,255,0.20)';
 const ADMIN1_LINE = 'rgba(255,255,255,0.07)';
@@ -62,7 +70,12 @@ const LABEL_CITY = 'rgba(226,226,226,0.42)';
 // screen. The endpoints keep their emphasis in the one place emphasis belongs on
 // a map made of dots and lines: airport-end draws them larger, brighter and at
 // every zoom. Nothing about which cities a flight joins is lost.
-const LABEL_HALO = '#050505';
+// THE GROUND, NOT THE PAGE, AND THE DISTINCTION MATTERS HERE. A halo's job is
+// to separate glyphs from what is behind them, and what is behind them on this
+// map is sea or land -- so it takes the darker of the two. It follows the page
+// only because the sea does; written as OCEAN it stays correct if they ever
+// part, where PAGE_BG would quietly become a dark ring around every label.
+const LABEL_HALO = OCEAN;
 const AIRPORT_INK = '#4ade80';
 // -- THE FLIGHT OVERLAY'S INKS ------------------------------------------------
 //
@@ -122,9 +135,16 @@ const PLANE_PX = 20;
 // MapLibre is told the ratio, so the icon is drawn at its CSS size and the extra
 // samples are what keep the wing edges hard. This is the whole of "crisp".
 const PLANE_DPR = 3;
-// BLACK, NOT A DARK COLOUR. Night is the absence of light, so the bands are the
-// page's own background laid over the geography at a low alpha; anything with a
-// hue would tint the land rather than darken it.
+// BLACK, NOT A DARK COLOUR, AND IT DOES NOT FOLLOW THE PAGE. Night is the
+// absence of light: these bands are laid over the geography at a low alpha to
+// DARKEN it, and anything with a hue would tint the land instead.
+//
+// IT USED TO SAY "the page's own background" AND THAT IS NO LONGER TRUE. The
+// page has lifted to #0a0a0a so that surfaces have something to rise from; this
+// has to stay at the floor for the opposite reason. An ink equal to the ground
+// darkens the ground by nothing -- night over the sea would simply vanish -- so
+// what this constant means is "the darkest available", which is where it already
+// was and where it stays.
 const NIGHT_INK = '#050505';
 
 // PINNED, AND DELIBERATELY 5.x RATHER THAN 6.x.
@@ -315,6 +335,10 @@ const START_ZOOM = OPENING_ZOOM;
 // a large airport. Nothing else on this map has a halo.
 const PIN_INK = '#e2e2e2';
 const PIN_HALO = 'rgba(255,255,255,0.07)';
+// THE DARK RING, AND IT DOES NOT FOLLOW THE PAGE EITHER. Its whole job is
+// stated three lines up: it holds the disc against PALE land and labels, so it
+// is the darkest ink this map has rather than whatever colour the page happens
+// to be. It shared #050505 with the sea by coincidence, not by meaning.
 const PIN_RING = '#050505';
 
 // ── THE TWO CAMERA MOTIONS ──────────────────────────────────────────────────

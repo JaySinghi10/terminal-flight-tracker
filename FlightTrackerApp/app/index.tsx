@@ -116,7 +116,10 @@ import {
 } from '../lib/glass';
 // THE FLAT SURFACES, and they are not glass. See the note at the top of that
 // file for why the card vocabulary did not go in beside the blur.
-import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c } from '../lib/cards';
+import {
+  CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c,
+  SURFACE_2, SURFACE_EDGE,
+} from '../lib/cards';
 // THE TWO BANNERS, AND THE CARD'S OWN MACHINERY. Both moved out of this screen
 // because the search screen needs them too, and neither may be imported from a
 // screen. See the notes at the top of each.
@@ -170,6 +173,26 @@ const ARCHIVE_ROW_STAGGER = 0.07;
 const ARCHIVE_ROW_FADE = 0.45;
 const ARCHIVE_ROW_MAX = 6;
 const ARCHIVE_ROW_RISE = 6;
+
+// ── THE FILL A FINISHED FLIGHT TAKES ────────────────────────────────────────
+//
+// THE VALUE THE WHOLE APP CARRIED BEFORE THE ELEVATION SCALE, kept for the one
+// place it still says something. The scale lifted every card to SURFACE_1 so a
+// live row would sit clear of the page; an archived row is not a live row and is
+// not meant to.
+//
+// ARCHIVED IS A STATE, AND A STATE CAN BE A MATERIAL. These flights have landed,
+// their reminders are spent and there is nothing left to do to them -- so they
+// sit a step further back than the watchlist does, and the difference is read
+// rather than explained. Two fills that differ by a hair are what make the
+// distinction; matching them would say the two lists are the same kind of thing.
+//
+// NAMED FOR THE STATE RATHER THAN THE NUMBER, and deliberately NOT added to the
+// scale in lib/cards.ts. The scale answers "what sits on what"; this answers
+// "what has this flight become", which is a different question and does not
+// belong beside SURFACE_1 and SURFACE_2 where the next reader would take it for
+// a third level.
+const ARCHIVED_FILL = 'rgba(255,255,255,0.03)';
 
 // WEEKDAYS holds abbreviations for the clock line; "Happy Sat" reads clipped in
 // a greeting, so the full names live here. Only the weekend entries reach it.
@@ -639,7 +662,9 @@ const SavedFlightRow = memo(function SavedFlightRow({
     [archived, canRestore, act, onCrossLeft, flight.remindersSetAt, onRemind],
   );
 
-  const rowStyle = [sf.row, roomy && sf.rowRoomy, last && sf.rowLast];
+  // AFTER rowRoomy AND BEFORE rowLast, which is the order that matters: the
+  // archived fill overrides sf.row's, and rowLast touches only the margin.
+  const rowStyle = [sf.row, roomy && sf.rowRoomy, archived && sf.rowArchived, last && sf.rowLast];
 
   // The children container is exactly the row's width, so this is the width the
   // expansion fills and the width the threshold is a fraction of. Lifted out
@@ -671,6 +696,9 @@ const SavedFlightRow = memo(function SavedFlightRow({
   // written twice.
   const rowBody = (
     <>
+      {/* See sf.rowEdge. First child so it is under everything the row draws,
+          and pointerEvents none so it cannot take a touch from the row. */}
+      <View style={sf.rowEdge} pointerEvents="none" />
       <View style={sf.line1}>
         <Text style={sf.number}>{flight.flightNumber}</Text>
         {/* ICON_REMIND's path data at 11pt, not the element itself: that
@@ -840,8 +868,28 @@ const sf = StyleSheet.create({
     borderRadius: CARD_RADIUS,
     marginBottom: CARD_GAP,
   },
+  // ── THE HAIRLINE, AS A SIBLING ──
+  //
+  // g.sheetEdge's PATTERN, not a border on the surface itself, and lib/glass.tsx
+  // states why at SHEET_EDGE: React Native draws a border from the layer's own
+  // radius as one unbroken rounded rectangle ONLY while all four sides share a
+  // colour, and a border on the surface would also inset its content box by 1pt
+  // on every side. An absolutely positioned sibling at the same radius costs no
+  // layout and cannot split a corner arc.
+  //
+  // WHY THE SURFACE NEEDED ONE AT ALL: at 4.5% white on a near-black page a fill
+  // alone barely registers, which is what made these read as text on the page
+  // rather than as cards. One pixel of 10% white is what turns a tint into a
+  // shape. See the elevation scale in lib/cards.ts.
+  rowEdge: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 1, borderColor: SURFACE_EDGE, borderRadius: CARD_RADIUS,
+  },
   // Applied after sf.row, so it is this paddingVertical that survives.
   rowRoomy: { paddingVertical: 18 },
+  // BACKGROUND ONLY, so the radius, the padding and the margin above all still
+  // apply and only the fill changes. See ARCHIVED_FILL.
+  rowArchived: { backgroundColor: ARCHIVED_FILL },
   // Last in its list. It used to drop the hairline; now it drops the gap, which
   // is the same job — the list ends where its last card ends rather than eight
   // points of nothing later.
@@ -1889,10 +1937,11 @@ const s = StyleSheet.create({
   header: { marginBottom: 36, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   // RESTORED AT THE VALUES THEY HAD, recovered from the commit before the modal
   // was retired rather than reconstructed by eye. 36 square on an 18 radius is a
-  // circle; the hairline is the same 0.12 white every bordered control here uses.
+  // circle; the hairline is the scale's edge, which is what every bordered
+  // control in this app draws now. See SURFACE_EDGE in lib/cards.ts.
   profileBtn: {
     width: 36, height: 36, borderRadius: 18,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: SURFACE_EDGE,
     backgroundColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
@@ -1907,12 +1956,20 @@ const s = StyleSheet.create({
   },
   heroRow: { flexDirection: "row", alignItems: "flex-start" },
   heroControls: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
-  // 36 square, and 5% white — one step above the card it sits on, so the tile
-  // reads as raised without spending a colour on it. The existing hitSlop
-  // carries the tap area well past this.
+  // 36 square, ONE STEP ABOVE THE CARD IT SITS ON, so the tile reads as raised
+  // without spending a colour on it. The existing hitSlop carries the tap area
+  // well past this.
+  //
+  // SURFACE_2, WHICH IS WHAT THAT SENTENCE ALWAYS MEANT. It was 0.05 picked by
+  // eye; the scale names the level for "a surface on a surface" and this is one.
+  // See lib/cards.ts.
+  //
+  // NO HAIRLINE, AND NOT BECAUSE IT WAS SKIPPED: this style has no render site.
+  // It is unreferenced, like routeSurface below, and there is nothing to put a
+  // sibling into.
   heroBtn: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: SURFACE_2,
     alignItems: "center", justifyContent: "center",
   },
   flightNumber: { fontSize: 32, color: "#ffffff", letterSpacing: 1, fontFamily: MONO_BOLD },
@@ -1950,7 +2007,9 @@ const s = StyleSheet.create({
   statusUpdated: { fontFamily: MONO, fontSize: 11, color: "rgba(226,226,226,0.3)" },
 
   // UNREFERENCED SINCE THE MERGE. The route no longer has a surface of its own;
-  // it is the lower half of heroCard. Left in place rather than deleted.
+  // it is the lower half of heroCard. Left in place rather than deleted -- and
+  // it takes no hairline for that reason: there is no render site to put a
+  // sibling into. See sf.rowEdge for the treatment it would get.
   routeSurface: {
     backgroundColor: CARD_FILL,
     borderRadius: CARD_RADIUS,
@@ -2064,12 +2123,14 @@ const pm = StyleSheet.create({
     marginBottom: 32,
     textAlign: 'center',
   },
+  // A BUTTON ON THE PAGE, so SURFACE_1, and it already carried an edge of its
+  // own -- now the scale's. See lib/cards.ts.
   authBtn: {
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: CARD_FILL,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: SURFACE_EDGE,
     paddingVertical: 16,
     paddingHorizontal: 20,
     marginBottom: 12,
@@ -2090,7 +2151,7 @@ const pm = StyleSheet.create({
     fontSize: 13,
     color: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: SURFACE_EDGE,
     borderRadius: 4,
     paddingHorizontal: 12,
     paddingVertical: 10,
