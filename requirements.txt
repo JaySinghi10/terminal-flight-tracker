@@ -2,16 +2,20 @@ requests
 python-dotenv
 fastapi
 uvicorn[standard]
-# THE VERTEX EXTRA PULLS IN google-auth, which is what resolves
-# Application Default Credentials. Without it the client imports fine and
-# fails at the first call with an install hint instead of a request.
+# THE PROVIDER IN USE. Gemini, on an API key. llm.py imports it lazily, so a
+# deployment configured for Claude never loads it.
+google-genai>=2,<3
+# THE FALLBACK, AND IT IS KEPT ON PURPOSE. LLM_PROVIDER=anthropic points the
+# service back at Claude with no code change; the vertex extra pulls in
+# google-auth, which is what resolves Application Default Credentials for the
+# Vertex path. Neither is reachable today -- Vertex has no Anthropic quota on
+# this project and the Anthropic account has no credit -- but the code path is
+# exercised by the same tests as Gemini, so it cannot rot unnoticed.
 #
-# PINNED TO A MAJOR, DELIBERATELY. This was a bare `anthropic`, so every
-# image build silently took whatever was newest -- and 1.x REMOVED
-# temperature, top_p and top_k from messages.create(), which would have
-# broken /parse on the next deploy for a reason unrelated to any change
-# anyone made. An unpinned dependency is a deploy that differs from the
-# last one for no reason in the repository.
+# BOTH LINES PIN A MAJOR, and the reason is a live fault this repository already
+# hit: `anthropic` was unpinned, and 1.x REMOVED temperature, top_p and top_k
+# from messages.create(), which would have broken /parse on the next deploy for
+# a reason found nowhere in the repository.
 anthropic[vertex]>=1,<2
 mcp==1.27.1
 tzdata

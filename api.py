@@ -5,14 +5,13 @@ import base64
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
-# STILL IMPORTED, AND ONLY FOR THE EXCEPTION CLASSES. _chat_error tests four
-# of them, and AnthropicVertex raises the same four from the same package --
-# which is the reason that function needed no edit when the provider changed.
-# Nothing here constructs a client any more; llm.py does that.
-import anthropic
-# WHICH CLAUDE THIS SERVICE TALKS TO. One module owns the provider choice,
-# the credentials and the two model names, so nothing below has to know
-# whether it is speaking to Vertex AI or to Anthropic direct.
+# WHICH MODEL THIS SERVICE TALKS TO, AND THE ONE SHAPE IT TALKS IN.
+#
+# llm.py owns the provider choice, the credentials, the two model names, the
+# translation of a request into whatever SDK is in use, and the classification
+# of a failure. THE `import anthropic` THAT USED TO SIT HERE IS GONE WITH IT --
+# this file no longer names a provider anywhere, which is the whole point of the
+# translation layer and the one property worth protecting when editing it.
 import llm
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -184,6 +183,17 @@ def run_tool(name: str, inputs: dict, gmail_token: str = None) -> tuple[str, dic
 # leaves room for one wrong turn and still terminates. Each round is a full
 # model call, so an uncapped loop is a bill and a hung request, not just a bug.
 CHAT_MAX_TOOL_ROUNDS = 4
+
+# 4096, AND IT WAS 1024 UNTIL A MEASUREMENT MOVED IT. Gemini 3 bills its own
+# reasoning against this ceiling, and "is EK648 on time" -- a lookup and a
+# reformat, the least demanding thing this endpoint does -- spent 992 tokens
+# thinking and 82 answering. 1024 would have truncated it.
+#
+# THINKING STAYS ON HERE, unlike /parse. Choosing which of three tools to call,
+# and whether the answer needs a second round, is the one judgement in this
+# service that reasoning plausibly improves -- so this endpoint buys the room
+# rather than turning it down.
+CHAT_MAX_TOKENS = 4096
 
 # HUNK 4. What the app is allowed to show. Fixed strings, never the provider's
 # own message: an upstream error can quote a key, an account identifier or an
@@ -403,44 +413,50 @@ def parse(req: ParseRequest):
     )
 
     try:
-        response = llm.client().messages.create(
+        turn = llm.generate(
             model=llm.PARSE_MODEL,
-            max_tokens=PARSE_MAX_TOKENS,
-            # DETERMINISM, THROUGH extra_body BECAUSE THE SDK NO LONGER TAKES IT.
-            # anthropic 1.x removed temperature, top_p and top_k from the
-            # messages.create() signature -- passing one is a TypeError raised
-            # here, before any request is made. extra_body is merged into the
-            # request JSON as-is, which is how a parameter the API still honours
-            # reaches it after the client stopped declaring it.
-            #
-            # IT IS KEPT RATHER THAN DROPPED because this path re-validates every
-            # field the model returns -- see _parse_clean -- and that distrust of
-            # variance is the same argument for not inviting any. Haiku 4.5
-            # accepts the setting on both providers. NOTHING LIKE THIS MAY BE
-            # ADDED TO /chat: see the note at that call.
-            extra_body={"temperature": 0},
             system=system,
+            messages=[llm.user_text(text)],
             tools=[PARSE_TOOL],
-            tool_choice={"type": "tool", "name": "flight_search"},
-            messages=[{"role": "user", "content": text}],
+            # THE FORCED CALL IS THE WHOLE CONTRACT. The schema's enums are what
+            # keep a band or a sort inside a closed vocabulary, and they only
+            # apply to a TOOL CALL -- a model answering in prose is a model this
+            # endpoint cannot use. Both providers can compel one; llm.py knows
+            # how each spells it.
+            forced_tool="flight_search",
+            max_tokens=PARSE_MAX_TOKENS,
+            # DETERMINISM, KEPT RATHER THAN DROPPED, because this path
+            # re-validates every field the model returns -- see _parse_clean --
+            # and that distrust of variance is the same argument for not
+            # inviting any.
+            temperature=0,
+            # THINKING DOWN, AND THIS ONE IS NOT A PREFERENCE. Gemini 3 bills
+            # reasoning against max_tokens: at 256 it spent 489 tokens thinking,
+            # ran out mid-call and returned MALFORMED_FUNCTION_CALL with nothing
+            # usable -- a 100% failure rate that would have surfaced as "could
+            # not read that as a flight search" and sent somebody debugging the
+            # parser. Minimised, the same call fits inside 256 with room over.
+            #
+            # AND IT COSTS NOTHING TO TURN DOWN. This is extraction against a
+            # closed schema with the answer already in the sentence; there is no
+            # judgement here for reasoning to improve.
+            thinking=False,
         )
     except Exception as exc:
         # The same wording POLICY as /chat -- a fixed string out, the real reason
         # into the log, never the provider's own text -- and deliberately not the
         # same STRINGS. See _parse_error.
-        #
-        # THE DUPLICATE LOG LINE IS GONE WITH IT. This logged the exception type
-        # and then called a function that logged the same failure again in more
-        # detail, so every parse failure appeared twice in Cloud Run under two
-        # different names. _failure_kind logs it once, as "parse call failed".
         return _parse_empty(_parse_error(exc))
 
-    block = next((b for b in response.content if b.type == "tool_use"), None)
-    if block is None or not isinstance(block.input, dict):
-        logger.warning("parse call returned no tool_use block")
+    # THE TOOL CALL IS NAMED rather than taken positionally. Forcing guarantees
+    # a call, not which one, and a model that invented a second tool would
+    # otherwise be read as having answered the question asked.
+    call = next((c for c in turn.tool_calls if c.name == "flight_search"), None)
+    if call is None:
+        logger.warning("parse call returned no flight_search call")
         return _parse_empty(PARSE_ERROR_GENERIC)
 
-    return _parse_clean(block.input, today)
+    return _parse_clean(call.args, today)
 
 
 def _failure_kind(exc: Exception, feature: str) -> str:
@@ -458,43 +474,19 @@ def _failure_kind(exc: Exception, feature: str) -> str:
     `feature` names the endpoint in the log line and nothing else. It never
     reaches the client.
 
-    Credit exhaustion arrives as a 400 invalid_request_error rather than as a
-    billing-specific class, so it is identified by substring and then answered
-    with our own wording — the provider's message is read, never forwarded.
+    WHICH EXCEPTION MEANS WHAT IS llm.py's, and this function is what is left
+    once that moved: the logging, and the endpoint's name in the log line. The
+    two SDKs disagree far too deeply for the test to live here -- Anthropic
+    raises a class per failure, Google raises one class and puts the failure in
+    a status code -- and an endpoint is the wrong place to know that.
 
-    THE CREDIT BRANCH IS ANTHROPIC-DIRECT ONLY, and on Vertex it is dead code
-    rather than a bug. Google bills the project and says so in its own words: a
-    spending problem arrives as a 403 or a quota error, which lands on the
-    permission or the rate-limit branch above, and the string "credit balance"
-    never appears. The branch is kept because the anthropic provider is the
-    rollback path and it is still exactly right there.
-
-    AND AUTHENTICATION MEANS SOMETHING DIFFERENT NOW. On Vertex a 401 or 403 is
-    not a bad key -- there is no key. It is a service account without the Vertex
-    AI User role, or Application Default Credentials that never resolved. The
-    user-facing string is the same either way, which is the point of it; the log
-    line is where the operator finds out which.
+    THE REASON STRING IS THE PROVIDER'S, THE WORDS ARE NOT. llm.failure_kind
+    returns a short phrase written for this log line, never the provider's own
+    message, which can quote a key, an account identifier or an endpoint.
     """
-    if isinstance(exc, anthropic.AuthenticationError):
-        logger.warning("%s call failed: authentication rejected", feature)
-        return "config"
-    if isinstance(exc, anthropic.PermissionDeniedError):
-        logger.warning("%s call failed: permission denied", feature)
-        return "config"
-    if isinstance(exc, anthropic.RateLimitError):
-        logger.warning("%s call failed: rate limited", feature)
-        return "busy"
-    if isinstance(exc, anthropic.BadRequestError):
-        if "credit balance" in str(exc).lower():
-            # The user is told nothing useful about the billing state of an
-            # account that is not theirs; the operator reading the logs is told
-            # exactly which wall was hit.
-            logger.warning("%s call failed: credit balance exhausted", feature)
-            return "credit"
-        logger.warning("%s call failed: bad request (%s)", feature, type(exc).__name__)
-        return "config"
-    logger.warning("%s call failed: %s", feature, type(exc).__name__)
-    return "generic"
+    kind, reason = llm.failure_kind(exc)
+    logger.warning("%s call failed: %s", feature, reason)
+    return kind
 
 
 def _chat_error(exc: Exception) -> str:
@@ -532,14 +524,7 @@ def _parse_error(exc: Exception) -> str:
 
 @app.post("/chat")
 def chat(req: ChatRequest):
-    # ONE SHARED CLIENT, BUILT ON FIRST USE AND KEPT. This used to construct one
-    # per request, which threw away a connection pool every time; on Vertex it
-    # would also mean resolving credentials against the metadata server on every
-    # request. llm.client() caches. It raises when the provider is not
-    # configured, and the try around the call below turns that into the same
-    # fixed string any other failure gets.
-    client = llm.client()
-    messages = [{"role": "user", "content": req.message}]
+    messages = [llm.user_text(req.message)]
 
     system = (
         "You are a terminal-based flight assistant. "
@@ -562,33 +547,18 @@ def chat(req: ChatRequest):
 
     for _round in range(CHAT_MAX_TOOL_ROUNDS):
         try:
-            response = client.messages.create(
-                # ############################################################
-                # ###  DO NOT ADD temperature, top_p OR top_k TO THIS CALL. ###
-                # ############################################################
-                #
-                # CLAUDE SONNET 5 REJECTS THEM WITH A 400. Not a warning and not
-                # a silently ignored field: any non-default sampling value is a
-                # request error, and on the models after it even the DEFAULT
-                # value is refused. This call passes none today and that is the
-                # only reason it is correct.
-                #
-                # THE SDK WILL STOP YOU FIRST, which is worth knowing so the
-                # failure is recognisable: anthropic 1.x removed all three from
-                # messages.create(), so writing one here is a TypeError long
-                # before it is a 400. The /parse call passes temperature through
-                # extra_body deliberately -- it runs on Haiku 4.5, which still
-                # accepts it. That escape hatch would reach Sonnet 5 unfiltered.
-                #
-                # WHICH MODEL, FROM THE ENVIRONMENT. Was the literal
-                # "claude-sonnet-4-6"; it is now CHAT_MODEL, defaulting to
-                # claude-sonnet-5 -- the bare id is correct on Vertex and on
-                # Anthropic direct alike, because only pinned snapshots differ.
+            # NO SAMPLING PARAMETER HERE, ON ANY PROVIDER. Claude Sonnet 5
+            # rejects a non-default temperature, top_p or top_k with a 400, and
+            # the models after it reject even the default; the anthropic SDK
+            # raises a TypeError before the request is even sent. /parse passes
+            # temperature deliberately because it runs on a model that accepts
+            # one -- that is a fact about that model, not a pattern to copy.
+            turn = llm.generate(
                 model=llm.CHAT_MODEL,
-                max_tokens=1024,
                 system=system,
-                tools=TOOLS,
                 messages=messages,
+                tools=TOOLS,
+                max_tokens=CHAT_MAX_TOKENS,
             )
         except Exception as exc:
             # The app renders `error`; without this the exception escaped as a
@@ -596,31 +566,34 @@ def chat(req: ChatRequest):
             # failure looked like "Something went wrong".
             return {"error": _chat_error(exc), "response": None, "flight": captured_flight}
 
-        if response.stop_reason == "end_turn":
-            text = next((b.text for b in response.content if b.type == "text"), "")
-            return {"response": text, "flight": captured_flight}
+        # TOOL CALLS FIRST, AND THE ORDER IS THE WHOLE CHANGE HERE. This used to
+        # ask WHY the model stopped and treat "tool_use" as the branch that runs
+        # tools -- which is Anthropic's vocabulary and nobody else's. Gemini ends
+        # a turn carrying function calls with an ordinary STOP, so a loop that
+        # branches on the stop reason runs no tools at all and returns empty
+        # text. Asking what is IN the turn is the question both providers answer
+        # the same way.
+        if turn.tool_calls:
+            results = []
+            for call in turn.tool_calls:
+                result_text, flight_data = run_tool(call.name, call.args, req.gmail_token)
+                if flight_data is not None:
+                    captured_flight = flight_data
+                results.append((call, result_text))
+            # THE MODEL'S OWN TURN GOES BACK VERBATIM. On Gemini 3 the parts
+            # carry thought signatures which the next round requires; rebuilding
+            # the turn from its text and its calls drops them silently. llm.py
+            # keeps the provider's object for exactly this.
+            messages.append(llm.model_turn(turn))
+            messages.append(llm.tool_results(results))
+            continue
 
-        if response.stop_reason == "tool_use":
-            tool_results = []
-            for block in response.content:
-                if block.type == "tool_use":
-                    result_text, flight_data = run_tool(block.name, block.input, req.gmail_token)
-                    if flight_data is not None:
-                        captured_flight = flight_data
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_text,
-                    })
-            messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            # Any other stop reason — max_tokens, refusal, something new. If the
-            # model said anything at all, that is better than a canned line.
-            text = next((b.text for b in response.content if b.type == "text"), "")
-            if text:
-                return {"response": text, "flight": captured_flight}
-            return {"error": CHAT_ERROR_GENERIC, "response": None, "flight": captured_flight}
+        # NO CALLS, SO THIS IS THE ANSWER -- whether the model finished cleanly,
+        # hit a ceiling, or refused. If it said anything at all, that is better
+        # than a canned line.
+        if turn.text:
+            return {"response": turn.text, "flight": captured_flight}
+        return {"error": CHAT_ERROR_GENERIC, "response": None, "flight": captured_flight}
 
     # The loop ran out of rounds. Anything already found still goes back, so a
     # flight the tools did retrieve is not thrown away with the conversation.
