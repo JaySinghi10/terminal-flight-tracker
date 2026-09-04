@@ -308,7 +308,21 @@ PARSE_TOOL = {
     },
 }
 
+# WHAT THE SEARCH BOX MAY SAY, and it is a SEPARATE VOCABULARY from /chat's
+# rather than a share of it. These strings do not surface as an error banner:
+# nlReadReply passes them to dead(), so whatever is here is rendered as the
+# READING of the sentence the user just typed. "The assistant is not
+# configured correctly" in that slot names a feature that is not on this
+# screen, for a failure the user cannot act on.
+#
+# TWO KINDS OF FAILURE, AND THEY MUST NOT SHARE A STRING. "Could not read
+# that" blames the SENTENCE, and it is the honest answer only when the model
+# answered and the answer was unusable. When the call never completed the
+# sentence was never the problem, and saying it was would send the user off
+# rewording a perfectly good query against a service that is down.
 PARSE_ERROR_GENERIC = "Could not read that as a flight search. Please try again."
+PARSE_ERROR_UNAVAILABLE = "Flight search is unavailable right now. Please try again."
+PARSE_ERROR_BUSY = "Flight search is busy right now. Please try again in a moment."
 
 
 def _parse_clean(raw: dict, today) -> dict:
@@ -411,10 +425,15 @@ def parse(req: ParseRequest):
             messages=[{"role": "user", "content": text}],
         )
     except Exception as exc:
-        # The same wording policy as /chat: a fixed string out, the real reason
-        # into the log, and never the provider's own text.
-        logger.warning("parse call failed: %s", type(exc).__name__)
-        return _parse_empty(_chat_error(exc))
+        # The same wording POLICY as /chat -- a fixed string out, the real reason
+        # into the log, never the provider's own text -- and deliberately not the
+        # same STRINGS. See _parse_error.
+        #
+        # THE DUPLICATE LOG LINE IS GONE WITH IT. This logged the exception type
+        # and then called a function that logged the same failure again in more
+        # detail, so every parse failure appeared twice in Cloud Run under two
+        # different names. _failure_kind logs it once, as "parse call failed".
+        return _parse_empty(_parse_error(exc))
 
     block = next((b for b in response.content if b.type == "tool_use"), None)
     if block is None or not isinstance(block.input, dict):
@@ -424,8 +443,20 @@ def parse(req: ParseRequest):
     return _parse_clean(block.input, today)
 
 
-def _chat_error(exc: Exception) -> str:
-    """One of the fixed strings above. Never the exception's own text.
+def _failure_kind(exc: Exception, feature: str) -> str:
+    """Classify a failed model call, and log it. Never returns a user string.
+
+    WHAT WENT WRONG AND WHAT TO SAY ABOUT IT ARE TWO QUESTIONS, and they were
+    one function until /parse started borrowing /chat's answer to the second.
+    This half is provider knowledge -- which exception means what -- and it is
+    identical for every caller. The other half is a fact about the SCREEN the
+    failure will appear on, and it is not.
+
+    Returns one of 'config', 'busy', 'credit', 'generic'. The caller maps that
+    to its own wording; the mapping is the caller's because the words are.
+
+    `feature` names the endpoint in the log line and nothing else. It never
+    reaches the client.
 
     Credit exhaustion arrives as a 400 invalid_request_error rather than as a
     billing-specific class, so it is identified by substring and then answered
@@ -445,25 +476,58 @@ def _chat_error(exc: Exception) -> str:
     line is where the operator finds out which.
     """
     if isinstance(exc, anthropic.AuthenticationError):
-        logger.warning("assistant call failed: authentication rejected")
-        return CHAT_ERROR_CONFIG
+        logger.warning("%s call failed: authentication rejected", feature)
+        return "config"
     if isinstance(exc, anthropic.PermissionDeniedError):
-        logger.warning("assistant call failed: permission denied")
-        return CHAT_ERROR_CONFIG
+        logger.warning("%s call failed: permission denied", feature)
+        return "config"
     if isinstance(exc, anthropic.RateLimitError):
-        logger.warning("assistant call failed: rate limited")
-        return CHAT_ERROR_BUSY
+        logger.warning("%s call failed: rate limited", feature)
+        return "busy"
     if isinstance(exc, anthropic.BadRequestError):
         if "credit balance" in str(exc).lower():
-            # The one that changed. The user is told nothing useful about the
-            # billing state of an account that is not theirs; the operator
-            # reading the logs is told exactly which wall was hit.
-            logger.warning("assistant call failed: credit balance exhausted")
-            return CHAT_ERROR_CREDIT
-        logger.warning("assistant call failed: bad request (%s)", type(exc).__name__)
-        return CHAT_ERROR_CONFIG
-    logger.warning("assistant call failed: %s", type(exc).__name__)
-    return CHAT_ERROR_GENERIC
+            # The user is told nothing useful about the billing state of an
+            # account that is not theirs; the operator reading the logs is told
+            # exactly which wall was hit.
+            logger.warning("%s call failed: credit balance exhausted", feature)
+            return "credit"
+        logger.warning("%s call failed: bad request (%s)", feature, type(exc).__name__)
+        return "config"
+    logger.warning("%s call failed: %s", feature, type(exc).__name__)
+    return "generic"
+
+
+def _chat_error(exc: Exception) -> str:
+    """One of the CHAT_ERROR strings. Never the exception's own text."""
+    return {
+        "config": CHAT_ERROR_CONFIG,
+        "busy": CHAT_ERROR_BUSY,
+        "credit": CHAT_ERROR_CREDIT,
+    }.get(_failure_kind(exc, "assistant"), CHAT_ERROR_GENERIC)
+
+
+def _parse_error(exc: Exception) -> str:
+    """One of the PARSE_ERROR strings. Never the exception's own text.
+
+    NOTHING HERE SAYS "ASSISTANT", and that is the whole reason this function
+    exists. /parse used to return _chat_error's strings, so a misconfigured
+    provider told somebody typing "flights to goa tomorrow" that the assistant
+    was not configured correctly -- a screen they were not on, about a feature
+    they had not used, in place of the reading of their sentence.
+
+    A MISCONFIGURATION IS NOT REPORTED AS ONE. 'config' means an operator has
+    something to fix and the user has nothing to do but wait, which is what
+    "unavailable" says. The distinction survives where it is useful: in the log,
+    where _failure_kind already put it.
+
+    AND NONE OF THESE IS PARSE_ERROR_GENERIC. Every kind here is a call that did
+    not complete, so the sentence was never the problem. That string belongs to
+    the one case where the model DID answer and the answer was unusable -- see
+    the missing tool_use block at the call site.
+    """
+    return {
+        "busy": PARSE_ERROR_BUSY,
+    }.get(_failure_kind(exc, "parse"), PARSE_ERROR_UNAVAILABLE)
 
 
 @app.post("/chat")
