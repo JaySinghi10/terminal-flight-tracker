@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "com.googleusercontent.apps.970706733452-fmqtgg1doc0n14g8ibb8qsrsmcaot83e",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -18,7 +17,6 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -51,7 +49,8 @@
         {
           "locationWhenInUsePermission": "This app asks for your location once to centre the map on where you are and mark it with a pin. The position is used on your device only, is never sent to a server or shared with anyone, and your location is never used while the app is in the background."
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
