@@ -1382,6 +1382,15 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
 
   const useGlass = GLASS_SUPPORTED && !reduceTransparency;
 
+  // TEMPORARY DIAGNOSTIC -- REMOVE. In an EFFECT rather than at module scope, so
+  // it reports after reduceTransparency has had a chance to resolve; keyed on
+  // both values so it logs the first render AND any flip when the accessibility
+  // query comes back, which is asynchronous and can land after mount.
+  useEffect(() => {
+    console.log('[TABBAR] GLASS_SUPPORTED=', GLASS_SUPPORTED,
+      ' reduceTransparency=', reduceTransparency, ' useGlass=', useGlass);
+  }, [useGlass, reduceTransparency]);
+
   const focusedRoute = state.routes[state.index]?.name;
   // -1 while the focused screen is one this bar does not list — PROFILE, now
   // that it has left the bar, and _sitemap and +not-found.
@@ -2604,6 +2613,10 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     .activeOffsetX([-8, 8])
     .onStart((e) => {
       'worklet';
+      // TEMPORARY DIAGNOSTIC -- REMOVE. Carries searchSV because a stuck search
+      // mode would unmount the glass AND guard trackFinger, which is one cause
+      // for both reported symptoms.
+      console.log('[TABBAR] onStart  searchSV=', searchSV.value, ' x=', e.x);
       // NO RETURN HERE, IN EITHER MODE. Everything below runs every time, so
       // the gesture that activated is always one onFinalize can close. See the
       // rule above.
@@ -2655,6 +2668,9 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
     })
     .onFinalize(() => {
       'worklet';
+      // TEMPORARY DIAGNOSTIC -- REMOVE. If onStart logs and this never does, the
+      // handler is being held open; if neither logs, no touch is arriving.
+      console.log('[TABBAR] onFinalize  dragging=', dragging.value);
       // The touch is over however it ended, so a pending request is moot: cancel
       // it and do the release here and now instead.
       runOnJS(cancelPressRelease)();
