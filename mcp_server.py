@@ -10,7 +10,11 @@ from mcp.server.fastmcp import FastMCP
 load_dotenv()
 
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
-ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
+# ANTHROPIC_API_KEY IS NOT READ HERE ANY MORE. This file called the Claude
+# API directly for one thing -- a Gmail scan over the MCP connector -- and
+# that path is gone; see the note where it was. Nothing else in this module
+# has ever talked to a model, and nothing in it should: it is the provider
+# layer, and api.py is the only caller that reasons about flights.
 
 AERODATABOX_HOST = "aerodatabox.p.rapidapi.com"
 REQUEST_TIMEOUT_SECONDS = 10
@@ -1076,50 +1080,43 @@ def fetch_route(origin, destination, hours=12, date=None) -> dict:
 
 
 # ──────────────────────────────────────────────
-# SEARCH GMAIL FOR FLIGHT BOOKING EMAILS
+# THE GMAIL SCAN THAT USED TO BE HERE, AND WHY IT IS NOT
 # ──────────────────────────────────────────────
-def search_gmail_for_flight() -> str:
-    if not ANTHROPIC_KEY:
-        return "ANTHROPIC_KEY_MISSING"
-
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-    }
-
-    # Call Claude API with Gmail MCP to find flight booking emails
-    body = {
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": 1000,
-        "system": "You are a flight booking email scanner. Search the user's Gmail for recent flight booking confirmation emails from airlines like Air India, IndiGo, SpiceJet, Emirates, etc. Extract the flight number from the most recent booking. Return ONLY the flight number in this exact format: FLIGHT:XX1234. If no booking emails found, return: FLIGHT:NONE",
-        "messages": [
-            {
-                "role": "user",
-                "content": "Search my Gmail for the most recent flight booking confirmation email and extract the flight number."
-            }
-        ],
-        "mcp_servers": [
-            {
-                "type": "url",
-                "url": "https://gmailmcp.googleapis.com/mcp/v1",
-                "name": "gmail"
-            }
-        ]
-    }
-
-    response = requests.post(url, headers=headers, json=body)
-    data = response.json()
-
-    if "content" not in data:
-        return "FLIGHT:NONE"
-
-    text = " ".join([b["text"] for b in data["content"] if b["type"] == "text"])
-    match = re.search(r'FLIGHT:([A-Z0-9]+)', text)
-    if match:
-        return match.group(1)
-    return "NONE"
+#
+# REMOVED, NOT MOVED. search_gmail_for_flight() posted straight to
+# api.anthropic.com with an mcp_servers block naming Google's Gmail MCP
+# endpoint, and asked the model to read the user's mailbox and hand back a
+# flight number.
+#
+# IT CANNOT GO TO VERTEX. The MCP connector is not supported there at all --
+# it is not a matter of a different client or a different model id, the
+# capability does not exist on that platform. This service now authenticates
+# to Vertex as its Cloud Run service account and has no Anthropic key, so the
+# call had no credentials either.
+#
+# IT WAS ALREADY BROKEN, WHICH IS WHY NOTHING IS BEING LOST. Three separate
+# faults, any one of them fatal:
+#
+#   1. The MCP connector needs an mcp_servers entry AND a matching mcp_toolset
+#      tool AND a beta header. This sent mcp_servers alone, which is a
+#      validation error rather than a request.
+#   2. It named claude-sonnet-4-20250514, a retired model.
+#   3. ANTHROPIC_API_KEY has never been in this project's .env, so the guard
+#      above it returned the "please add your key" string every time and the
+#      body was never sent at all.
+#
+# THE WORKING GMAIL FEATURE IS NOT THIS ONE AND IS UNTOUCHED. api.py has its
+# own search_gmail_for_flight(gmail_token), which calls gmail.googleapis.com
+# directly with the user's own OAuth token and reads the flight number out of
+# the message body with a regex. No model is involved, so no provider question
+# arises. It is reached from /chat as the find_flight_from_gmail tool, and it
+# is what the app actually uses.
+#
+# WHICH IS ALSO WHY THIS ONE IS NOT WORTH REBUILDING HERE. A mailbox scan needs
+# the user's token, and a token belongs to a request. This module is a set of
+# stateless provider lookups with no session and no user -- the wrong layer for
+# it, which is arguably how the version above came to reach for a hosted
+# connector instead.
 
 # ──────────────────────────────────────────────
 # MAIN AGENT TOOL
@@ -1127,27 +1124,28 @@ def search_gmail_for_flight() -> str:
 @mcp.tool()
 def check_my_flight(query: str) -> str:
     """
-    Smart flight status checker.
-    If a flight number is given (e.g. AI2630), check it directly.
-    If the question is vague (e.g. 'what's my flight status?'),
-    scan Gmail for recent booking confirmations and check that flight.
+    Flight status by number.
+
+    If a flight number is given (e.g. AI2630), check it directly. If the
+    question names no flight, say so and ask for one -- this tool cannot find
+    out which flight the asker means.
+
+    IT USED TO CLAIM IT COULD, by scanning the user's Gmail through the MCP
+    connector. That path is gone; the note above says what it was and why. The
+    docstring is part of the removal rather than an afterthought to it: it is
+    what the model reads to decide whether to call this tool, so leaving the
+    old promise in would have had the agent route vague questions here on the
+    strength of a capability that no longer exists.
     """
-    # Mode 1 — check if a flight number is in the query
+    # Mode 1 — a flight number is in the query
     flight_number = extract_flight_number(query)
 
     if flight_number:
         return fetch_flight(flight_number)
 
-    # Mode 2 — vague question, scan Gmail
-    if not ANTHROPIC_KEY:
-        return "To check your flight from Gmail automatically, please add your ANTHROPIC_API_KEY to the .env file."
-
-    flight_from_gmail = search_gmail_for_flight()
-
-    if flight_from_gmail == "NONE" or flight_from_gmail == "ANTHROPIC_KEY_MISSING":
-        return "I couldn't find any recent flight booking emails in your Gmail. Please provide a flight number directly, e.g. 'status of AI2630'."
-
-    return fetch_flight(flight_from_gmail)
+    # Mode 2 — no flight number, and nothing here can supply one. A plain ask
+    # rather than an apology: the caller can answer this in one word.
+    return "Which flight? Give me the flight number, e.g. 'status of AI2630'."
 
 # ──────────────────────────────────────────────
 # EXISTING TOOL — KEPT FOR DIRECT LOOKUPS

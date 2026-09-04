@@ -2,7 +2,17 @@ requests
 python-dotenv
 fastapi
 uvicorn[standard]
-anthropic
+# THE VERTEX EXTRA PULLS IN google-auth, which is what resolves
+# Application Default Credentials. Without it the client imports fine and
+# fails at the first call with an install hint instead of a request.
+#
+# PINNED TO A MAJOR, DELIBERATELY. This was a bare `anthropic`, so every
+# image build silently took whatever was newest -- and 1.x REMOVED
+# temperature, top_p and top_k from messages.create(), which would have
+# broken /parse on the next deploy for a reason unrelated to any change
+# anyone made. An unpinned dependency is a deploy that differs from the
+# last one for no reason in the repository.
+anthropic[vertex]>=1,<2
 mcp==1.27.1
 tzdata
 google-cloud-storage

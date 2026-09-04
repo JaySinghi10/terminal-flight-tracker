@@ -5,7 +5,15 @@ import base64
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+# STILL IMPORTED, AND ONLY FOR THE EXCEPTION CLASSES. _chat_error tests four
+# of them, and AnthropicVertex raises the same four from the same package --
+# which is the reason that function needed no edit when the provider changed.
+# Nothing here constructs a client any more; llm.py does that.
 import anthropic
+# WHICH CLAUDE THIS SERVICE TALKS TO. One module owns the provider choice,
+# the credentials and the two model names, so nothing below has to know
+# whether it is speaking to Vertex AI or to Anthropic direct.
+import llm
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +30,11 @@ from mcp_server import (
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+# ANTHROPIC_API_KEY IS GONE FROM THIS FILE, and on the default configuration
+# it is not read at all: Vertex authenticates as the Cloud Run service
+# account through Application Default Credentials, exactly as store.py's
+# bucket client does. llm.py still reads the key for the anthropic provider,
+# which is the rollback path and nothing else.
 
 # Cloud Run captures stdout and stderr, so a module logger needs no handler and
 # no configuration to reach the service logs. This is the first logging in the
@@ -220,7 +232,15 @@ class ParseRequest(BaseModel):
 # device, the date window is checked here and again there, and the vocabularies
 # are closed and enforced by the schema below. A loop would add rounds and
 # failure modes to a task with no external dependency.
-PARSE_MODEL = "claude-haiku-4-5-20251001"
+# THE MODEL NAME MOVED TO llm.py, where it is read from the environment. It
+# was a literal here, and a literal is the one form that cannot be corrected
+# without a deploy -- which matters more than usual for this pair of names,
+# because a PINNED SNAPSHOT spells its date differently on each provider:
+# claude-haiku-4-5-20251001 on Anthropic direct is claude-haiku-4-5@20251001
+# on Vertex. See the note there.
+#
+# THE TOKEN CEILING STAYS HERE. It is a fact about this prompt -- one forced
+# tool call against a small closed schema -- rather than about the provider.
 PARSE_MAX_TOKENS = 256
 
 # Forced tool use rather than "reply with JSON". The schema is the contract: the
@@ -369,11 +389,22 @@ def parse(req: ParseRequest):
     )
 
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        response = client.messages.create(
-            model=PARSE_MODEL,
+        response = llm.client().messages.create(
+            model=llm.PARSE_MODEL,
             max_tokens=PARSE_MAX_TOKENS,
-            temperature=0,
+            # DETERMINISM, THROUGH extra_body BECAUSE THE SDK NO LONGER TAKES IT.
+            # anthropic 1.x removed temperature, top_p and top_k from the
+            # messages.create() signature -- passing one is a TypeError raised
+            # here, before any request is made. extra_body is merged into the
+            # request JSON as-is, which is how a parameter the API still honours
+            # reaches it after the client stopped declaring it.
+            #
+            # IT IS KEPT RATHER THAN DROPPED because this path re-validates every
+            # field the model returns -- see _parse_clean -- and that distrust of
+            # variance is the same argument for not inviting any. Haiku 4.5
+            # accepts the setting on both providers. NOTHING LIKE THIS MAY BE
+            # ADDED TO /chat: see the note at that call.
+            extra_body={"temperature": 0},
             system=system,
             tools=[PARSE_TOOL],
             tool_choice={"type": "tool", "name": "flight_search"},
@@ -399,6 +430,19 @@ def _chat_error(exc: Exception) -> str:
     Credit exhaustion arrives as a 400 invalid_request_error rather than as a
     billing-specific class, so it is identified by substring and then answered
     with our own wording — the provider's message is read, never forwarded.
+
+    THE CREDIT BRANCH IS ANTHROPIC-DIRECT ONLY, and on Vertex it is dead code
+    rather than a bug. Google bills the project and says so in its own words: a
+    spending problem arrives as a 403 or a quota error, which lands on the
+    permission or the rate-limit branch above, and the string "credit balance"
+    never appears. The branch is kept because the anthropic provider is the
+    rollback path and it is still exactly right there.
+
+    AND AUTHENTICATION MEANS SOMETHING DIFFERENT NOW. On Vertex a 401 or 403 is
+    not a bad key -- there is no key. It is a service account without the Vertex
+    AI User role, or Application Default Credentials that never resolved. The
+    user-facing string is the same either way, which is the point of it; the log
+    line is where the operator finds out which.
     """
     if isinstance(exc, anthropic.AuthenticationError):
         logger.warning("assistant call failed: authentication rejected")
@@ -424,7 +468,13 @@ def _chat_error(exc: Exception) -> str:
 
 @app.post("/chat")
 def chat(req: ChatRequest):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    # ONE SHARED CLIENT, BUILT ON FIRST USE AND KEPT. This used to construct one
+    # per request, which threw away a connection pool every time; on Vertex it
+    # would also mean resolving credentials against the metadata server on every
+    # request. llm.client() caches. It raises when the provider is not
+    # configured, and the try around the call below turns that into the same
+    # fixed string any other failure gets.
+    client = llm.client()
     messages = [{"role": "user", "content": req.message}]
 
     system = (
@@ -449,7 +499,28 @@ def chat(req: ChatRequest):
     for _round in range(CHAT_MAX_TOOL_ROUNDS):
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-6",
+                # ############################################################
+                # ###  DO NOT ADD temperature, top_p OR top_k TO THIS CALL. ###
+                # ############################################################
+                #
+                # CLAUDE SONNET 5 REJECTS THEM WITH A 400. Not a warning and not
+                # a silently ignored field: any non-default sampling value is a
+                # request error, and on the models after it even the DEFAULT
+                # value is refused. This call passes none today and that is the
+                # only reason it is correct.
+                #
+                # THE SDK WILL STOP YOU FIRST, which is worth knowing so the
+                # failure is recognisable: anthropic 1.x removed all three from
+                # messages.create(), so writing one here is a TypeError long
+                # before it is a 400. The /parse call passes temperature through
+                # extra_body deliberately -- it runs on Haiku 4.5, which still
+                # accepts it. That escape hatch would reach Sonnet 5 unfiltered.
+                #
+                # WHICH MODEL, FROM THE ENVIRONMENT. Was the literal
+                # "claude-sonnet-4-6"; it is now CHAT_MODEL, defaulting to
+                # claude-sonnet-5 -- the bare id is correct on Vertex and on
+                # Anthropic direct alike, because only pinned snapshots differ.
+                model=llm.CHAT_MODEL,
                 max_tokens=1024,
                 system=system,
                 tools=TOOLS,
