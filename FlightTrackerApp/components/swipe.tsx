@@ -489,7 +489,20 @@ const sf = StyleSheet.create({
   // THE PAINTED HALF. Carries the radius itself, because it is the layer that
   // paints now: the touchable behind it is a transparent touch target and its
   // own borderRadius has nothing left to clip.
-  swipeFill: { ...StyleSheet.absoluteFillObject, borderRadius: SWIPE_RADIUS },
+  //
+  // THE FOUR PROPERTIES WRITTEN OUT, because StyleSheet.absoluteFillObject was
+  // removed in React Native 0.85 -- gone from the package entirely, not just
+  // from the types. absoluteFill survives and is not a substitute: it is a
+  // registered style ID rather than an object, and this spreads.
+  //
+  // INLINE RATHER THAN A CONSTANT, and that is the difference between this file
+  // and components/GlassTabBar.tsx, which declares one. There are eighteen sites
+  // there and one here, and a named constant read once is a helper that exists
+  // only to be a helper.
+  swipeFill: {
+    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+    borderRadius: SWIPE_RADIUS,
+  },
   // The scaling half of the button. Kept separate from swipeBtn so the touch
   // target stays a fixed 64pt however small the contents are drawn.
   swipeInner: { alignItems: 'center', justifyContent: 'center' },

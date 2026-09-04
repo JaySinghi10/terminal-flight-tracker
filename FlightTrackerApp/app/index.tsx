@@ -33,6 +33,9 @@ import {
   Pressable,
   Dimensions,
   type LayoutChangeEvent,
+  // FOR ONE CAST, AND ONE ONLY. See childrenContainerStyle below.
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -825,7 +828,35 @@ const SavedFlightRow = memo(function SavedFlightRow({
       overshootFriction={2}
       animationOptions={SWIPE_SPRING}
       onSwipeableWillOpen={onWillOpen}
-      childrenContainerStyle={surfaceStyle}
+      // ── A CAST, AND WHAT MAKES IT SAFE ──
+      //
+      // WHAT IS TRUE: gesture-handler declares this prop as
+      // StyleProp<ViewStyle>, and Reanimated 4.3 changed useAnimatedStyle to
+      // return an AnimatedStyleHandle -- an opaque object of viewDescriptors,
+      // initial and styleUpdaterContainer that shares no property with a style.
+      // The two are genuinely not assignable, so this is not a variance nicety.
+      //
+      // WHY IT IS SAFE ANYWAY: the library puts this value straight into a
+      // Reanimated.View's own style array --
+      //
+      //   <Reanimated.View style={[animatedStyle, childrenContainerStyle]}>
+      //
+      // in ReanimatedSwipeable.js -- and that component's props are
+      // AnimatedProps, which is StyleProp<AnimatedStyle<...>>, and AnimatedStyle
+      // is the union that INCLUDES AnimatedStyleHandle. So the handle reaches a
+      // component built to accept one, createAnimatedComponent wires it up, and
+      // the row's fill flips on the UI thread exactly as it always did.
+      //
+      // THE DECLARED TYPE IS NARROWER THAN THE IMPLEMENTATION SUPPORTS. That is
+      // the whole of the defect, and it is gesture-handler's: the file that
+      // declares this prop already imports SharedValue from Reanimated, so it
+      // knows about the library -- it simply never widened this one prop.
+      //
+      // REMOVE THIS WHEN GESTURE-HANDLER WIDENS IT. If childrenContainerStyle
+      // ever accepts an AnimatedStyle, the cast becomes a lie about a
+      // disagreement that no longer exists, and tsc will not tell you: a cast
+      // that has stopped being needed still compiles.
+      childrenContainerStyle={surfaceStyle as StyleProp<ViewStyle>}
       renderLeftActions={renderLeft}
       renderRightActions={renderRight}
     >

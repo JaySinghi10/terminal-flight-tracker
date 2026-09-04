@@ -50,7 +50,8 @@
           "locationWhenInUsePermission": "This app asks for your location once to centre the map on where you are and mark it with a pin. The position is used on your device only, is never sent to a server or shared with anyone, and your location is never used while the app is in the background."
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

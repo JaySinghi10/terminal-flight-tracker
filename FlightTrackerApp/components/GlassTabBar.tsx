@@ -15,7 +15,16 @@ import Reanimated, {
   useAnimatedStyle, useAnimatedProps, useSharedValue, withSpring, withTiming, withDelay, runOnJS,
   interpolateColor, type SharedValue,
 } from 'react-native-reanimated';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+// expo-router/tabs, NOT @react-navigation/bottom-tabs. As of SDK 56 expo-router
+// VENDORS react-navigation rather than depending on it -- it has no
+// @react-navigation/* dependency or peer at all -- and re-exports these types
+// from its own copy. The two BottomTabBarProps are field for field identical;
+// they stopped being assignable four levels down, where the vendored elements
+// types have headerLeft's backImage tintColor as ColorValue and the standalone
+// package still has it as string. This card never sets a header option, so the
+// difference costs nothing -- but the copy the Tabs navigator actually hands
+// this component is expo-router's, and this is now the name of it.
+import type { BottomTabBarProps } from 'expo-router/tabs';
 // SHEET_EDGE ONLY NOW. Every surface in the bar draws the same flat hairline in
 // the colour the rest of the app draws its edges in, and that is the one thing
 // still worth sharing. SHEET_RADIUS came out with the full field's corners: 16
@@ -3889,6 +3898,34 @@ export default function GlassTabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
+// ── THE FOUR PROPERTIES StyleSheet.absoluteFillObject USED TO SPREAD ────────
+//
+// REACT NATIVE 0.85 REMOVED IT. Not deprecated and not merely dropped from the
+// types: the identifier does not appear anywhere in the package any more, so
+// this was a runtime break as well as a compile one. What survives is
+// StyleSheet.absoluteFill, and that is NOT a substitute here -- it is a
+// registered style ID, an opaque number, and every one of the eighteen sites
+// below SPREADS its four properties into a larger object. Spreading a number
+// yields nothing.
+//
+// ONE CONSTANT RATHER THAN EIGHTEEN COPIES. The four properties are identical at
+// every site and always were; writing them out eighteen times would turn one
+// fact into eighteen places to get it wrong, and the next person reading this
+// file would have no way to tell whether the repetition meant anything.
+//
+// `as const` IS LOAD-BEARING. Without it `position` widens to `string`, which is
+// not assignable to ViewStyle's union of positions, and all eighteen sites would
+// fail on the fix. Inside StyleSheet.create a bare literal is contextually typed
+// and needs no such help -- see components/swipe.tsx, which has ONE site and
+// writes the properties inline for exactly that reason.
+const ABSOLUTE_FILL = {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  top: 0,
+  bottom: 0,
+} as const;
+
 const st = StyleSheet.create({
   // A FULL-WIDTH DOCK HOLDING A CONTENT-SIZED PILL, rather than an absolutely
   // positioned pill centring itself. Both were possible; this one does not
@@ -3991,7 +4028,7 @@ const st = StyleSheet.create({
   // shadow needs an unclipped node; the blur needs a clipped one. They cannot be
   // the same node, so the clip is the child below.
   surface: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: BAR_R,
     shadowColor: '#000',
     shadowOpacity: 0.5,
@@ -4001,7 +4038,7 @@ const st = StyleSheet.create({
   // sheetShell's job exactly: round, and CLIP, because the clip is what confines
   // the blur to the rounded rectangle. absoluteFill and the FULL radius, as the
   // outermost layer: the hairline is drawn over it and takes no layout at all.
-  clip: { ...StyleSheet.absoluteFillObject, borderRadius: BAR_R, overflow: 'hidden' },
+  clip: { ...ABSOLUTE_FILL, borderRadius: BAR_R, overflow: 'hidden' },
 
   // The track's inset inside the bar. 0 today — see TRACK_PAD — and kept as the
   // expression because it is where that inset would go if it ever returns.
@@ -4053,13 +4090,13 @@ const st = StyleSheet.create({
   // absoluteFill and the full radius, for the same reason the bar's clip is:
   // the hairline sits over it rather than around it.
   capsuleClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: CAPSULE_R,
     overflow: 'hidden',
   },
   // The same hairline at the pill's own radius, for the same reasons.
   capsuleEdge: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderWidth: 1,
     borderColor: SHEET_EDGE,
     borderRadius: CAPSULE_R,
@@ -4073,7 +4110,7 @@ const st = StyleSheet.create({
     top: CAPSULE_TOP,
     height: CAPSULE_H,
   },
-  capsuleGlass: { ...StyleSheet.absoluteFillObject, borderRadius: CAPSULE_R },
+  capsuleGlass: { ...ABSOLUTE_FILL, borderRadius: CAPSULE_R },
   // flex: 1, SO THE FOUR SLOTS ARE IDENTICAL and the pill is one shape wherever
   // it stands. The word no longer sets the width; the track divided by four
   // does.
@@ -4145,9 +4182,9 @@ const st = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  chipClip: { ...StyleSheet.absoluteFillObject, borderRadius: 17, overflow: 'hidden' },
+  chipClip: { ...ABSOLUTE_FILL, borderRadius: 17, overflow: 'hidden' },
   chipEdge: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderWidth: 1,
     borderColor: SHEET_EDGE,
     borderRadius: 17,
@@ -4180,7 +4217,7 @@ const st = StyleSheet.create({
     height: SEARCH_CIRCLE,
   },
   searchObjClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: SEARCH_CIRCLE / 2,
     overflow: 'hidden',
   },
@@ -4201,13 +4238,13 @@ const st = StyleSheet.create({
   // 0.03 is the other case and stays a literal for exactly that reason -- it is
   // behind a blur, which is not a level on any scale.
   searchObjFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: SEARCH_CIRCLE / 2,
     backgroundColor: SURFACE_2,
   },
   // The same hairline the pill and the oval draw, at the same radius.
   searchObjEdge: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderWidth: 1,
     borderColor: SHEET_EDGE,
     borderRadius: SEARCH_CIRCLE / 2,
@@ -4224,12 +4261,12 @@ const st = StyleSheet.create({
     justifyContent: 'center',
   },
   searchOvalClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: SEARCH_CIRCLE / 2,
     overflow: 'hidden',
   },
   searchOvalEdge: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderWidth: 1,
     borderColor: SHEET_EDGE,
     borderRadius: SEARCH_CIRCLE / 2,
@@ -4286,17 +4323,17 @@ const st = StyleSheet.create({
     justifyContent: 'center',
   },
   glyphClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: 25,
     overflow: 'hidden',
   },
   glyphFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: 25,
     backgroundColor: `rgba(${PAGE_RGB},0.82)`,
   },
   glyphEdge: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderRadius: 25,
     borderWidth: 1,
     borderColor: SHEET_EDGE,
@@ -4373,9 +4410,9 @@ const st = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
-  fullClip: { ...StyleSheet.absoluteFillObject, borderRadius: SEARCH_CIRCLE / 2, overflow: 'hidden' },
+  fullClip: { ...ABSOLUTE_FILL, borderRadius: SEARCH_CIRCLE / 2, overflow: 'hidden' },
   fullEdge: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     borderWidth: 1,
     borderColor: SHEET_EDGE,
     borderRadius: SEARCH_CIRCLE / 2,
@@ -4399,7 +4436,7 @@ const st = StyleSheet.create({
     width: SEARCH_CIRCLE,
     height: SEARCH_CIRCLE,
   },
-  closeTap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  closeTap: { ...ABSOLUTE_FILL, alignItems: 'center', justifyContent: 'center' },
   // WHAT THE SCALE IS APPLIED TO. It carries the centring the item used to do
   // for these two directly; the item still centres this wrapper inside the slot,
   // so the glyph sits over the middle of the word exactly as before. No height
