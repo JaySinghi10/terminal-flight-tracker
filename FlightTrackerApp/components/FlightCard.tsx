@@ -83,7 +83,11 @@ import {
   zoneLabel,
   CD_GREEN,
   CD_LATE,
-  StatusWord,
+  // StatusWord IS GONE FROM THIS IMPORT AND HAS NO CALLER ANYWHERE NOW. The trip
+  // card's pill was its only render site and reads flight.status directly instead
+  // -- see the note there. The function itself is still declared in
+  // lib/flightstatus.tsx; deleting it means editing that file, which this change
+  // deliberately does not touch, so it is left for a pass that may.
   StatusLine,
 } from '../lib/flightstatus';
 import {
@@ -1210,6 +1214,10 @@ function movementTile(label: string, value: string, delay: number | null): {
 //
 // NULL WHEN THERE IS NO ISO, which is a pre-v3 record: the clock still renders,
 // with no date under it, rather than a date invented from the device's own.
+// PHASE TWO TAKES ONLY THE ZONE, and it does that by calling zoneLabel below
+// rather than by asking this for half of itself. A `dateless` flag here would
+// have put a branch in the one place that decides what a "when" line is, for one
+// caller; reading the same helper this reads is cheaper and cannot drift.
 function whenLine(iso: string | null, formatted: string): string | null {
   if (iso === null) return null;
   const label = routeDateLabel(iso.slice(0, 10));
@@ -1505,10 +1513,22 @@ function headLabel(head: string): string {
   return short === undefined ? head : head.slice(0, cut) + ' ' + short;
 }
 
-function TripColumn({ head, time, live, when, delay, rows }: {
+function TripColumn({ head, time, tone, when, delay, rows }: {
   head: string;
   time: string;
-  live: boolean;
+  // WHAT THE CLOCK IS SAYING ABOUT ITSELF: 'ontime' greens it, 'late' ambers it,
+  // null leaves it white. See clockTone, which is the only thing that builds one.
+  //
+  // IT WAS `live: boolean` AND THE NAME WAS THE BUG. A boolean can only say
+  // whether a time differs from the timetable, not WHICH WAY, so a late clock
+  // came out the same green as an early one -- above a delay marker that was
+  // correctly amber. Three states because there are three things to say.
+  //
+  // 'ontime' | 'late' IS THIS FILE'S OWN VOCABULARY, not a new one. movementTile
+  // returns exactly these two words and SheetGroup and MovementLine both take
+  // them; the styles below are named to match archiveTileValueOnTime and
+  // airportTimeOnTime.
+  tone: 'ontime' | 'late' | null;
   when: string | null;
   // `inline` WAS HERE AND HAS GONE WITH THE PROSE THAT NEEDED IT. It existed so
   // phase two could put the offset beside the clock while phase one, whose
@@ -1593,7 +1613,14 @@ function TripColumn({ head, time, live, when, delay, rows }: {
           passing something longer fail visibly here instead of silently
           reflowing the column beside it. */}
       <Text style={s.tripColHead} numberOfLines={1}>{headLabel(head)}</Text>
-      <Text style={[s.tripColTime, live && s.tripColTimeLive]} numberOfLines={1}>
+      <Text
+        style={[
+          s.tripColTime,
+          tone === 'ontime' && s.tripColTimeOnTime,
+          tone === 'late' && s.tripColTimeLate,
+        ]}
+        numberOfLines={1}
+      >
         {time}
         {/* NESTED, WHICH IS THIS FILE'S OWN WAY OF PUTTING A QUALIFIER ON A
             VALUE -- see MovementLine's suffix and the sheet's. A nested Text
@@ -2658,25 +2685,64 @@ export function FlightCard({
   // are about the past or the future is worse than one that says less.
   //
   // AND THE FACT IS ALREADY ON THE CARD, said unambiguously twice over. The time
-  // itself is GREEN exactly when it differs from the timetable -- that is what
-  // the colour means and it means it in every phase -- and the LABEL above it
-  // says whether the clock is Scheduled, Estimated or Actual. Between them the
-  // reader has both halves: how the time differs, and whether it has happened.
+  // itself is GREEN when it is on time or early and AMBER when it is late -- see
+  // clockTone below -- and the LABEL above it says whether the clock is
+  // Scheduled, Estimated or Actual. Between them the reader has both halves: how
+  // the time differs, and whether it has happened.
   //
-  // depDelay AND arrDelay ARE STILL READ, by depLive and arrLive below and by
-  // movementTile on every other variant. The figure has not stopped being useful;
-  // stating it in prose on this card had.
+  // THAT SENTENCE USED TO READ "green exactly when it differs from the timetable",
+  // which was the rule at the time and is not the rule now. It is written out
+  // rather than corrected in place because the old wording is the reason a late
+  // clock was green, and a note that quietly changed its mind would leave the
+  // next reader thinking the bug was always impossible.
+  //
+  // depDelay AND arrDelay ARE STILL READ, by clockTone below and by movementTile
+  // on every other variant. The figure has not stopped being useful; stating it
+  // in prose on this card had.
 
-  // WHETHER A CLOCK IS SHOWING SOMETHING OTHER THAN THE TIMETABLE, per end.
-  // UNIFORM ACROSS EVERY PHASE, deliberately: green has to mean one thing, and
-  // the thing it means is "this differs from what was sold". An estimate that
-  // equals the schedule is not a revision -- the provider echoes one into the
-  // other, which EK500's departure does exactly -- so an estimate alone does not
-  // earn it. An ACTUAL is live because it happened.
-  const depLive = flight.depTimeSource === 'actual'
-    || (typeof flight.depDelay === 'number' && flight.depDelay !== 0);
-  const arrLive = flight.arrTimeSource === 'actual'
-    || (typeof flight.arrDelay === 'number' && flight.arrDelay !== 0);
+  // ── WHETHER A CLOCK IS GOOD NEWS, BAD NEWS, OR NO NEWS ────────────────────
+  //
+  // GREEN IS ON TIME OR EARLY, AMBER IS LATE, WHITE IS NOTHING TO COMPARE. It
+  // used to be a boolean meaning "this differs from the timetable", and that rule
+  // painted a LATE clock green: EK500 sitting at the gate with a revised estimate
+  // five minutes down showed 21:45 in green above its own amber late-marker, so
+  // the two halves of one fact contradicted each other on the same line.
+  //
+  // DIRECTION IS THE WHOLE POINT AND THE OLD RULE DID NOT ASK FOR IT. "Differs
+  // from what was sold" is true of a flight running an hour late and of one
+  // arriving twenty minutes early, and those are not the same news.
+  //
+  // THE REST OF THE APP ALREADY DID THIS. movementTile -- which dresses the sheet
+  // and the home and search cards -- has been `delay > 0 ? 'late' : 'ontime'`
+  // all along, with archiveTileValueOnTime and airportTimeOnTime as its greens.
+  // The trip card was the outlier; this aligns four surfaces rather than adding a
+  // fifth rule.
+  //
+  // AN ACTUAL WITH NO DELAY IS STILL GREEN, and that is the one thing carried
+  // over from the old rule. The server derives delay by comparing the shown time
+  // against the scheduled one, so a movement with no scheduled_iso can arrive
+  // with an actual time and a null delay -- and painting a landed flight's real
+  // arrival WHITE would make it indistinguishable from a timetable nobody has
+  // reported on. It happened; that is worth saying even with nothing to measure
+  // it against.
+  //
+  // NULL OTHERWISE IS WHITE, AND THIS DIVERGES FROM movementTile ON PURPOSE. That
+  // function reads a null delay as ON TIME -- its note argues a null arrives on
+  // exactly the movement running to its schedule -- and on a surface with no
+  // label that is the better reading. This card HAS a label: it says SCHEDULED
+  // DEP directly above the clock, so a green here would be claiming the flight is
+  // on time when the truth is that nobody has said anything about it. The two
+  // readings are both deliberate and neither is an oversight; see the note at
+  // movementTile, which says the same thing from its end.
+  const clockTone = (
+    delay: number | null | undefined,
+    source: TimeSource,
+  ): 'ontime' | 'late' | null => {
+    if (typeof delay === 'number') return delay > 0 ? 'late' : 'ontime';
+    return source === 'actual' ? 'ontime' : null;
+  };
+  const depTone = clockTone(flight.depDelay, flight.depTimeSource);
+  const arrTone = clockTone(flight.arrDelay, flight.arrTimeSource);
 
   // THE HAPTIC IS THE THRESHOLD'S, the same one a full swipe fires when it arms.
   // Both are the moment a gesture becomes an offer, and they should feel like
@@ -3874,7 +3940,39 @@ export function FlightCard({
                         s.airportHeadPill,
                         flight.statusColor === CD_GREEN && s.airportHeadPillLive,
                       ]}>
-                        <StatusWord f={flightRecord} now={now} style={s.airportHeadStatus} />
+                        {/* ── THE CARD'S OWN WORD, NOT effectiveStatus's ──
+                            IT RENDERED StatusWord AND THREW AWAY THE BETTER WORD.
+                            That component prints effectiveStatus(f, now) -- the
+                            app's coarse five-word vocabulary, lowercase -- so a
+                            flight with its doors shut read "scheduled". The DTO
+                            beside it already held "GATE CLOSED": flight.status IS
+                            badgeLabel(rawStatus, status), and badgeLabel exists
+                            precisely because the mapping is lossy in the one
+                            direction a traveller cares about, collapsing Expected,
+                            CheckIn, Boarding, GateClosed and Delayed into one word.
+
+                            THE COLOUR IMPROVES WITH IT, AND NOT BY ACCIDENT.
+                            StatusWord coloured from getStatusColor(effectiveStatus),
+                            which is grey for 'scheduled'. flight.statusColor comes
+                            through displayStatus, which promotes a scheduled flight
+                            to 'delayed' when its departure delay is positive -- so a
+                            flight at the gate and running late now reads GATE CLOSED
+                            in amber, which is the two-facts-at-once case badgeLabel's
+                            own note describes and the old grey could not carry.
+
+                            lib/flightstatus IS UNTOUCHED. StatusWord shares
+                            flightLineSegments with StatusLine, so editing the word
+                            there would have reached every surface that renders a
+                            status line. Reading the DTO here scopes the fix to this
+                            card and changes no shared code -- which also leaves
+                            StatusWord with no callers anywhere, worth deleting on a
+                            pass that is allowed to touch that file. */}
+                        <Text
+                          style={[s.airportHeadStatus, { color: flight.statusColor }]}
+                          numberOfLines={1}
+                        >
+                          {flight.status}
+                        </Text>
                       </View>
                     )}
                     {/* PHASE TWO AND NOWHERE ELSE, AND tripVariant IS HALF THE
@@ -3966,7 +4064,7 @@ export function FlightCard({
                         <TripColumn
                           head={flight.depTimeLabel}
                           time={flight.depTimeValue}
-                          live={depLive}
+                          tone={depTone}
                           when={whenLine(flight.depTimeIso, flight.dep)}
                           delay={flight.depDelay}
                           rows={[
@@ -4008,7 +4106,7 @@ export function FlightCard({
                         <TripColumn
                           head={flight.arrTimeLabel}
                           time={flight.arrTimeValue}
-                          live={arrLive}
+                          tone={arrTone}
                           when={whenLine(flight.arrTimeIso, flight.arr)}
                           delay={flight.arrDelay}
                           rows={[
@@ -4029,24 +4127,63 @@ export function FlightCard({
                         THE ARRIVAL TAKES THE FULL WIDTH, which is what says it is
                         the subject. Its label still follows the source, so it
                         reads "Estimated Arrival" while the aircraft is moving and
-                        becomes "Actual Arrival" the moment it is down. */}
+                        becomes "Actual Arrival" the moment it is down.
+
+                        AND IT IS FOUR THINGS NOW: the label, the clock, the offset
+                        beside it, and nothing else. A traveller at cruise is not
+                        acting on anything -- they are waiting -- so the column
+                        holds the one number the wait is about and drops the rest.
+                        */}
                     {tripPhase === 'air' && (
                       <>
-                        {/* GATE HERE TOO, AND THIS IS WHERE IT IS MOST LIKELY TO
-                            ARRIVE. A column that shows Gate before departure and
-                            drops it in the air teaches the reader that gates
-                            stopped existing -- at exactly the moment an arrival
-                            gate actually gets published. */}
+                        {/* ── WHAT PHASE TWO NO LONGER SHOWS, AND WHAT THAT COSTS ──
+                            TERMINAL AND GATE ARE GONE, AND THE NOTE HERE USED TO
+                            ARGUE THE OPPOSITE. It said a column that shows Gate
+                            before departure and drops it in the air teaches the
+                            reader that gates stopped existing, at exactly the
+                            moment an arrival gate gets published. That is a fair
+                            reading and it lost to a plainer one: an arrival gate is
+                            almost never published while the aircraft is still
+                            moving -- arrGate is null on this flight and on most --
+                            so the pills were a pair of empty badges holding a dash
+                            for the whole cruise. They come back the moment the
+                            flight lands, in phase three's own layout.
+
+                            THE DATE GOES AND THE ZONE STAYS, AND THE SPLIT IS THE
+                            WHOLE POINT. whenLine returns "6 Sep · GMT+5:30" as one
+                            string and this phase takes only the second half, by
+                            calling zoneLabel directly -- the same function whenLine
+                            itself uses, so there is no second reading of the
+                            provider's string and nothing new to keep in step.
+
+                            THEY ARE NOT EQUALLY RECOVERABLE, WHICH IS WHY ONE
+                            SURVIVES. The countdown at the top of the card gives an
+                            interval, so 02:13 beside "4h 32m" can be worked out to
+                            be tomorrow -- weakly, because the card renders
+                            countdown.value alone with no noun, and because that
+                            prop is null on a landed leg, on a record whose arrival
+                            instant cannot be read, and on any target already past.
+                            The ZONE cannot be inferred by anything: a passenger who
+                            boarded at DXB is sitting in a +4 zone reading a +5:30
+                            arrival, and with nothing saying so that is a silent
+                            ninety-minute error on the one number they will act on.
+
+                            SO THE HALF THAT CANNOT BE GUESSED IS THE HALF THAT
+                            STAYS. Phases one, three and four keep the full line;
+                            only the cruise trades the date away, and only because
+                            the interval above already implies it.
+
+                            [] RATHER THAN A DROPPED PROP. `rows` is required, so
+                            this says "there is nothing here" in the component's own
+                            vocabulary instead of making the column's contract
+                            optional for one phase. */}
                         <TripColumn
                           head={flight.arrTimeLabel}
                           time={flight.arrTimeValue}
-                          live={arrLive}
-                          when={whenLine(flight.arrTimeIso, flight.arr)}
+                          tone={arrTone}
+                          when={zoneLabel(flight.arr)}
                           delay={flight.arrDelay}
-                          rows={[
-                            { label: 'Terminal', value: flight.arrTerminal, always: true, pill: true },
-                            { label: 'Gate', value: flight.arrGate, always: true, pill: true },
-                          ]}
+                          rows={[]}
                         />
                         {hasTime(flight.depTimeValue) && (
                           <Text style={s.tripQuiet} numberOfLines={1}>
@@ -4083,7 +4220,7 @@ export function FlightCard({
                         <TripColumn
                           head={flight.arrTimeLabel}
                           time={flight.arrTimeValue}
-                          live={arrLive}
+                          tone={arrTone}
                           when={whenLine(flight.arrTimeIso, flight.arr)}
                           // THE GATE IS OUTSIDE THE ROW, DELIBERATELY. showBelt is
                           // landed AND bagsClaimedHere, and when it is false the
@@ -4141,7 +4278,12 @@ export function FlightCard({
                         <TripColumn
                           head="Scheduled Departure"
                           time={clock24(flight.depIso, flight.dep)}
-                          live={false}
+                          // NO TONE ON A FLIGHT THAT IS NOT RUNNING. This column
+                          // prints the SCHEDULED departure of a cancelled or
+                          // diverted flight -- see the note above -- and a
+                          // timetable is not early, late or on time. It is what
+                          // the flight was sold at, in white.
+                          tone={null}
                           when={whenLine(flight.depIso, flight.dep)}
                           rows={[]}
                         />
@@ -4957,7 +5099,17 @@ const s = StyleSheet.create({
   // green is a time that has moved or happened -- see the call site for why an
   // estimate alone does not earn it.
   tripColTime: { fontSize: 20, color: "#ffffff", fontFamily: MONO_BOLD },
-  tripColTimeLive: { color: CD_GREEN },
+  // COLOUR ONLY, BOTH OF THEM, so the 20pt mono bold above is untouched and a
+  // clock does not change size when a delay lands. They read CD_GREEN and CD_LATE
+  // rather than respelling the hexes -- the same pair archiveTileValueOnTime and
+  // archiveTileValueLate take, and named to match them.
+  //
+  // tripColTimeLive WAS ONE STYLE AND IS NOW TWO. The old name said "live", which
+  // is what green means on the pill, the countdown and the pulse dot; on a clock
+  // it now means ON TIME. Splitting it was the point rather than a consequence:
+  // one style could only ever paint one colour, so a late clock was green.
+  tripColTimeOnTime: { color: CD_GREEN },
+  tripColTimeLate: { color: CD_LATE },
   // 12 IS THE FLOOR AND THIS IS AT IT. The date and the zone are the safety half
   // of this card -- which day, whose clock -- and they do not go smaller to fit.
   // If they cannot fit they wrap; see the note at the element.
@@ -5137,7 +5289,19 @@ const s = StyleSheet.create({
     // centring moved to the row's own justifyContent. textAlign is kept for the
     // reason it was kept before: it is what decides the word's place the moment
     // anything gives this element a width.
+    //
+    // textTransform IS NEW AND IS INSURANCE RATHER THAN THE MECHANISM. The pill
+    // rendered "scheduled" in lowercase because it was printing effectiveStatus's
+    // raw word and nothing here uppercased it; it now prints flight.status, and
+    // badgeLabel already returns capitals -- every entry in BADGE_LABEL is
+    // uppercase and the fallback calls toUpperCase. So this changes nothing today
+    // and guarantees the pill matches every other label on the card if a word
+    // ever reaches it by another route.
+    //
+    // NO COLOUR HERE. The call site supplies it from flight.statusColor, which is
+    // the whole point of the change -- see the note there.
     textAlign: "center", fontFamily: MONO, fontSize: 11,
+    textTransform: "uppercase",
   },
   // TWO COLUMNS UNDER THE DATE: identity on the left, movements on the right.
   airportSplit: { flexDirection: "row" },
