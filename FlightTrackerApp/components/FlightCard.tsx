@@ -1268,23 +1268,65 @@ function TripRoute({ from, to }: { from: string; to: string | null }) {
 // mono, an airline is a name and takes Inter. A nested Text inherits size and
 // colour and overrides only the family.
 //
-// THE AIRCRAFT TYPE IS NOT HERE, AND THAT IS A DECISION RATHER THAN AN OMISSION.
-// It was the third fact on this line and it is the one nobody standing in a
-// terminal is asking: which metal is flying does not change where to stand, when
-// to be there, or whether the flight is running. It survives in the card's
-// SHEET, under Aircraft, where the archival facts live -- so it is one tap away
-// rather than gone.
+// THE AIRCRAFT TYPE IS BACK, AND THIS NOTE ARGUED THE OTHER WAY FOR A WHILE. It
+// said the model is the one fact nobody standing in a terminal is asking, that
+// which metal is flying does not change where to stand or when to be there, and
+// that the sheet was one tap away. Every clause of that is still true and it was
+// still the wrong call: a trip card is read on the aircraft as often as in the
+// terminal, and by then where to stand is settled and what you are sitting in is
+// the interesting thing. It costs a third of a quiet line.
 //
-// THE `aircraft` PROP WENT WITH IT. It existed so the two ended phases could
-// drop the type while the two live ones kept it; with nothing to drop, a
-// parameter that every caller passes the same value to is a parameter that has
-// stopped saying anything.
-function TripIdent({ flight }: { flight: FlightData }) {
+// THE `aircraft` PROP CAME BACK WITH IT, and it is the same shape it had before:
+// the two LIVE phases pass it and the two ENDED phases do not. A landed or
+// cancelled flight is read to find out what happened, and the metal is not part
+// of that.
+//
+// ONE CALL SITE COVERS BOTH LIVE PHASES. Phases one and two share a block -- the
+// route and the identity above the columns -- so the flag is written once and
+// cannot come to differ between them.
+//
+// OMITTED ENTIRELY WHEN ABSENT, separator included. hasTime is the app's one
+// reading of "is this a real value" and catches the "N/A" the backend writes as
+// well as null. No dash: a card that prints "· —" is a card reporting on its own
+// data quality.
+//
+// THE FAMILIES ARE SPLIT INSIDE THE LINE, which is the whole reason it is
+// nested Texts rather than one string: a flight number is machine data and takes
+// mono, an airline is a name and takes Inter, and a model is a designation --
+// "A380-800" is a part number -- so it takes mono with the number.
+//
+// ── THE SEPARATOR IS THREE CHARACTERS NOW, AND THE MODEL IS WHY ───────────
+//
+// IT WAS '  ·  ', which at 13pt mono is 39 points EACH -- two of them are 78, a
+// third of the card's 230pt interior spent on punctuation. ' · ' is 23.4, and the
+// 31.2 that saves is the difference between losing three characters of the model
+// at 320pt and losing seven.
+//
+// IT DOES NOT FIT AT 320pt AND THAT IS ACCEPTED. Measured at 13pt: "EK500" is
+// 39.0 mono, "Emirates" 53.2 Inter, "Airbus A380-800" 117.0 mono, so with two
+// separators the line is 256.0 against 230 -- over by 26, about three characters.
+// It clears at 375pt and above. Even the shortest common model, "Boeing 787-9",
+// was over by 2.6 at the old separator width, so there is no arrangement that
+// fits the narrowest device.
+//
+// AND THE MODEL IS WHAT ELLIPSISES, WHICH IS THE WHOLE REASON THAT IS TOLERABLE.
+// numberOfLines 1 with the default tail mode cuts the END of the line, and the
+// model is last -- so "Airbus A380-8..." stays identifiable where a truncated
+// terminal or flight number would not. The number and airline are never at risk:
+// even "Singapore Airlines", the longest carrier this app is likely to see, leaves
+// 32.4 points of room before the cut could reach it.
+function TripIdent({ flight, aircraft }: { flight: FlightData; aircraft?: boolean }) {
   return (
     <Text style={s.tripIdent} numberOfLines={1}>
       <Text style={s.tripIdentMono}>{flight.flight}</Text>
-      <Text style={s.tripIdentDot}>{'  ·  '}</Text>
+      <Text style={s.tripIdentDot}>{' · '}</Text>
       <Text style={s.tripIdentSans}>{flight.airline}</Text>
+      {aircraft === true && hasTime(flight.aircraft) && (
+        <>
+          <Text style={s.tripIdentDot}>{' · '}</Text>
+          <Text style={s.tripIdentMono}>{flight.aircraft}</Text>
+        </>
+      )}
     </Text>
   );
 }
@@ -4025,7 +4067,11 @@ export function FlightCard({
                     {(tripPhase === 'before' || tripPhase === 'air') && (
                       <>
                         <TripRoute from={flight.from} to={flight.to} />
-                        <TripIdent flight={flight} />
+                        {/* THE METAL, ON THE TWO LIVE PHASES ONLY. This block is
+                            shared by 'before' and 'air', so one flag covers both
+                            and they cannot drift; the landed and cancelled phases
+                            render their own TripIdent below and pass nothing. */}
+                        <TripIdent flight={flight} aircraft />
                       </>
                     )}
 
