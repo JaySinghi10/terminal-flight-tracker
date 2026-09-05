@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 # this file no longer names a provider anywhere, which is the whole point of the
 # translation layer and the one property worth protecting when editing it.
 import llm
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -43,11 +43,37 @@ logger = logging.getLogger("flight-tracker")
 
 app = FastAPI()
 
+# ONE ORIGIN, AND IT IS THE ONLY BROWSER THAT CALLS THIS SERVICE. The list was
+# ["*", <this>], which is "*" -- the named entry never did anything, because a
+# wildcard is checked first and matches everything.
+#
+# THE MOBILE APP IS NOT AFFECTED AND NEVER WAS. CORS is enforced by browsers,
+# against browsers; a native app sends no Origin header and is never preflighted.
+# Narrowing this cannot break iOS or Android, and widening it would not have
+# helped them.
+#
+# NOR IS THIS A SECURITY CONTROL, and it must not be mistaken for one. curl, a
+# script, or anything that is not a browser ignores every header below. What it
+# stops is one specific thing: a page on some other domain making calls to this
+# API from a visitor's browser. The secrets on the endpoints are what actually
+# guard them.
+#
+# METHODS AND HEADERS ARE WHAT THE ROUTES IN THIS FILE ACTUALLY USE. Five GET
+# routes and five POST, and no other verb exists here. OPTIONS is deliberately
+# absent: the preflight check compares Access-Control-Request-Method, which
+# carries the REAL method, and the middleware answers the OPTIONS request
+# itself. Content-Type is the only header any caller sends, and starlette
+# safelists it anyway -- it is written out so the intent is visible rather than
+# inherited.
+#
+# allow_credentials IS LEFT UNSET, so it is False. Nothing here uses cookies,
+# and the Gmail token /chat receives travels in the body rather than as a
+# credential -- so this setting is not what protects it.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*", "https://flight-tracker-navy-eight.vercel.app"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["https://flight-tracker-navy-eight.vercel.app"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 def search_gmail_for_flight(gmail_token: str):
@@ -618,6 +644,26 @@ def chat(req: ChatRequest):
 ALERT_WEBHOOK_SECRET = os.getenv("ALERT_WEBHOOK_SECRET")
 ALERT_READ_SECRET = os.getenv("ALERT_READ_SECRET")
 
+# THE THIRD SECRET, AND IT TRAVELS DIFFERENTLY FROM THE OTHER TWO.
+#
+# IN A HEADER, NOT THE PATH, AND THAT IS THE WHOLE REASON THIS IS NOT SPELLED
+# LIKE /alerts. Cloud Run writes the full request path into its access logs on
+# every single call, so a secret in the path is a secret copied into Cloud
+# Logging in plaintext, permanently, at whatever retention the project has.
+# /alerts has no choice -- the alert provider's dashboard accepts a URL and
+# nothing else -- and that is a constraint being tolerated there, not a pattern
+# worth repeating. These two are called by our own app, which can send a header.
+#
+# IT IS ALSO WEAKER THAN THE OTHER TWO, and being plain about that is the point:
+# this one is COMPILED INTO A SHIPPED MOBILE APP. Anyone who unpacks the binary
+# has it. It stops a stranger who merely knows the URL and nothing more.
+WATCH_SECRET = os.getenv("WATCH_SECRET")
+
+# The header the two watch endpoints read it from. Named here rather than
+# spelled twice: FastAPI derives "x-watch-secret" from the parameter name, and
+# this constant is what the log lines and any future caller refer to.
+WATCH_SECRET_HEADER = "X-Watch-Secret"
+
 # At most this much body in the log line. The log is a backstop, not a copy of
 # the payload — the bucket holds the payload — and one large delivery must not
 # push everything else out of a log view.
@@ -764,15 +810,40 @@ class UnwatchRequest(BaseModel):
     flight_date: str
 
 
-# KNOWN GAP, RECORDED ON PURPOSE: /watch and /unwatch are unauthenticated. Any
-# caller who knows the URL can register or remove a watch for any device id they
-# can guess — and a device id is a v4 UUID, so guessing one is the hard part
+# THE GAP IS NARROWED, NOT CLOSED, AND THE DIFFERENCE IS THE WHOLE NOTE.
+#
+# WHAT CHANGED: these two took nothing at all, so anyone who knew the URL could
+# register or remove a watch for any device id they could guess. They now
+# require a shared secret in the X-Watch-Secret header, compared with the same
+# _secret_ok the three /alerts endpoints use and failing to the same 404.
+#
+# WHAT DID NOT CHANGE: the secret ships inside a public mobile app. Anyone who
+# unpacks the binary has it, and can then still write to any device id they can
+# guess — and a device id is a v4 UUID, so guessing one remains the hard part
 # rather than the impossible part. The validation and the two caps in store.py
-# are the whole of the defence today. This must be closed before public launch;
-# it is acceptable now because the store holds nothing but flight numbers and
-# dates, and because a wrong write costs a notification rather than data.
+# are still doing the real work.
+#
+# SO THE BAR THIS CLEARS IS "not writable by a stranger with the URL", which is
+# worth having and is not the same thing as authenticated. What would actually
+# close it is proof that the caller owns the device id it is writing: a
+# per-device token issued on first launch and required thereafter. That is a
+# different change and this is not it.
+#
+# THE 404 IS NOT DECORATION EITHER. A 403 would confirm that the route exists
+# and only the secret was wrong, which is exactly what somebody probing wants
+# read back to them. See _alert_not_found, whose name is now slightly wrong for
+# one of its callers and which is reused anyway, because the alternative is
+# renaming a function three untouched endpoints depend on.
 @app.post("/watch")
-def watch(req: WatchRequest):
+def watch(req: WatchRequest, x_watch_secret: str | None = Header(default=None)):
+    # DEFAULT None RATHER THAN REQUIRED. A required header FastAPI cannot find
+    # is a 422 with a validation body naming the header, which both tells a
+    # prober what to send and is not the 404 this endpoint promises.
+    if not _secret_ok(x_watch_secret, WATCH_SECRET):
+        # The supplied value is NEVER logged. A rejected secret in a log is a
+        # secret in a log, and near-misses are what an attacker wants back.
+        logger.warning("watch rejected: bad or missing %s", WATCH_SECRET_HEADER)
+        return _alert_not_found()
     result = store.register_watch(
         req.device_id, req.push_token, req.platform, req.flight_number, req.flight_date,
     )
@@ -784,9 +855,12 @@ def watch(req: WatchRequest):
     return {"ok": True, "created": result.get("created")}
 
 
-# The same known gap as /watch above.
+# The same secret, the same 404, and the same narrowed gap as /watch above.
 @app.post("/unwatch")
-def unwatch(req: UnwatchRequest):
+def unwatch(req: UnwatchRequest, x_watch_secret: str | None = Header(default=None)):
+    if not _secret_ok(x_watch_secret, WATCH_SECRET):
+        logger.warning("unwatch rejected: bad or missing %s", WATCH_SECRET_HEADER)
+        return _alert_not_found()
     result = store.unregister_watch(req.device_id, req.flight_number, req.flight_date)
     if not result.get("ok"):
         logger.warning("unwatch rejected: %s", result.get("error"))
