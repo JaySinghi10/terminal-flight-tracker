@@ -702,7 +702,19 @@ function CollapsedLeg({ leg, state, belt, now, onPress }: {
           {cd !== null && (
             <View style={st.legTimeRow}>
               <Text style={st.legTimeLabel}>{cd.label}</Text>
-              <Text style={st.legTimeValue}>{cd.value}</Text>
+              {/* GREEN, WHICH IS WHAT THE OPEN CARD ALREADY DOES WITH THE SAME
+                  NUMBER. tripCountdown on the flight card is CD_GREEN because an
+                  interval is the one thing on a leg that changes while you look
+                  at it; the collapsed row was printing the identical value from
+                  the identical function in plain white, so the same fact was
+                  live on one surface and inert on the other.
+
+                  THE VALUE ONLY, AND THE LABEL STAYS DIM. "Departs in" is a
+                  caption and does not move; the figure beside it is what does.
+                  The open card carries no label at all -- it renders
+                  countdown.value alone -- so greening the label here would be
+                  colouring something that surface has no counterpart for. */}
+              <Text style={[st.legTimeValue, st.legCountdown]}>{cd.value}</Text>
             </View>
           )}
           {depCell !== null && hasTime(depCell.value) && (
@@ -776,9 +788,72 @@ export default function Flights() {
   // different leg. An id names the record.
   const [focusOverride, setFocusOverride] = useState<string | null>(null);
 
+  // ── AND WHICH TRIP, WHICH IS A SEPARATE DECISION AT A SEPARATE LEVEL ──────
+  //
+  // A SECOND STATE AND NOT A SECOND MEANING FOR focusOverride, which is per-LEG:
+  // it holds a leg id, it is looked up inside the focus trip's own leg list, and
+  // its clearing effect asks whether that leg is still showing. "Which leg is
+  // open" and "which trip is open" are different questions one level apart, and
+  // one state answering both would make that effect ambiguous about which
+  // decision it was discarding.
+  //
+  // A tripId, NOT AN INDEX INTO current, for exactly the reason focusOverride is
+  // an id rather than an index: tripsOf re-sorts as legs fly -- a trip whose last
+  // leg lands drops to rank 1 and moves -- so a stored index would silently come
+  // to name a different journey.
+  //
+  // NULL IS THE ORDINARY STATE AND MEANS "FOLLOW THE ORDERING". tripsOf puts the
+  // journey with the earliest leg still to fly first, which is almost always the
+  // one being taken; this is the user saying otherwise.
+  //
+  // IT DOES NOT SURVIVE A RELAUNCH, AND THAT IS THE DECISION RATHER THAN AN
+  // OMISSION. A persisted override would open a trip glanced at last week with
+  // nothing on screen saying an override existed or how to clear it -- silently
+  // wrong, and self-perpetuating. Resetting means every launch starts by
+  // following the journey, which is what currentLegIndex and nextLegIndex are
+  // built around. It also keeps one lifetime for one idea: focusOverride is
+  // in-memory and this is the same idea one level up.
+  const [tripOverride, setTripOverride] = useState<string | null>(null);
+
+  // THE TRIP THE SCREEN IS OPENED ON. current[0] unless the user has said
+  // otherwise and the trip they named is still showing.
+  //
+  // A MISS FALLS THROUGH TO current[0] HERE rather than waiting for the effect
+  // below to clear the override, so the render is already correct on the frame
+  // the trip stops existing. Same shape as openIdx.
+  //
+  // NULL WHEN THERE IS NOTHING, which the render already gates on.
+  const focus = useMemo(() => {
+    if (current.length === 0) return null;
+    if (tripOverride !== null) {
+      const t = current.find(legs => legs[0].tripId === tripOverride);
+      if (t !== undefined) return t;
+    }
+    return current[0];
+  }, [current, tripOverride]);
+
+  // EVERY TRIP THAT IS NOT THE ONE OPEN, AND IT IS NO LONGER slice(1). The focus
+  // can sit anywhere in the ordering now, so the others are whatever is left
+  // after it is taken out -- by identity, since these are the very arrays `focus`
+  // was chosen from.
+  const others = useMemo(
+    () => current.filter(legs => legs !== focus),
+    [current, focus],
+  );
+
+  // AND THE OVERRIDE IS DROPPED WHEN THE TRIP IT NAMES STOPS SHOWING -- every leg
+  // archived, or the last one disowned. The memo above already falls through, so
+  // this only tidies; it is here for the same reason its sibling below is, which
+  // is that a render must not write state.
+  useEffect(() => {
+    if (tripOverride === null) return;
+    if (!current.some(legs => legs[0].tripId === tripOverride)) setTripOverride(null);
+  }, [current, tripOverride]);
+
   // WHERE THE FOCUS TRIP'S ATTENTION SITS, and it is asked once rather than
-  // inside a map. current[0] is the journey being taken -- tripsOf decided that
-  // -- and every leg's state is measured against it.
+  // inside a map. `focus` is the journey being shown -- tripsOf ordered them and
+  // the user may have overruled that -- and every leg's state is measured
+  // against it.
   //
   // AN INDEX, because NEXT is the leg after this one and "after" is a position.
   // It was an id while the states were decided per leg from the clock; now that
@@ -795,21 +870,21 @@ export default function Flights() {
   // `now` IS A DEPENDENCY, because the window is a clock reading. It moves once a
   // minute, which is exactly how often the answer can change.
   const openIdx = useMemo(() => {
-    if (current.length === 0) return -1;
-    const legs = current[0];
+    if (focus === null) return -1;
+    const legs = focus;
     if (focusOverride !== null) {
       const i = legs.findIndex(l => l.id === focusOverride);
       if (i >= 0) return i;
     }
     return currentLegIndex(legs, now);
-  }, [current, focusOverride, now]);
+  }, [focus, focusOverride, now]);
 
   // AND THE ONE AFTER IT, WHICH IS THE ONLY LEG THAT MAY BE NEXT. Derived from
   // openIdx rather than computed alongside it, so the two cannot disagree about
   // which leg is open. See nextLegIndex.
   const nextIdx = useMemo(
-    () => (current.length === 0 ? -1 : nextLegIndex(current[0], now, openIdx)),
-    [current, now, openIdx],
+    () => (focus === null ? -1 : nextLegIndex(focus, now, openIdx)),
+    [focus, now, openIdx],
   );
 
   // AND IT IS DROPPED WHEN IT STOPS MEANING ANYTHING. The trip can change under
@@ -822,9 +897,9 @@ export default function Flights() {
   // state. The memo already falls through, so this only tidies up.
   useEffect(() => {
     if (focusOverride === null) return;
-    const showing = current.length > 0 && current[0].some(l => l.id === focusOverride);
+    const showing = focus !== null && focus.some(l => l.id === focusOverride);
     if (!showing) setFocusOverride(null);
-  }, [current, focusOverride]);
+  }, [focus, focusOverride]);
 
   // TAPPING A COLLAPSED LEG OPENS IT, AND TAPPING THE ONE THE JOURNEY WOULD
   // HAVE CHOSEN ANYWAY GIVES CONTROL BACK.
@@ -838,6 +913,29 @@ export default function Flights() {
   const openLeg = (legs: SavedFlight[], leg: SavedFlight) => {
     const i = currentLegIndex(legs, now);
     setFocusOverride(i >= 0 && legs[i].id === leg.id ? null : leg.id);
+  };
+
+  // ── AND TAPPING ANOTHER TRIP OPENS IT ─────────────────────────────────────
+  //
+  // openLeg's SHAPE ONE LEVEL UP, INCLUDING THE HALF THAT LOOKS REDUNDANT.
+  // Choosing the trip the ordering would have chosen anyway sets the override to
+  // NULL rather than to that trip's own id: the two would look identical on the
+  // frame they happen and are different states afterwards, because an override
+  // pinned to the natural choice stops the screen following. When that journey
+  // finishes and tripsOf promotes the next one, a pinned id would hold the screen
+  // on the trip behind it.
+  //
+  // AND IT CLEARS THE LEG OVERRIDE IN THE SAME BREATH. A leg id from the trip
+  // being left cannot be found in the trip being opened, so openIdx would fall
+  // through to currentLegIndex and the effect would tidy up a render later --
+  // correct either way. It is stated here rather than relied upon because a
+  // fall-through that is load-bearing is a fall-through somebody later simplifies
+  // away.
+  const chooseTrip = (legs: SavedFlight[]) => {
+    setFocusOverride(null);
+    setTripOverride(current.length > 0 && current[0] === legs
+      ? null
+      : legs[0].tripId);
   };
 
   // WHAT CAN BE IMPORTED: watched, not already owned, not already archived.
@@ -1110,7 +1208,17 @@ export default function Flights() {
                       activeOpacity={0.7}
                       onPress={() => add(f)}
                       accessibilityRole="button"
-                      accessibilityLabel={`add ${f.flightNumber} to this trip`}
+                      // "TO MY FLIGHTS", NOT "TO THIS TRIP". It said the latter
+                      // while calling ownFlight with no trip id, which minted a
+                      // new one -- so the label named an outcome that could not
+                      // happen. It can happen now, and the label is still wrong
+                      // for a different reason: whether this flight joins the
+                      // open trip, joins a different one, or starts its own is
+                      // decided by the airports and the clock AFTER the tap. The
+                      // honest label is the destination the user is choosing,
+                      // which is the screen -- and it is the word the toast
+                      // already uses. See OWN_MSG.
+                      accessibilityLabel={`add ${f.flightNumber} to My Flights`}
                     >
                       <View style={st.cardEdge} pointerEvents="none" />
                       <View style={st.legHead}>
@@ -1185,7 +1293,7 @@ export default function Flights() {
             takes the full button in the middle of the page instead. */}
         <View style={st.titleRow}>
           <Text style={st.title}>{'My Flights'}</Text>
-          {current.length > 0 && headerAdd}
+          {focus !== null && headerAdd}
         </View>
         {/* HOME'S OWN CLOCK LINE, character for character: 15pt MONO at 0.4,
             3 under the title. It reads the tick this screen already keeps for
@@ -1193,7 +1301,12 @@ export default function Flights() {
             second one. */}
         <Text style={st.clock}>{formatClock(now)}</Text>
 
-        {current.length === 0 ? (
+        {/* focus === null RATHER THAN current.length === 0, and the two are the
+            same condition -- focus is null exactly when there is no trip to show.
+            Written this way it also NARROWS: everything in the other branch reads
+            `focus` as a leg list rather than as a maybe-null, so the render needs
+            no assertions of its own. */}
+        {focus === null ? (
           // ── NOTHING YET, AND IT IS THE CENTRE OF THE SCREEN ──
           //
           // THE SEARCH SCREEN'S OWN NO-RESULTS TREATMENT, character for
@@ -1213,9 +1326,9 @@ export default function Flights() {
         ) : (
           <>
             {/* ── THE FOCUS TRIP, AT THREE LEVELS OF ATTENTION ──
-                current[0] is the journey with the earliest leg still to fly —
-                tripsOf decided that — so it is the one being taken, and it is
-                the only one this screen opens out.
+                `focus` is the journey with the earliest leg still to fly —
+                tripsOf decided that — or whichever one the user has tapped, and
+                it is the only one this screen opens out.
 
                 IT USED TO OPEN OUT EVERY LEG EQUALLY, and that was the mistake.
                 A four-leg journey was four full cards, each with its own gate,
@@ -1257,7 +1370,7 @@ export default function Flights() {
             <View style={st.tripWrap}>
               <View style={st.rail} pointerEvents="none" />
               <View style={st.trip}>
-              {current[0].map((leg, i) => {
+              {focus.map((leg, i) => {
                 // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
                 // indices and the landing; nothing below re-derives any of them,
                 // and no clock is consulted here at all -- both windows were
@@ -1272,9 +1385,9 @@ export default function Flights() {
                     <CollapsedLeg
                       leg={leg}
                       state={state}
-                      belt={showsBelt(current[0], i, now)}
+                      belt={showsBelt(focus, i, now)}
                       now={now}
-                      onPress={() => openLeg(current[0], leg)}
+                      onPress={() => openLeg(focus, leg)}
                     />
                 ) : (
                 <FlightCard
@@ -1304,9 +1417,9 @@ export default function Flights() {
                   // about this leg's position in the trip, and the trip is here.
                   // The card still decides the other half, which is whether the
                   // flight has landed.
-                  bagsClaimedHere={bagEligible(current[0], i)}
+                  bagsClaimedHere={bagEligible(focus, i)}
                   // WHERE THIS LEG SITS IN THE JOURNEY, and both numbers were
-                  // already here -- `i` is the map index and current[0] is the
+                  // already here -- `i` is the map index and `focus` is the
                   // ordered leg list bagEligible above is reading. Nothing is
                   // derived and no trip model crosses the boundary; the card
                   // gets a position and a total, which is all a header tag is.
@@ -1315,7 +1428,7 @@ export default function Flights() {
                   // this saw them, so "leg 2 of 4" means the second flight taken
                   // rather than the second record stored.
                   legIndex={i}
-                  legCount={current[0].length}
+                  legCount={focus.length}
                   // THE SAME COUNTDOWN THE COLLAPSED ROWS TAKE, from the same
                   // function on the same tick. The open card and the row above
                   // it must not disagree about how long is left, and one
@@ -1345,8 +1458,8 @@ export default function Flights() {
                         are wrapped, which also keeps the two variants the same
                         distance from the line. */}
                     <View style={st.legSlot}>{card}</View>
-                    {i < current[0].length - 1 && (
-                      <Layover prev={leg} next={current[0][i + 1]} />
+                    {i < focus.length - 1 && (
+                      <Layover prev={leg} next={focus[i + 1]} />
                     )}
                   </Fragment>
                 );
@@ -1354,16 +1467,40 @@ export default function Flights() {
               </View>
             </View>
 
-            {/* EVERY OTHER TRIP, AS ONE LINE. They exist and are worth seeing;
-                they are not what the screen is about. Nothing is pressable yet
-                — a tap that swapped the focus is a decision this screen has not
-                been asked to make. */}
-            {current.length > 1 && (
+            {/* EVERY OTHER TRIP, AS ONE LINE, AND EACH ONE OPENS. They were
+                inert, and the note here said a tap that swapped the focus was a
+                decision this screen had not been asked to make. It has been now.
+
+                NOT slice(1) ANY MORE. The focus can sit anywhere in tripsOf's
+                ordering once the user has overruled it, so these are whatever is
+                left after it is removed -- see `others`.
+
+                THE DIM ON PRESS IS THE WHOLE AFFORDANCE, at the same 0.7 every
+                other surface in this app uses, and there is no chevron: the route
+                card's own note makes the argument, and a marker here would be
+                chrome on a line that is one line precisely because it is not the
+                subject.
+
+                THE ROW IS PADDED RATHER THAN hitSlop'd. At 11pt the text is about
+                14 points tall, which is not a target; 8 above and below makes 30,
+                and padding does it without the overlapping touch regions hitSlop
+                would create against an 8pt gap. It is still under the 44 a
+                primary control should have -- accepted, because the same journey
+                is reachable by scrolling and this is the secondary way in. */}
+            {others.length > 0 && (
               <View style={st.others}>
-                {current.slice(1).map((legs, i) => (
-                  <Text key={legs[0].tripId ?? String(i)} style={st.otherLine} numberOfLines={1}>
-                    {`${legs[0].flightNumber}  ${legs[0].from.iata} → ${legs[legs.length - 1].to.iata}  ${routeDateLabel(legs[0].flightDate)}`}
-                  </Text>
+                {others.map((legs, i) => (
+                  <TouchableOpacity
+                    key={legs[0].tripId ?? String(i)}
+                    activeOpacity={0.7}
+                    onPress={() => chooseTrip(legs)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`open ${legs[0].from.iata} to ${legs[legs.length - 1].to.iata}`}
+                  >
+                    <Text style={st.otherLine} numberOfLines={1}>
+                      {`${legs[0].flightNumber}  ${legs[0].from.iata} → ${legs[legs.length - 1].to.iata}  ${routeDateLabel(legs[0].flightDate)}`}
+                    </Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -1551,10 +1688,29 @@ const st = StyleSheet.create({
   // the head of this column and takes the column's value treatment. One entry
   // rather than two identical ones.
   legTimeValue: { fontFamily: MONO_BOLD, fontSize: 15, color: '#ffffff', textAlign: 'right' },
+  // COLOUR ONLY, so the 15, the mono bold and the right alignment all still come
+  // from legTimeValue above and the row cannot change size when a countdown
+  // lands. It is composed on top rather than forked because every other value in
+  // this column -- the route, the departure clock, the belt -- stays white, and
+  // only the interval is live.
+  //
+  // CD_GREEN IS THE FLIGHT CARD'S OWN CONSTANT, imported rather than respelled:
+  // tripCountdown over there is the same colour on the same figure from the same
+  // countdown() call, and one hex written twice is how the row and the card it
+  // collapses into come to disagree.
+  legCountdown: { color: CD_GREEN },
 
   // ── THE OTHER TRIPS ──
-  others: { marginTop: 20, gap: 8 },
-  otherLine: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.5)' },
+  // gap 4 RATHER THAN 8, because the rows carry 8 of their own padding now and
+  // the space between two lines of text is what the eye reads -- 4 of gap plus 16
+  // of facing padding is the 20 that 8 alone used to be, near enough.
+  others: { marginTop: 20, gap: 4 },
+  // paddingVertical 8 IS THE TOUCH TARGET. See the note at the rows: 14pt of text
+  // and 16 of padding is 30, which is what a secondary control gets here.
+  otherLine: {
+    fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.5)',
+    paddingVertical: 8,
+  },
 
   // ── THE ONE ADD CONTROL ──
   //

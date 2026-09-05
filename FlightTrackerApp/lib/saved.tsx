@@ -39,6 +39,10 @@ import {
   setFlightArchived,
   setFlightReminders,
   setFlightTrip,
+  // THE MERGE'S WRITE. See its note in storage: one read, one map, one write,
+  // because a merge is one act on several records and setFlightTrip is one act
+  // on one.
+  setFlightsTrip,
   savedFlightFromApi,
   ISO_DAY_RE,
   migrateLegacyIfNeeded,
@@ -427,6 +431,196 @@ export function tripsOf(list: SavedFlight[], now: number): SavedFlight[][] {
       const kb = tripSortKey(b, now);
       return ka.rank !== kb.rank ? ka.rank - kb.rank : ka.when - kb.when;
     });
+}
+
+// ── WHEN TWO FLIGHTS ARE ONE JOURNEY ────────────────────────────────────────
+//
+// THREE CONDITIONS AND NOTHING ELSE, and all three must hold. The arrival
+// airport of the earlier leg is the departure airport of the later one; the
+// later one leaves AFTER the earlier one lands; and the wait between them is
+// under a day. Any failure and the two flights stay separate -- there is no
+// prompt, no partial match and nothing to confirm, because a rule that asks is a
+// rule that has not decided.
+//
+// AIRPORT IDENTITY, NOT TERMINAL. Changing terminal at one airport is still a
+// connection -- it is most of what a connection IS -- and a different airport in
+// the same city is not one, however short the taxi. LHR to LGW is a journey the
+// traveller makes on the ground and this app knows nothing about it.
+const MAX_CONNECTION_MS = 24 * 60 * 60 * 1000;
+
+// ── AN AIRPORT CODE, OR NOTHING, AND THE EMPTY STRING IS NOTHING ────────────
+//
+// THIS IS THE ONE THAT WOULD HAVE BITTEN. endpointFromApi writes `iata: raw?.iata
+// ?? ''` -- an ABSENT code becomes the empty string, not null -- and isValid only
+// checks that the field is a string, so '' passes validation and reaches storage.
+// A bare `earlier.to.iata === later.from.iata` is therefore TRUE for two records
+// that both lack a code, and would link two flights at an airport that does not
+// exist.
+//
+// SO EMPTINESS IS TESTED BEFORE EQUALITY, and null is the answer. A null can then
+// never equal a real code, which makes the comparison below fail closed by
+// construction rather than by a guard somebody has to remember.
+//
+// TRIMMED AND UPPERCASED. The provider sends uppercase and savedFlightFromApi
+// normalises the flight NUMBER but not this field, so the normalisation happens
+// here -- the same one makeFlightId already applies to a number. This app reads
+// '' as absent in two other places already: flightUrl's `f.from.iata || null` at
+// both of its call sites.
+function hubOf(code: string): string | null {
+  const c = code.trim().toUpperCase();
+  return c === '' ? null : c;
+}
+
+// THE WAIT BETWEEN TWO LEGS IF THEY CONNECT, or null if they do not.
+//
+// A DURATION RATHER THAN A BOOLEAN, because the caller needs the number: when a
+// flight could join more than one trip on the same side, the shortest gap is
+// what decides. Returning true and asking again for the figure would be the test
+// run twice.
+//
+// arrivalTs AND departureTs DIRECTLY, AND NEVER THROUGH NO_TIME. Both already
+// resolve actual, then estimate, then schedule against the airport's own zone --
+// which is the only way a gap across two zones is right -- and both return null
+// when there is no ISO or no timezone. NO_TIME is a SORT sentinel that callers
+// substitute for that null -- legsOfTrip and savedSortKey both do it -- and it is
+// Number.MAX_SAFE_INTEGER: fed into this subtraction it would produce an enormous
+// positive gap on one side and a plausible small one on the other. A null here is
+// a record whose times cannot be read, and that is not evidence of a connection.
+//
+// STRICTLY POSITIVE. A later leg that departs at the exact millisecond the
+// earlier one lands is a stored artefact rather than a connection. This is one
+// millisecond stricter than Layover's own `dep >= arr`, which renders a gap it is
+// given; this decides whether there is one.
+function connectionGap(earlier: SavedFlight, later: SavedFlight): number | null {
+  const hub = hubOf(earlier.to.iata);
+  if (hub === null || hub !== hubOf(later.from.iata)) return null;
+  const arr = arrivalTs(earlier);
+  const dep = departureTs(later);
+  if (arr === null || dep === null) return null;
+  const gap = dep - arr;
+  return gap > 0 && gap < MAX_CONNECTION_MS ? gap : null;
+}
+
+// WHEN A TRIP BEGAN, for deciding which id survives a merge. NO_TIME for a trip
+// whose legs carry no readable departure at all, so it LOSES rather than winning
+// by accident -- the same reading legsOfTrip gives that sentinel.
+function tripStart(list: SavedFlight[], tripId: string): number {
+  let earliest = NO_TIME;
+  for (const f of list) {
+    if (f.tripId !== tripId) continue;
+    const t = departureTs(f);
+    if (t !== null && t < earliest) earliest = t;
+  }
+  return earliest;
+}
+
+// WHICH TRIP A NEWLY OWNED FLIGHT JOINS, AND WHAT HAS TO MOVE FOR IT TO.
+//
+// `absorb` IS THE MERGE. It is empty in the ordinary case and holds the ids of
+// every leg of a trip being folded into another when the new flight BRIDGES two.
+export type TripJoin = { tripId: string; absorb: string[] };
+
+// A TRIP WHOSE LEGS HAVE ALL BEEN ARCHIVED IS NOT A CANDIDATE, and this is the
+// fourth condition -- added knowingly, on top of the three at MAX_CONNECTION_MS.
+// The other three are facts about two flights; this is a fact about the journey
+// one of them is already part of. A landed leg and a departure eight hours later
+// satisfy all three -- same airport, positive gap, under a day -- so without this
+// a new flight would drag a finished journey back onto the rail as though the
+// traveller were still on it.
+//
+// THE FILTER IS ON CANDIDACY, NOT ON MEMBERSHIP. An archived leg cannot ATTRACT a
+// new flight; but once a merge is decided, every leg of the absorbed trip moves,
+// archived ones included -- see the absorb list below. Leaving them behind under
+// a dead id would split the journey rather than join it.
+function detectTrip(
+  list: SavedFlight[],
+  record: SavedFlight,
+  now: number,
+): TripJoin | null {
+  const owned = list.filter(f =>
+    f.id !== record.id && f.tripId !== null && !isArchived(f, now));
+
+  // ── THE BEST TRIP ON ONE SIDE OF THE NEW FLIGHT ──
+  //
+  // `before` ASKS WHICH TRIP THE FLIGHT FOLLOWS and `after` which it precedes,
+  // and BOTH ARE ALWAYS ASKED. A flight saved out of order -- leg 3 before leg 2
+  // -- connects backwards rather than forwards, and a test that only looked
+  // forwards would leave it unlinked for ever after.
+  //
+  // AT MOST ONE TRIP PER SIDE, because at most one can be true. Two different
+  // trips arriving at the same airport before this flight leaves cannot both be
+  // the journey it continues: the traveller took one aircraft into that airport.
+  //
+  // THE SHORTEST GAP WINS. It is the only tie-break that is a fact about the
+  // CONNECTION rather than about the order records happened to be saved in, so
+  // the same set of flights groups the same way however it was entered -- and a
+  // two-hour wait is a likelier itinerary than a twenty-two-hour one when both
+  // are on the table.
+  //
+  // AND THE ID BREAKS AN EXACT TIE, lexicographically. Two gaps equal to the
+  // millisecond is not a case that happens; a rule that leaves it undecided is
+  // still a rule that can group one list two ways. newTripId embeds Date.now(),
+  // so lexicographic order is age order -- the established journey wins.
+  const bestOn = (follows: boolean): string | null => {
+    const best = new Map<string, number>();
+    for (const f of owned) {
+      const gap = follows ? connectionGap(f, record) : connectionGap(record, f);
+      if (gap === null) continue;
+      const id = f.tripId as string;
+      const prev = best.get(id);
+      if (prev === undefined || gap < prev) best.set(id, gap);
+    }
+    let win: string | null = null;
+    let winGap = 0;
+    best.forEach((gap, id) => {
+      if (win === null || gap < winGap || (gap === winGap && id < win)) {
+        win = id;
+        winGap = gap;
+      }
+    });
+    return win;
+  };
+
+  const before = bestOn(true);
+  const after = bestOn(false);
+
+  if (before === null && after === null) return null;
+  if (before === null) return { tripId: after as string, absorb: [] };
+  if (after === null) return { tripId: before, absorb: [] };
+  // ONE TRIP ON BOTH SIDES IS NOT A BRIDGE. A return leg rejoining the journey it
+  // left -- out on Monday, back on Friday -- connects to that trip at each end
+  // and is already part of it. There is nothing to merge.
+  if (before === after) return { tripId: before, absorb: [] };
+
+  // ── THE BRIDGE, WHICH IS THE CASE A SINGLE tripId CANNOT EXPRESS ──
+  //
+  // The new flight follows one journey and precedes another, so all three are one
+  // journey -- and writing one id onto this record would join one of them and
+  // orphan the other. This is what `absorb` is for and the only thing it is for.
+  //
+  // IT ARISES FROM SAVING OUT OF ORDER, which is the ordinary way it happens: leg
+  // 1 is owned, then leg 3 starts a trip of its own because nothing connected it,
+  // then leg 2 arrives and turns out to be the missing middle.
+  //
+  // THE SURVIVING ID IS THE TRIP THAT STARTED FIRST. A tripId NAMES a journey and
+  // a journey begins with its first leg, so the earlier journey absorbs the later
+  // one rather than the other way round. Independent of save order, which is what
+  // makes it stable. An exact tie falls to the id, as everywhere else here.
+  const keepFirst = (() => {
+    const a = tripStart(list, before);
+    const b = tripStart(list, after);
+    if (a !== b) return a < b;
+    return before < after;
+  })();
+  const keep = keepFirst ? before : after;
+  const gone = keepFirst ? after : before;
+  return {
+    tripId: keep,
+    // EVERY LEG OF THE ABSORBED TRIP, archived ones included. See the note at the
+    // candidacy filter: being unable to attract a new flight is not the same as
+    // being left behind when the journey you belong to is renamed.
+    absorb: list.filter(f => f.tripId === gone).map(f => f.id),
+  };
 }
 
 // ── WHAT A SAVE CAME TO ─────────────────────────────────────────────────────
@@ -908,16 +1102,36 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     setSavedFlights(await setFlightTrip(email, f.id, tripId));
   }, [email]);
 
+  // THE MERGE'S WRITE, AND IT IS NOT ON THE CONTEXT. One caller -- ownFlight --
+  // so it stays a local. setTrip is already exposed and has no caller outside
+  // this file; adding a second unreachable member beside it would be the same
+  // fault twice. When an unlink screen needs this it can be exposed then, with a
+  // reader to justify it.
+  const joinTrip = useCallback(async (ids: string[], tripId: string): Promise<void> => {
+    setSavedFlights(await setFlightsTrip(email, ids, tripId));
+  }, [email]);
+
   // ── THE USER IS FLYING THIS ONE ───────────────────────────────────────────
   //
   // TWO PATHS AND ONE OUTCOME. A flight already on the watchlist is simply
   // claimed; one that is not is saved first, because a trip's leg has to be a
   // record before it can carry a tripId.
   //
-  // tripId IS OPTIONAL AND ABSENT MEANS A NEW JOURNEY. Passing one is how a
-  // second leg joins a trip that already exists; omitting it mints one. There is
-  // no separate "start a trip" call, because starting a trip and owning its
-  // first leg are the same act.
+  // tripId IS OPTIONAL AND ABSENT NOW MEANS "WORK IT OUT", WHICH IS THE CHANGE.
+  // It used to mean "mint a new one", and because BOTH call sites omit it, every
+  // owned flight became a separate one-leg trip and two flights could never come
+  // to share an id by any path in the app. The parameter was the whole mechanism
+  // for a second leg joining a trip and nothing ever passed it.
+  //
+  // SO DETECTION SUPPLIES IT. See detectTrip: three conditions on the airports
+  // and the clock, plus the archived-trip exclusion, and a merge when the new
+  // flight bridges two journeys. Minting is what happens when nothing connects,
+  // which is still the common case and still needs no separate call -- starting a
+  // trip and owning its first leg are the same act.
+  //
+  // AN EXPLICIT tripId STILL WINS AND SKIPS DETECTION ENTIRELY. Nothing passes
+  // one today; when a screen offers "add to this trip" by hand, a choice the user
+  // has actually made must not be second-guessed by a rule.
   //
   // countsToward () => false, AND THIS IS THE ONE THING THAT MUST NOT BE LEFT
   // OUT. MAX_SAVED_FLIGHTS is a limit on the WATCHLIST -- on how many flights
@@ -947,17 +1161,31 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     record: SavedFlight,
     tripId?: string,
   ): Promise<{ ok: true; remind: RemindOutcome }> => {
-    const trip = tripId ?? newTripId();
+    // THE LIST AS IT STANDS AFTER THE SAVE, not as it stood when this callback
+    // was formed. Detection reads it, and a record saved on the line above has to
+    // be in what it reads -- saveFlight returns the written list precisely so the
+    // caller does not have to wait for a setState it cannot observe in its own
+    // turn.
+    let list = savedFlights;
     if (!savedFlights.some(f => f.id === record.id)) {
       // Never 'limit' -- see the note above. The list is set here as well as by
-      // setTrip below, so the record is in state before anything reads it back.
+      // joinTrip below, so the record is in state before anything reads it back.
       const result = await saveFlight(email, record, () => false);
       setSavedFlights(result.flights);
+      list = result.flights;
       registerWatch(API_BASE, record.flightNumber, record.flightDate);
     }
-    await setTrip(record, trip);
+    // ONLY WHEN NOTHING WAS ASKED FOR. An explicit id is the user's decision and
+    // detection does not get a vote on it.
+    const found = tripId === undefined ? detectTrip(list, record, Date.now()) : null;
+    const trip = tripId ?? found?.tripId ?? newTripId();
+    // ONE WRITE FOR THE WHOLE JOURNEY. The record itself always, plus every leg
+    // of an absorbed trip when this flight bridged two -- see detectTrip. In the
+    // ordinary case absorb is empty and this is exactly the single-record write
+    // setTrip used to do.
+    await joinTrip([record.id, ...(found?.absorb ?? [])], trip);
     return { ok: true, remind: await enableReminders(record) };
-  }, [email, savedFlights, setTrip, enableReminders]);
+  }, [email, savedFlights, joinTrip, enableReminders]);
 
   // GIVES THE FLIGHT BACK TO THE WATCHLIST, and does NOT unsave it.
   //

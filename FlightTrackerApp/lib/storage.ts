@@ -604,6 +604,53 @@ export async function setFlightTrip(
   return next;
 }
 
+// ── THE SAME FIELD ON SEVERAL RECORDS, IN ONE WRITE ─────────────────────────
+//
+// setFlightTrip ABOVE IS STILL THE RIGHT SHAPE FOR ONE RECORD and is untouched:
+// disowning is a decision about a single flight. This exists because MERGING is
+// not, and doing it by calling that one N times is wrong three times over.
+//
+// IT WOULD BE N ROUND TRIPS. Each call reads the whole list, splices one record
+// and writes the whole list back; a three-leg merge is three of those for one
+// logical act.
+//
+// IT WOULD NOT BE ATOMIC. A write that fails partway leaves the journey split
+// across two ids with the boundary moved -- which is worse than not merging at
+// all, because the user had two coherent trips before and has two incoherent
+// ones after.
+//
+// AND EVERY INTERMEDIATE STATE WOULD RENDER. Each call ends in a setSavedFlights
+// upstream, so a merge would flash My Flights through the groupings it is
+// passing between.
+//
+// ONE READ, ONE MAP, ONE WRITE. As atomic as this storage layer gets.
+//
+// A Set RATHER THAN indexOf PER RECORD, so the walk is linear rather than
+// quadratic in the number of legs being moved.
+//
+// UNCHANGED RECORDS ARE RETURNED BY IDENTITY and an all-no-op call writes
+// nothing. An id that names no record is simply not found -- the same silence
+// setFlightTrip gives for a missing index, and the right one: a merge that
+// races a deletion should move what is still there rather than fail whole.
+export async function setFlightsTrip(
+  email: string | null,
+  ids: string[],
+  tripId: string | null,
+): Promise<SavedFlight[]> {
+  const flights = await readKey(keyFor(email));
+  const want = new Set(ids);
+  if (want.size === 0) return flights;
+  let changed = false;
+  const next = flights.map(f => {
+    if (!want.has(f.id) || f.tripId === tripId) return f;
+    changed = true;
+    return { ...f, tripId };
+  });
+  if (!changed) return flights;
+  await writeKey(keyFor(email), next);
+  return next;
+}
+
 // Updates a stored record after a fresh lookup. No-op if not saved.
 //
 // targetId names the record to update, and defaults to the fresh record's own

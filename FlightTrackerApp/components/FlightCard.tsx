@@ -1351,20 +1351,35 @@ function TripIdent({ flight }: { flight: FlightData }) {
 // the figure went on its own line, and the answer was to make it shorter rather
 // than smaller.
 //
-// "-17m" IS FOUR CHARACTERS AND 28.8pt AT 12. With a single space between them
-// the pair is 96pt against 102.5 and clears by 6.5, at the size the card had
-// already settled on for a qualifier. Nothing about the clock changed.
+// FOUR CHARACTERS AND 28.8pt AT 12. With a single space between them the pair is
+// 96pt against 102.5 and clears by 6.5, at the size the card had already settled
+// on for a qualifier. Nothing about the clock changed.
 //
-// THE SIGN CARRIES WHAT THE WORDS DID, and it is not carrying it alone. A minus
-// is early and a plus is late -- the departure-board convention -- and the COLOUR
-// says the same thing again: amber for late, grey for early. The label above the
-// clock says whether the time has happened. Three devices, and the word was the
-// most expensive of them.
+// ── THE TRIANGLE, AND IT WAS A MINUS SIGN ─────────────────────────────────
 //
-// ASCII '-' AND '+', NOT U+2212. Both are certainly in JetBrains Mono at a fixed
-// advance, which is what the arithmetic above assumes; a typographic minus is a
-// character this app has never needed and would be one more thing that has to be
-// in a bundled face.
+// A BARE '-' IS NOT LEGIBLE TO SOMEBODY WHO HAS NOT BEEN TOLD THE CONVENTION.
+// It reads as punctuation before it reads as a direction, and the thing it is
+// signing -- whether a flight is running ahead of its timetable or behind it --
+// is the whole content of the figure.
+//
+// U+25BE AND U+25B4, THE SMALL POINTING TRIANGLES, AND THE FACES WERE CHECKED
+// RATHER THAN ASSUMED. Both are in JetBrainsMono_400Regular and _700Bold with an
+// advance of 600/1000 em -- 7.20pt at 12pt, character for character what the
+// hyphen and the plus measured -- so the arithmetic above is untouched by the
+// swap. U+02C4 and U+02C5, the modifier arrowheads, are ABSENT from both and
+// would have fallen back to a platform font at an advance nobody here can know.
+// That is the trap footerPlane documents for U+2708 and the reason the cmap is
+// read before a glyph goes in.
+//
+// SMALL RATHER THAN THE FULL U+25B2/U+25BC, which are also present at the same
+// width. At 12pt beside a 20pt clock the full triangles are heavy enough to
+// compete with the time; the small pair is the weight an inline sort indicator
+// is drawn at, which is exactly what this is.
+//
+// DOWN IS EARLY AND UP IS LATE, which is the minus and the plus it replaces
+// said in a shape: BELOW the timetable, or ABOVE it. Under budget and over
+// budget. The triangle carries which side of the schedule and the colour carries
+// whether that is good news, so neither has to do both.
 //
 // ONE NOTATION IN EVERY PHASE. Phase two's column is the card's full width and
 // has room for the prose -- but a figure that changes its spelling between phases
@@ -1376,10 +1391,32 @@ function TripIdent({ flight }: { flight: FlightData }) {
 // to compare -- see _delay_minutes -- which is silence rather than punctuality.
 // Both render nothing.
 //
-// NEITHER IS GREEN. Green means live on this card and nowhere else means anything
-// else; an early arrival is news about a time, not a statement that the time is
-// live. The green already sits on the clock beside it, where it says the same
-// thing the figure is quantifying.
+// ── GREEN HERE DOES NOT MEAN LIVE, AND THAT IS A DELIBERATE SECOND MEANING ──
+//
+// READ THIS BEFORE ASSUMING THE RULE WAS BROKEN BY ACCIDENT. Everywhere else on
+// this card green is CD_GREEN meaning LIVE: the status pill turns green when the
+// flight is in the air, the countdown is green because it is the one thing
+// changing while you look at it, the pulse dot is green because the aircraft is
+// moving, and tripColTime turns green when a clock is something other than the
+// timetable. One word, one colour.
+//
+// HERE IT MEANS BETTER THAN SCHEDULED. An early flight is not live and a late one
+// is not dead; the pair is green-good against amber-bad, which is a different
+// axis from live-against-not.
+//
+// IT WAS GREY AND GREY WAS WORSE. Holding the line "green means live" cost the
+// figure any colour at all -- rgba(226,226,226,0.5), the same ink as the date
+// under it -- so the one number on the card that says whether the flight is
+// running to plan was quieter than the zone label beside it. A rule kept at the
+// cost of the thing it was protecting is a rule being served rather than serving.
+//
+// THE AMBIGUITY IS SURVIVABLE BECAUSE OF WHERE IT SITS. This run is nested INSIDE
+// the clock's own Text, four points smaller, immediately after the time and
+// carrying a triangle -- so it is read as a qualifier ON that clock rather than
+// as a status of its own. A green pill and a green countdown are standalone
+// objects; this is an adverb.
+//
+// NO NEW COLOURS. CD_GREEN and CD_LATE, the two this file already imports.
 //
 // THE ONE CASE THAT DOES NOT FIT is a delay of 100 minutes or more on a 320pt
 // screen: "+120m" is 36pt and the trio comes to 103.2 against 102.5, so the
@@ -1388,7 +1425,7 @@ function TripIdent({ flight }: { flight: FlightData }) {
 // stays whole either way -- numberOfLines is 1 and the nested run is what gives.
 function delayText(delay: number | null | undefined): string | null {
   if (typeof delay !== 'number' || delay === 0) return null;
-  return `${delay > 0 ? '+' : '-'}${Math.abs(delay)}m`;
+  return `${delay > 0 ? '\u25B4' : '\u25BE'}${Math.abs(delay)}m`;
 }
 
 function TripColumn({ head, time, live, when, delay, rows }: {
@@ -1443,13 +1480,32 @@ function TripColumn({ head, time, live, when, delay, rows }: {
   // control inside a card. The card is SURFACE_1 on a #0a0a0a page; the pill is
   // one step above it. Nothing is invented and nothing is darker than the card.
   //
-  // IT WRAPS RATHER THAN STACKING, AND THAT IS WHAT ABSORBED THE THIRD BADGE. The
-  // pills are content-sized, so the row packs what fits and breaks where it must:
-  // in a 102.5pt phase-one column "Terminal" takes a line of its own at about 60
-  // and "Gate" and "Desk" share the next at roughly 42 and 43 with the 6pt gap
-  // between them. Three badges cost two lines rather than three, and phase two's
-  // full-width column still lays its pair out in one. No phase test, and nothing
-  // to keep in step with the phase machine.
+  // ONE TO A ROW, EACH FILLING THE COLUMN, AND THE LABEL DECIDED THAT.
+  //
+  // IT WRAPPED AND PACKED BEFORE: content-sized pills in a wrapping row, so
+  // "Terminal" took a line at about 60 and "Gate" and "Desk" shared the next.
+  // Three badges cost two lines. It also left ragged right edges, which is what
+  // this change came from.
+  //
+  // TWO TO A ROW DOES NOT FIT AT 320pt, AND THAT IS THE WHOLE ARGUMENT. A
+  // phase-one column is 102.5, so a half is 48.25 and the content box is 32.25
+  // once the 16 of horizontal padding comes off. "Terminal" is eight characters
+  // of 11pt Inter, about 44. It ellipsises -- on the card whose job is telling
+  // somebody which terminal to walk to. At 375pt it clears by two points and at
+  // 390 by six, so this is the narrowest device failing and no other; that is
+  // still a device people have.
+  //
+  // SO EACH PILL TAKES THE WHOLE COLUMN and the content box is 86.5, which every
+  // label clears by a wide margin. It costs about 51 points on the phase-one
+  // departure column -- three rows where the wrap made two -- and that was
+  // accepted deliberately: a truncated terminal is worse than a taller card.
+  //
+  // NO flex AND NO WIDTH ANYWHERE. This is a COLUMN now, so its children stretch
+  // on the cross axis by default and each pill is exactly the column's width
+  // without being told. flex: 1 would have been the obvious spelling and is the
+  // wrong one -- it resolves flexBasis to 0, and in a wrapping row that means
+  // every pill has zero hypothetical size, so nothing ever wraps and all three
+  // land on one line at a third of the width each.
   rows: { label: string; value: string | null; always?: boolean; pill?: boolean }[];
 }) {
   const shown = rows.filter(r => r.always === true || hasTime(r.value));
@@ -3611,26 +3667,40 @@ export function FlightCard({
 
                     space-between ONLY ON A TRIP LEG. Every other variant has one
                     child in this row and keeps the centring it has. */}
-                {/* ── WHICH LEG OF HOW MANY, ABOVE EVERYTHING ──
-                    IT SITS ABOVE THE STATUS ROW because it is the only thing on
-                    the card that is not about the flight: every other line says
-                    what THIS aircraft is doing, and this says where the card is
-                    in a journey. A tag at the very top is read once on the way in
-                    and then ignored, which is exactly the attention it deserves.
-
-                    airportTitle's VOICE, which is this card's own label
-                    treatment -- 11pt Inter SemiBold at 0.4, tracked and
-                    uppercased. It is the style the "FLIGHT CARD" heading used
-                    before that heading was removed for labelling the surface
-                    rather than the flight. This labels neither: it locates.
-
-                    BOTH NUMBERS OR NOTHING, and > 1 is the other half of the
-                    gate. See the props. */}
-                {tripVariant && legIndex !== undefined && legCount !== undefined
-                  && legCount > 1 && (
-                  <Text style={s.tripLeg}>{`LEG ${legIndex + 1} OF ${legCount}`}</Text>
-                )}
-                <View style={[s.airportHeadRow, tripVariant && s.airportHeadRowTrip]}>
+                {/* ── THE HEAD ROW, AND WHAT HOLDS IT OPEN ──
+                    THE PILL IS THE ONLY CHILD IN FLOW and everything else here is
+                    absolute, which is what centres it on the CARD rather than on
+                    whatever space its neighbours leave. justifyContent centre with
+                    one flow child puts that child's midpoint at the row's midpoint
+                    whatever its width -- and the pill's width varies with the word
+                    inside it, from "IN AIR" to "GATE CLOSED".
+                    THE PILL IS ALSO WHAT SIZES THE ROW, and that is the half of
+                    this that has bitten before. An absolutely positioned child
+                    contributes NO HEIGHT: Yoga skips it when it measures. That is
+                    exactly how removing the "FLIGHT CARD" heading once left this
+                    row at zero and dropped the status word onto the line beneath.
+                    Making the PILL absolute would have brought it straight back --
+                    a single-leg trip past departure has no tag and no countdown,
+                    so nothing would have been left in flow at all, and every
+                    non-trip card has that shape permanently.
+                    SO THE INVERSION IS THE POINT. The pill stays in flow and the
+                    two things that were pushing it around become absolute. The row
+                    is the pill's height -- 11pt of text and 3 either side, about 20
+                    -- in every case a pill renders.
+                    ONE CASE RENDERS NO PILL: a card with no stored record, which
+                    is an unsaved search result. The row is then empty and 0pt
+                    tall, and airportCard's gap of 14 is spent on nothing. That is
+                    unchanged rather than introduced -- the countdown is trip-only,
+                    so that row is empty today as well.
+                    THE ABSOLUTE CHILDREN TAKE THEIR VERTICAL PLACE FROM
+                    alignItems, which Yoga applies to them because neither sets a
+                    top or a bottom. That is the one behaviour here read from the
+                    layout engine's rules rather than from arithmetic.
+                    airportHeadRowTrip HAS GONE. It was space-between, which with a
+                    single flow child means flex-start -- it would put the pill at
+                    the left edge of every trip card. Centring is now right for
+                    every variant, so there is nothing left for it to override. */}
+                <View style={s.airportHeadRow}>
                   {/* THE WORD IN A CONTAINER, WHICH IT HAS NEVER HAD. It floated
                         on the card as loose text -- the only label in the app
                         carrying a status colour with nothing to carry it. A pill
@@ -3647,13 +3717,74 @@ export function FlightCard({
 
                         THE TWO FILLS ARE getStatusBg's OWN, restricted to two of
                       its five. No new colour enters the system. */}
-                  {/* THE PILL AND ITS DOT, AS ONE GROUP RATHER THAN TWO CHILDREN
-                      OF THE ROW. airportHeadRowTrip is space-between, so a third
-                      child would push the dot into the middle of the card
-                      instead of leaving it beside the word it qualifies. Grouped,
-                      the row still has two children and still puts the countdown
-                      at the far edge. */}
-                  <View style={s.airportHeadLive}>
+                  {/* ── WHICH LEG OF HOW MANY, PINNED TO THE LEFT EDGE ──
+                      ABSOLUTE, SO IT CANNOT MOVE THE PILL. It was a flow sibling
+                      and the pill sat beside it, which meant the pill's position
+                      was a function of how many legs the journey had -- "LEG 1 OF
+                      3" and no tag at all put the status in two different places
+                      on two cards in the same column.
+
+                      IT CONTRIBUTES NO HEIGHT EITHER, which is fine here and is
+                      the thing to be careful about: see the row. The pill is what
+                      holds the row open and the tag is shorter than it in every
+                      case -- 11pt of Inter against 11pt of text plus 6 of padding.
+
+                      THEY CAN COLLIDE, AND HERE IS WHEN. The card's interior is
+                      230pt at a 320pt screen. "LEG 1 OF 3" is ten characters of
+                      11pt Inter SemiBold with 1pt of tracking, about 72pt. The
+                      widest status is "GATE CLOSED" -- eleven characters of 11pt
+                      mono at 6.6 plus 16 of padding, 88.6 -- which centred spans
+                      70.7 to 159.3. So the worst realistic pair touches, and a
+                      double-digit "LEG 1 OF 10" would overlap by about eight
+                      points. The ordinary pairs clear: "SCHEDULED" starts at 77.3
+                      and "IN AIR" at 87.
+
+                      NOTHING GUARDS AGAINST IT, deliberately. A maxWidth here
+                      would truncate the tag to "LEG 1 OF 1..." on exactly the trip
+                      that needs the number, which is worse than two labels
+                      touching -- and the alternative, giving the pill a maxWidth,
+                      would clip the status word. If it proves ugly on a device the
+                      answer is a shorter tag, not a clip.
+
+                      airportTitle's VOICE, which is this card's own label
+                      treatment -- 11pt Inter SemiBold at 0.4, tracked and
+                      uppercased. It is the style the "FLIGHT CARD" heading used
+                      before that heading was removed for labelling the surface
+                      rather than the flight. This labels neither: it locates.
+
+                      BOTH NUMBERS OR NOTHING, and > 1 is the other half of the
+                      gate. See the props. */}
+                  {tripVariant && legIndex !== undefined && legCount !== undefined
+                    && legCount > 1 && (
+                    <Text style={[s.tripLeg, s.airportHeadTag]}>
+                      {`LEG ${legIndex + 1} OF ${legCount}`}
+                    </Text>
+                  )}
+                  {/* ── THE PILL AND ITS DOT, AND THE SPACER THAT KEEPS THEM
+                      SYMMETRICAL ──
+                      THIS GROUP IS THE ROW'S ONLY CHILD IN FLOW, so the row
+                      centres it -- and because the group is symmetrical about the
+                      pill, centring the group centres the PILL.
+                      WITHOUT THE SPACER IT WOULD NOT BE. A dot on the right alone
+                      makes the group 14pt wider on that side, so its midpoint is
+                      7pt right of the pill's and the pill would sit 7pt LEFT of
+                      the card's centre -- and only in phase two, so the status
+                      would visibly shift the moment the aircraft went airborne.
+                      That is the thing this whole arrangement exists to stop.
+                      A SPACER RATHER THAN HANGING THE DOT OFF THE PILL. An
+                      absolutely positioned child at left: '100%' would follow the
+                      pill and cost no width, which is tidier on paper -- and it
+                      puts a child outside a filled, rounded box, where Android's
+                      clipping is not something to assert on a card nobody has
+                      rendered. Six points of empty View has no such question.
+                      THERE IS PRECEDENT: g.sheetHeadSpacer is exactly the close
+                      button's width for exactly this reason -- so the sheet's
+                      title centres on the sheet rather than on the space left
+                      beside it. Same trick, same argument. */}
+                  <View style={s.airportHeadCentre}>
+                    {tripVariant && tripPhase === 'air' && (
+                      <View style={s.tripPulseSpacer} />
+                    )}
                     {flightRecord !== null && (
                       <View style={[
                         s.airportHeadPill,
@@ -3672,10 +3803,20 @@ export function FlightCard({
                   {/* AND ONLY WHILE SOMETHING IS STILL COMING. countdown() already
                       returns null once a leg has landed; this also drops it on a
                       cancelled or diverted flight, where the interval to a
-                      departure that will not happen is a number about nothing. */}
+                      departure that will not happen is a number about nothing.
+                      ABSOLUTE, AT THE RIGHT EDGE, for the tag's reason in mirror:
+                      in flow it was the far half of a space-between row, so the
+                      pill's place depended on whether an interval existed. It
+                      contributes no height either -- the pill holds the row open.
+                      IT HAS THE MOST ROOM OF THE THREE. "23h 45m" is seven
+                      characters of 15pt mono, 63pt, ending at 230 and starting at
+                      167 -- clear of even the widest pill's 159.3 by nearly eight
+                      points. The collision risk is all on the tag's side. */}
                   {tripVariant && (tripPhase === 'before' || tripPhase === 'air')
                     && countdown !== null && (
-                    <Text style={s.tripCountdown} numberOfLines={1}>{countdown.value}</Text>
+                    <Text style={[s.tripCountdown, s.airportHeadTail]} numberOfLines={1}>
+                      {countdown.value}
+                    </Text>
                   )}
                 </View>
 
@@ -4547,10 +4688,35 @@ const s = StyleSheet.create({
     paddingVertical: 3,
   },
   airportHeadPillLive: { backgroundColor: "#4ade8012" },
-  // THE PILL AND ITS DOT AS ONE OBJECT. See the call site: the trip row is
-  // space-between and a third child would put the dot in the middle of the card.
-  // 8 is the gap the swipe buttons leave around their own glyphs.
-  airportHeadLive: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // THE HEAD ROW'S ONE CHILD IN FLOW: the pill, its dot, and the spacer that
+  // balances the dot. See the call site -- this being the only thing the row lays
+  // out is what centres the pill and what holds the row open.
+  //
+  // IT HAS BEEN CALLED TWO OTHER THINGS AND BOTH STOPPED BEING TRUE.
+  // airportHeadLive, when it held only the pill and the dot; then airportHeadLeft,
+  // when the leg tag joined it and it sat against the left edge. The tag is
+  // absolute now and this is centred, so it is the CENTRE.
+  //
+  // alignItems center RATHER THAN baseline. A pill is a filled box and the dot is
+  // a 6pt disc; on a baseline the disc would sit on the pill's box baseline rather
+  // than level with the word inside it.
+  //
+  // 8 is the gap the swipe buttons leave around their own glyphs, and it falls on
+  // BOTH sides of the pill whenever the dot renders -- spacer, gap, pill, gap, dot
+  // -- which is what makes the group symmetrical. See the spacer.
+  airportHeadCentre: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // ── PINNED TO THE EDGES, CONTRIBUTING NOTHING ──
+  //
+  // POSITION ONLY. Both compose ON TOP of the style that already dresses the
+  // element -- tripLeg's 11pt tracked uppercase, tripCountdown's 15pt green mono
+  // -- so neither typography moved when they left the flow.
+  //
+  // NO top OR bottom, which is deliberate rather than an omission: with the cross
+  // axis unset Yoga places an absolute child by the container's alignItems, and
+  // the row's is center. Setting top: 0 would pin them to the top of a row sized
+  // by a taller pill.
+  airportHeadTag: { position: "absolute", left: 0 },
+  airportHeadTail: { position: "absolute", right: 0 },
   // ── THE AIRBORNE DOT ──
   //
   // 6pt, WHICH IS AS SMALL AS A THING CAN BE AND STILL BE SEEN TO BREATHE. Bigger
@@ -4565,9 +4731,21 @@ const s = StyleSheet.create({
   // to 0.25 and back -- and a value in this entry would be silently overridden on
   // the first, which is a line that looks like it does something and does not.
   tripPulse: { width: 6, height: 6, borderRadius: 3, backgroundColor: CD_GREEN },
-  // ONLY ON A TRIP LEG, where the row has a second child. Every other variant
-  // keeps one centred pill.
-  airportHeadRowTrip: { justifyContent: "space-between" },
+  // THE DOT'S WIDTH, AND NOTHING ELSE. It renders on the pill's LEFT whenever the
+  // dot renders on its right, so the group either side of the pill is 6 of element
+  // and 8 of gap both ways and the pill's midpoint is the group's midpoint. See
+  // the note at the call site for why this rather than an absolute dot.
+  //
+  // IT READS tripPulse's OWN 6 BY BEING THE SAME NUMBER, which is the one weakness
+  // here: two literals that must agree. A width read off the other entry is not
+  // something StyleSheet.create offers, and a shared constant for a single 6 used
+  // twice four lines apart would be harder to see than the pairing is.
+  tripPulseSpacer: { width: 6 },
+  // airportHeadRowTrip WENT WITH THE SPACE-BETWEEN LAYOUT. It made the trip row
+  // spread its children, which is meaningless now that the row has exactly one
+  // child in flow -- and worse than meaningless, since space-between on a single
+  // child resolves to flex-start and would put the pill at the card's left edge.
+  // Every variant centres now. See the row.
   // THE COUNTDOWN, AND IT IS THE ONE GREEN THING ON THE CARD. 15 rather than the
   // route's 20: it is the liveliest fact here, not the largest one, and colour is
   // what carries that rather than size.
@@ -4688,9 +4866,18 @@ const s = StyleSheet.create({
   // declared here because a nested run inherits everything it does not override,
   // and every one of the three differs.
   //
-  // GREY IS THE DEFAULT AND IT MEANS EARLY. Amber is the exception. Neither is
-  // green, for the reason at delayText.
-  tripColDelay: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
+  // CD_GREEN IS THE DEFAULT AND IT MEANS EARLY, WHICH IS NOT WHAT GREEN MEANS
+  // ANYWHERE ELSE ON THIS CARD. See the note at delayText: here the pair is
+  // green-good against amber-bad, not green-live against not-live. It was
+  // rgba(226,226,226,0.5) and that grey made the figure quieter than the date
+  // beneath it.
+  //
+  // THE COLOUR MUST BE DECLARED AND IS. This run is nested inside tripColTime,
+  // which is white or CD_GREEN depending on the clock; without a colour of its
+  // own it would inherit that and go green on every live flight regardless of
+  // whether the flight is early. Amber then replaces this rather than the
+  // parent's.
+  tripColDelay: { fontSize: 12, fontFamily: MONO, color: CD_GREEN },
   tripColDelayLate: { color: CD_LATE },
   // Label and value on one line, baseline-aligned so an 11pt word and a 13pt
   // value sit on the same rule rather than centred against each other.
@@ -4721,17 +4908,25 @@ const s = StyleSheet.create({
   //
   // 6 BOTH WAYS, which is tripCol's own gap: a wrapped pill sits the same
   // distance below its neighbour as the pill block sits below the clock.
-  tripPills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  tripPills: { gap: 6 },
   // SURFACE_2, AND IT IS READ RATHER THAN SPELLED. lib/cards defines the level as
   // "what sits on a SURFACE_1" and names this exact case -- a control inside a
   // card. The card is SURFACE_1; this is one step up from it, so the pill is
   // raised off the card rather than punched into it. Writing rgba(255,255,255,
   // 0.08) here instead would be the tenth unnamed alpha the scale exists to stop.
   //
-  // alignSelf flex-start SO A PILL IS ITS CONTENT'S WIDTH. A badge stretched
-  // across the column is a banner -- the same note airportHeadStatus makes about
-  // the status word -- and two full-width bars stacked would read as rows with a
-  // background rather than as badges.
+  // alignSelf IS GONE, AND THAT REVERSES WHAT THIS NOTE USED TO SAY. It was
+  // flex-start so a pill hugged its content, on the argument that a badge
+  // stretched across its container is a banner -- airportHeadStatus makes the
+  // same point about the status word.
+  //
+  // THE ARGUMENT WAS RIGHT ABOUT A PILL AND WRONG ABOUT A COLUMN OF THEM. One
+  // stretched badge does read as a banner; three stacked and aligned read as a
+  // TABLE, which is what they are -- three facts of one kind, each a label over a
+  // value. What made the hugging version look wrong was not the width but the
+  // RAG: three different widths down the left of a column with nothing lining up.
+  //
+  // Removing it lets the column's default stretch do the sizing. See tripPills.
   //
   // RADIUS 6 AND paddingHorizontal 8, WHICH ARE airportHeadPill'S. The card
   // already has a pill at the top of it, and a second pill shape at a different
@@ -4739,30 +4934,23 @@ const s = StyleSheet.create({
   // differs -- 5 against that one's 3 -- because this holds two stacked lines
   // where the status pill holds one.
   //
-  // ── TWO ALIGNMENTS DOING DIFFERENT JOBS, AND THEY ARE EASY TO CONFUSE ──
+  // alignItems center IS THE CONTENT AGAINST THE PILL, and it is the only
+  // alignment left here. The pill is a COLUMN, so this is its cross axis: the
+  // label and the value each size to their own text and centre on the badge's
+  // midline. It was flex-start by default, which left a two-character gate hard
+  // against the left edge under a much wider "Terminal".
   //
-  // alignSelf flex-start IS THE PILL AGAINST THE COLUMN. It stops the badge
-  // stretching across the column, so it hugs its content -- a stretched pill is
-  // a banner, which is the note airportHeadStatus makes about the status word.
-  // Unchanged.
+  // IT MATTERS MORE NOW THAN IT DID. While the pill hugged its content the badge
+  // was only ever as wide as its label, so centring moved the value by a few
+  // points. Full width, the box is 86.5 and a gate of "A12" would otherwise sit
+  // at the far left of it with sixty points of empty fill to its right.
   //
-  // alignItems center IS THE CONTENT AGAINST THE PILL, and it is the new one. The
-  // pill is a COLUMN, so this is its cross axis: the label and the value each
-  // size to their own text and centre on the badge's midline. It was flex-start
-  // by default, which left a two-character gate hard against the left edge under
-  // a much wider "Terminal" -- the badge looked padded on one side and cropped on
-  // the other.
-  //
-  // THE PILL'S WIDTH IS THE WIDER OF THE TWO and does not change: it is still
-  // whatever the label needs, because the label is always longer than a gate.
-  // What moves is the value, into the middle of the space the label already
-  // claimed.
+  // alignSelf WAS THE OTHER HALF OF THIS NOTE and has gone -- see above.
   tripPill: {
     backgroundColor: SURFACE_2,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 5,
-    alignSelf: "flex-start",
     alignItems: "center",
     gap: 2,
   },
