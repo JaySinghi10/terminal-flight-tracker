@@ -69,6 +69,10 @@ import { effectiveStatus, isArchived } from '../lib/saved';
 import {
   getStatusColor,
   routeDateLabel,
+  // THE ZONE THE BACKEND ALREADY PRINTED. See its note: the label is read off
+  // the provider's own string rather than derived, so the card cannot disagree
+  // with the time beside it.
+  zoneLabel,
   CD_GREEN,
   CD_LATE,
   StatusWord,
@@ -164,8 +168,67 @@ export type FlightData = {
   depTimeValue: string;
   arrTimeLabel: string;
   arrTimeValue: string;
+  // ── WHICH TIME IS BEING SHOWN, AND WHEN IT IS ─────────────────────────────
+  //
+  // THE ISO OF THE TIME ACTUALLY DISPLAYED, not of the schedule. depIso and
+  // arrIso above are the SCHEDULED pair and always were; the value on screen may
+  // be an actual or an estimate, and until now the ISO behind it was consumed by
+  // clock24 inside the two builders and thrown away. That is why a departed
+  // flight could not show the date of its own departure: the only ISO that
+  // survived described a time it did not depart at.
+  //
+  // NULL IS A REAL STATE: a pre-v3 record with no ISO at all, which renders a
+  // clock and no date rather than a guessed one.
+  depTimeIso: string | null;
+  arrTimeIso: string | null;
+  // WHICH OF THE THREE IT CAME FROM. It used to be readable only from the LABEL
+  // -- "Actual Departure" against "Estimated Departure" -- and the trip card no
+  // longer prints one, so the fact has to travel as data. It is also what the
+  // colour rule reads: a time is live because of where it came from, not because
+  // of what it says.
+  depTimeSource: TimeSource;
+  arrTimeSource: TimeSource;
+  // THE ARRIVAL'S TERMINAL, WHICH THIS TYPE HAS NEVER CARRIED. `terminal` below
+  // is the DEPARTURE's -- both builders read from.terminal into it -- and every
+  // layout until now printed one terminal because it showed one movement's
+  // facts. A two-column card names the terminal at each end, and the arrival
+  // half of that was simply not on the object.
+  //
+  // NULL WHEN ABSENT, exactly as its pair. See the note there.
+  arrTerminal: string | null;
+  // THE ARRIVAL'S GATE, WHICH THIS TYPE HAS NEVER CARRIED EITHER. `gate` below is
+  // the departure's, for the same reason `terminal` was: every layout before the
+  // two-column card showed one movement's facts.
+  //
+  // IT IS USUALLY NULL AND THAT IS NOT A FAULT. Most providers do not publish an
+  // arrival gate at all -- EK500's is null -- so the row it feeds will commonly
+  // be a label with an empty slot beside it. That is the honest state and is the
+  // case the empty slot exists for: a reader who sees Gate at both ends learns
+  // the card reports gates at both ends, and a reader who never sees it on the
+  // right learns something false.
+  //
+  // NULLABLE WHERE ITS PAIR IS NOT. `gate` still carries the "N/A" sentinel,
+  // because it was not part of the change that made the terminals nullable.
+  // hasTime reads the two identically, so nothing downstream can tell them
+  // apart -- but they should be reconciled the next time this type is touched.
+  arrGate: string | null;
   duration: string | null;
-  terminal: string;
+  // ── ABSENT IS null, NOT "N/A" ─────────────────────────────────────────────
+  //
+  // BOTH BUILDERS WROTE `|| "N/A"` INTO THIS FIELD and the sentinel then had to
+  // be recognised again at every reader -- which is what hasTime is, and why it
+  // has to test three things rather than one. A placeholder written at the
+  // source is a placeholder every consumer must remember to unwrite.
+  //
+  // NOTHING VISIBLE CHANGES ANYWHERE. hasTime("N/A") and hasTime(null) are both
+  // false, so AirportTile drew its em dash for the sentinel and draws it for the
+  // null; the trip column omitted the row and still omits it. What changes is
+  // that the ABSENCE is now expressed as absence.
+  //
+  // gate AND baggage STILL CARRY THE SENTINEL. They were not part of this change
+  // and are left alone rather than swept up with it; hasTime reads them exactly
+  // as it always has.
+  terminal: string | null;
   gate: string;
   checkinDesk: string | null;
   aircraft: string | null;
@@ -245,7 +308,13 @@ export function hasTime(v: string | null | undefined): v is string {
   return typeof v === 'string' && v.trim() !== '' && v !== 'N/A';
 }
 
-export type TimeCell = { label: string; value: string };
+// WHICH OF THE THREE TIMES A MOVEMENT IS SHOWING. The label used to be the only
+// record of this -- "Actual" against "Estimated" against "Scheduled" -- which
+// was fine while every surface printed the label. The trip card prints a column
+// header instead and carries the source in colour, so it needs the fact itself.
+export type TimeSource = 'actual' | 'estimated' | 'scheduled';
+
+export type TimeCell = { label: string; value: string; source: TimeSource };
 
 // Decides the "what happened / what is expected" row for one movement. Shared by
 // the fresh-search card and the saved-record card so the two cannot drift.
@@ -274,14 +343,14 @@ export function movementTimeCell(
   // no reader here, so it is off the signature and off all four call sites.
   // See the note at the tiles for what did NOT become dead with it.
   if (hasTime(actual)) {
-    return { label: `Actual ${noun}`, value: actual };
+    return { label: `Actual ${noun}`, value: actual, source: 'actual' };
   }
   // BOTH BRANCHES ARE BARE NOW, and the asymmetry this note used to explain has
   // gone with the suffix that caused it. " (predicted)" was removed long before
   // for the reason that now applies to both: a parenthetical restating its own
   // label. That is also why estimatedSource is not a parameter.
   if (hasTime(estimated)) {
-    return { label: `Estimated ${noun}`, value: estimated };
+    return { label: `Estimated ${noun}`, value: estimated, source: 'estimated' };
   }
   // NOTHING HAS BEEN REPORTED, SO THIS IS THE TIMETABLE AND IT SAYS SO.
   //
@@ -302,7 +371,26 @@ export function movementTimeCell(
   // estimated time, so a movement with neither carries a null delay and
   // movementTile leaves the value white and unqualified. The schedule is never
   // shown as running to time on the strength of being the schedule.
-  return { label: `Scheduled ${noun}`, value: scheduled };
+  return { label: `Scheduled ${noun}`, value: scheduled, source: 'scheduled' };
+}
+
+// THE ISO BEHIND THE TIME THAT WAS CHOSEN. movementTimeCell picks a VALUE; this
+// picks the matching ISO from the same three candidates, so the date under a
+// clock is the date OF that clock rather than of the schedule it replaced.
+//
+// A SWITCH RATHER THAN A FOURTH PRECEDENCE. Repeating "actual, then estimate,
+// then schedule" here would be a second copy of the rule, free to drift from the
+// one that chose the value -- which is the fault this whole field exists to fix.
+// The source is passed in; this only looks up.
+export function isoForSource(
+  source: TimeSource,
+  actualIso: string | null,
+  estimatedIso: string | null,
+  scheduledIso: string | null,
+): string | null {
+  if (source === 'actual') return actualIso;
+  if (source === 'estimated') return estimatedIso;
+  return scheduledIso;
 }
 
 // A not-yet-departed flight already running late reads better as "delayed" than
@@ -435,8 +523,16 @@ export function flightDataFromApi(data: any, effective?: string): FlightData {
     depTimeValue: depCell.value,
     arrTimeLabel: arrCell.label,
     arrTimeValue: arrCell.value,
+    depTimeSource: depCell.source,
+    arrTimeSource: arrCell.source,
+    depTimeIso: isoForSource(depCell.source,
+      dep.actual_iso ?? null, dep.estimated_iso ?? null, dep.scheduled_iso ?? null),
+    arrTimeIso: isoForSource(arrCell.source,
+      arr.actual_iso ?? null, arr.estimated_iso ?? null, arr.scheduled_iso ?? null),
     duration: scheduledDuration(dep.scheduled_iso ?? null, dep.timezone ?? null, arr.scheduled_iso ?? null, arr.timezone ?? null),
-    terminal: dep.terminal || "N/A",
+    terminal: dep.terminal ?? null,
+    arrTerminal: arr.terminal ?? null,
+    arrGate: arr.gate ?? null,
     gate: dep.gate || "N/A",
     checkinDesk: dep.checkin_desk ?? null,
     aircraft: data?.aircraft_model ?? null,
@@ -511,9 +607,17 @@ export function flightDataFromSaved(f: SavedFlight, effective: string): FlightDa
     depTimeValue: depCell.value,
     arrTimeLabel: arrCell.label,
     arrTimeValue: arrCell.value,
+    depTimeSource: depCell.source,
+    arrTimeSource: arrCell.source,
+    depTimeIso: isoForSource(depCell.source,
+      f.from.actualIso, f.from.estimatedIso, f.from.scheduledIso),
+    arrTimeIso: isoForSource(arrCell.source,
+      f.to.actualIso, f.to.estimatedIso, f.to.scheduledIso),
     duration: scheduledDuration(
       f.from.scheduledIso, f.from.timezone, f.to.scheduledIso, f.to.timezone),
-    terminal: f.from.terminal || "N/A",
+    terminal: f.from.terminal,
+    arrTerminal: f.to.terminal,
+    arrGate: f.to.gate,
     gate: f.from.gate || "N/A",
     checkinDesk: f.from.checkinDesk,
     aircraft: f.aircraftModel,
@@ -980,7 +1084,11 @@ function SheetGroup({ title, items }: {
 // AirportTile for why the belt does not hold a slot, and the note at
 // bagsClaimedHere for the half of the question a card cannot answer.
 function AirportTiles({ gate, terminal, belt, showBelt, desk, sheet }: {
-  gate: string; terminal: string; belt: string; desk: string | null;
+  // terminal IS NULLABLE NOW and nothing here had to change for it: AirportTile
+  // already takes `string | null` and already decides emptiness with hasTime,
+  // which reads null and the "N/A" sentinel identically. The type is widened to
+  // match the field; the behaviour is the behaviour it always had.
+  gate: string; terminal: string | null; belt: string; desk: string | null;
   showBelt: boolean;
   // Passed straight down. See AirportTile.
   sheet?: boolean;
@@ -1056,6 +1164,216 @@ function movementTile(label: string, value: string, delay: number | null): {
 // exists because pg.wrap's 24 of vertical margin is tuned for a bar floating on
 // black with a whole screen around it, and the same 24 inside a padded card is
 // 48pt of air the card did not ask for.
+// ── WHEN A CLOCK IS, IN THE COLUMN'S OWN WIDTH ────────────────────────────
+//
+// "5 Sep · GMT+4", AND BOTH HALVES ARE READ RATHER THAN DERIVED. The date comes
+// out of the ISO of the time being shown -- which is the whole reason
+// depTimeIso exists -- and the zone label off the provider's own formatted
+// string. Neither is computed here, so neither can disagree with the clock.
+//
+// THE WEEKDAY IS DROPPED. routeDateLabel returns "Sat 5 Sep" and a column is
+// about 120 points; "Sat 5 Sep · GMT+5:30" is twenty characters and does not
+// fit. The weekday is the least of the three -- the card is one leg of a trip
+// whose order already says which day it is -- so the split keeps the day and the
+// month. SheetFlightHeader splits the same helper the same way.
+//
+// NULL WHEN THERE IS NO ISO, which is a pre-v3 record: the clock still renders,
+// with no date under it, rather than a date invented from the device's own.
+function whenLine(iso: string | null, formatted: string): string | null {
+  if (iso === null) return null;
+  const label = routeDateLabel(iso.slice(0, 10));
+  const parts = label.split(' ');
+  const day = parts.length === 3 ? `${parts[1]} ${parts[2]}` : label;
+  const zone = zoneLabel(formatted);
+  return zone === null ? day : `${day} · ${zone}`;
+}
+
+// ── THE ROUTE, SPREAD ACROSS THE CARD ─────────────────────────────────────
+//
+// IT WAS ONE STRING, LEFT ALIGNED -- "DXB → BOM" starting at the card's left
+// edge with the rest of the width empty. Spread, the two codes sit where the two
+// columns beneath them sit, so the card reads as one object rather than as a
+// title above an unrelated grid.
+//
+// flex: 1 ON BOTH CODES IS WHAT CENTRES THE ARROW, and it is the whole mechanism.
+// Each code takes exactly half of whatever is left after the arrow, so the arrow
+// is at the midpoint whether the codes are two characters or four -- no measuring
+// and no padding to keep in step. textAlign then pushes the origin to the left
+// edge of its half and the destination to the right edge of its own, which is
+// what makes their insets equal by construction rather than by two numbers
+// somebody has to keep the same.
+//
+// A NULL DESTINATION RENDERS THE ORIGIN ALONE, and that is the diverted case --
+// see phase four. The arrow goes with the destination: an arrow pointing at
+// nothing is the assertion this exists to avoid.
+function TripRoute({ from, to }: { from: string; to: string | null }) {
+  if (to === null) {
+    return <Text style={s.tripRoute} numberOfLines={1}>{from}</Text>;
+  }
+  return (
+    <View style={s.tripRouteRow}>
+      <Text style={[s.tripRoute, s.tripRouteStart]} numberOfLines={1}>{from}</Text>
+      <Text style={s.tripRouteArrow}>{'→'}</Text>
+      <Text style={[s.tripRoute, s.tripRouteEnd]} numberOfLines={1}>{to}</Text>
+    </View>
+  );
+}
+
+// ── WHICH FLIGHT, ON WHOSE METAL, IN ONE LINE ─────────────────────────────
+//
+// FACTS THAT DO NOT CHANGE WHILE THE FLIGHT IS IN THE AIR, so they take one
+// quiet line rather than three.
+//
+// THE FAMILIES ARE SPLIT INSIDE THE LINE, which is the whole reason it is
+// nested Texts rather than one string: a flight number is machine data and takes
+// mono, an airline is a name and takes Inter. A nested Text inherits size and
+// colour and overrides only the family.
+//
+// THE AIRCRAFT TYPE IS NOT HERE, AND THAT IS A DECISION RATHER THAN AN OMISSION.
+// It was the third fact on this line and it is the one nobody standing in a
+// terminal is asking: which metal is flying does not change where to stand, when
+// to be there, or whether the flight is running. It survives in the card's
+// SHEET, under Aircraft, where the archival facts live -- so it is one tap away
+// rather than gone.
+//
+// THE `aircraft` PROP WENT WITH IT. It existed so the two ended phases could
+// drop the type while the two live ones kept it; with nothing to drop, a
+// parameter that every caller passes the same value to is a parameter that has
+// stopped saying anything.
+function TripIdent({ flight }: { flight: FlightData }) {
+  return (
+    <Text style={s.tripIdent} numberOfLines={1}>
+      <Text style={s.tripIdentMono}>{flight.flight}</Text>
+      <Text style={s.tripIdentDot}>{'  ·  '}</Text>
+      <Text style={s.tripIdentSans}>{flight.airline}</Text>
+    </Text>
+  );
+}
+
+// ── ONE END OF THE JOURNEY ────────────────────────────────────────────────
+//
+// A COMPONENT BECAUSE THERE ARE TWO OF THEM AND THEY MUST BE IDENTICAL. The
+// departure and the arrival differ in exactly three things -- the word at the
+// top, the values, and which extra rows they carry -- and every one of those is
+// a parameter. Anything written twice here would be the two ends of one flight
+// drifting apart.
+//
+// `live` IS A CLAIM ABOUT THE SOURCE, NOT ABOUT THE FLIGHT. Green means this
+// clock is not the timetable: either it happened, or somebody moved it. See the
+// call site for why an estimate alone is not enough.
+//
+// ── A ROW WITH NO VALUE, AND THE THREE WAYS TO GET THAT WRONG ─────────────
+//
+// `always` KEEPS THE LABEL WHEN THE VALUE HAS NOT ARRIVED, and the value slot is
+// simply empty. It is for facts that are PENDING rather than absent: a gate is
+// assigned hours before departure, a terminal exists whether or not this app
+// knows it, a belt is decided minutes after landing. Showing the label says the
+// card reports this thing and has not been told yet.
+//
+// NO DASH AND NO "N/A", WHICH IS THE WHOLE DISTINCTION. A dash asserts that a
+// value was looked for and found missing. An empty slot asserts nothing at all,
+// which is the true state -- and it is why this is not simply AirportTile's em
+// dash moved to a new layout.
+//
+// WITHOUT `always` A ROW IS OMITTED ENTIRELY, and one row wants that: the
+// check-in desk. A desk is not pending -- plenty of airports and airlines never
+// publish one, and it is released before departure anyway -- so a permanent
+// empty "Desk" would promise something that is never coming, which is the dash's
+// fault in a quieter font.
+//
+// AND THE BELT IS GATED BEFORE IT GETS HERE, by the caller rather than by this
+// flag. When bags are through-checked to a later leg the row must not exist at
+// all: an empty "Belt" tells a passenger a carousel is coming and sends them to
+// reclaim instead of to their next gate. See showBelt and bagEligible -- that is
+// a safety rule, not a display one, and `always` must never be allowed to
+// override it.
+// ── AND HOW FAR OFF THE TIMETABLE THAT TIME IS ────────────────────────────
+//
+// BESIDE ITS OWN TIME, WHICH IS THE WHOLE POINT OF BRINGING IT BACK. It stood at
+// the foot of the card once, reading "Arrival 17m early", and it was ambiguous
+// for want of an anchor: a reader could not tell whether the flight HAD landed
+// early or was predicted to. Directly under the time, beneath a label that
+// already says Scheduled, Estimated or Actual, the same three words are
+// unambiguous -- the label says whether it has happened and the figure says by
+// how much it differs.
+//
+// ON ITS OWN LINE RATHER THAN ON THE SAME ONE, AND THE ARITHMETIC DECIDED THAT.
+// A phase-one column is 102.5pt at a 320pt screen -- the card interior is 230
+// once the page margin, the thread's inset and the padding are taken off, less
+// the gap and the rule. "21:40" is 60pt at 20pt mono and "17m early" is 64.8 at
+// 12; side by side with a gap they are 130.8, which overflows by 28. On a 390pt
+// phone the column is 137.5 and they fit by seven points, until a three-digit
+// delay takes them past it again. Shrinking the time to make room was ruled out,
+// so the figure takes a line -- and it takes the same line in phase two, where
+// the column IS wide enough, because a figure that moves between phases is one
+// the reader has to find twice.
+//
+// ZERO IS NOT A DELAY AND NULL IS NOT ZERO. Zero is the commonest value there is
+// and "0m late" is a line that says nothing; null is the server having had
+// nothing to compare -- see _delay_minutes -- which is silence rather than
+// punctuality. Both render nothing.
+//
+// LATE IS AMBER AND EARLY IS GREY, NOT GREEN. Green means live on this card and
+// nowhere else means anything else; an early arrival is news about a time, not a
+// statement that the time is live. The green already sits on the clock above,
+// where it says the same thing the figure is quantifying.
+function delayText(delay: number | null | undefined): string | null {
+  if (typeof delay !== 'number' || delay === 0) return null;
+  return `${Math.abs(delay)}m ${delay > 0 ? 'late' : 'early'}`;
+}
+
+function TripColumn({ head, time, live, when, delay, rows }: {
+  head: string;
+  time: string;
+  live: boolean;
+  when: string | null;
+  // ABSENT IN THE TWO ENDED PHASES, and not merely null. A landed flight states
+  // its actual arrival and a cancelled one is not running; in both, a figure
+  // measured against a timetable answers a question nobody is asking.
+  delay?: number | null;
+  rows: { label: string; value: string | null; always?: boolean }[];
+}) {
+  const shown = rows.filter(r => r.always === true || hasTime(r.value));
+  const offset = delayText(delay);
+  return (
+    <View style={s.tripCol}>
+      <Text style={s.tripColHead}>{head}</Text>
+      <Text style={[s.tripColTime, live && s.tripColTimeLive]} numberOfLines={1}>
+        {time}
+      </Text>
+      {/* TWO LINES ALLOWED, AND ONLY AS INSURANCE. "5 Sep · GMT+5:30" is
+          sixteen characters -- about 115 points at 12pt mono against a column
+          of roughly 120 -- so it fits, and the longest zone labels are what it
+          fits by. Given a second line it breaks at its own separator rather
+          than truncating a zone to "GMT+5:3". */}
+      {offset !== null && (
+        <Text
+          style={[s.tripColDelay, delay !== null && delay !== undefined && delay > 0
+            && s.tripColDelayLate]}
+          numberOfLines={1}
+        >
+          {offset}
+        </Text>
+      )}
+      {when !== null && (
+        <Text style={s.tripColWhen} numberOfLines={2}>{when}</Text>
+      )}
+      {shown.map(r => (
+        <View key={r.label} style={s.tripColRow}>
+          <Text style={s.tripColLabel}>{r.label}</Text>
+          {/* THE SLOT IS LEFT EMPTY RATHER THAN FILLED WITH A PLACEHOLDER. The
+              row is a flex row, so an absent value leaves the label with nothing
+              beside it and nothing collapses -- no minimum height is needed and
+              none is set. */}
+          {hasTime(r.value) && (
+            <Text style={s.tripColValue} numberOfLines={1}>{r.value}</Text>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function ProgressBar({ progress, color, style }: { progress: number; color: string; style?: any }) {
   const anim = useRef(new Animated.Value(0)).current;
   const planeAnim = useRef(new Animated.Value(0)).current;
@@ -1717,6 +2035,74 @@ export function FlightCard({
   // Approaching is not down. A diverted flight's bags are at an airport this
   // card is not describing.
   const showBelt = flight.status === 'LANDED' && bagsClaimedHere;
+
+  // ── WHERE THIS FLIGHT IS IN ITS OWN LIFE ──────────────────────────────────
+  //
+  // FOUR PHASES, AND THE CARD IS A DIFFERENT CARD IN EACH. One layout for every
+  // state was showing a gate to somebody whose aircraft had already left and a
+  // countdown on a flight that was not operating.
+  //
+  // effectiveStatus, NOT flight.status, AND THAT IS NOT A STYLE CHOICE.
+  // flight.status is badgeLabel's output -- the BADGE VOCABULARY -- and the
+  // provider's own words do not survive into it: "EnRoute" becomes "IN AIR",
+  // "Departed" becomes "DEPARTED", "Approaching" becomes "LANDING". None of them
+  // is the string "ACTIVE", which the progress bar has been testing for. That
+  // test only ever matched a record with NO raw word at all, so the bar has not
+  // been drawing for airborne flights; the phase test below replaces it and
+  // fixes that as a consequence.
+  //
+  // THE DEMOTION RULE IS WHAT MAKES THIS SAFE. effectiveStatus demotes on the
+  // clock and never promotes -- see its note in lib/saved.tsx -- so a flight
+  // whose departure time has passed with nothing reported stays 'scheduled' and
+  // keeps the pre-departure layout, rather than the card inventing a departure.
+  // A record claiming to have landed before its own arrival instant is demoted
+  // back, so a contradictory record cannot drop the card into the landed phase.
+  //
+  // NO RECORD MEANS PHASE ONE. flightRecord is non-null on every trip leg by
+  // construction -- app/flights.tsx passes the leg it is rendering -- but the
+  // prop permits null, and the pre-departure layout is the one that claims
+  // least.
+  //
+  // AND THE SAME FUNCTION THE SCREEN USES. app/flights.tsx's countdown() reads
+  // effectiveStatus too, so the card and the row above it cannot disagree about
+  // whether a flight is in the air.
+  const tripEffective = flightRecord !== null
+    ? effectiveStatus(flightRecord, now)
+    : 'scheduled';
+  const tripPhase: 'before' | 'air' | 'landed' | 'off' =
+    tripEffective === 'active' ? 'air'
+      : tripEffective === 'landed' ? 'landed'
+      : (tripEffective === 'cancelled' || tripEffective === 'diverted') ? 'off'
+      : 'before';
+
+  // ── THERE IS NO DELAY LINE, AND THE REASON IS AMBIGUITY RATHER THAN CLUTTER ──
+  //
+  // IT READ "Arrival 17m early" AND A READER COULD NOT TELL WHICH IT MEANT: that
+  // the flight HAS landed seventeen minutes early, or that it is PREDICTED to.
+  // Those are different facts -- one is a record and one is a forecast -- and the
+  // line was the same either way. A card whose sentences do not say whether they
+  // are about the past or the future is worse than one that says less.
+  //
+  // AND THE FACT IS ALREADY ON THE CARD, said unambiguously twice over. The time
+  // itself is GREEN exactly when it differs from the timetable -- that is what
+  // the colour means and it means it in every phase -- and the LABEL above it
+  // says whether the clock is Scheduled, Estimated or Actual. Between them the
+  // reader has both halves: how the time differs, and whether it has happened.
+  //
+  // depDelay AND arrDelay ARE STILL READ, by depLive and arrLive below and by
+  // movementTile on every other variant. The figure has not stopped being useful;
+  // stating it in prose on this card had.
+
+  // WHETHER A CLOCK IS SHOWING SOMETHING OTHER THAN THE TIMETABLE, per end.
+  // UNIFORM ACROSS EVERY PHASE, deliberately: green has to mean one thing, and
+  // the thing it means is "this differs from what was sold". An estimate that
+  // equals the schedule is not a revision -- the provider echoes one into the
+  // other, which EK500's departure does exactly -- so an estimate alone does not
+  // earn it. An ACTUAL is live because it happened.
+  const depLive = flight.depTimeSource === 'actual'
+    || (typeof flight.depDelay === 'number' && flight.depDelay !== 0);
+  const arrLive = flight.arrTimeSource === 'actual'
+    || (typeof flight.arrDelay === 'number' && flight.arrDelay !== 0);
 
   // THE HAPTIC IS THE THRESHOLD'S, the same one a full swipe fires when it arms.
   // Both are the moment a gesture becomes an offer, and they should feel like
@@ -2767,240 +3153,308 @@ export function FlightCard({
                     below it.
 
                     SO THE WORD SIZES THE ROW ITSELF. See airportHeadStatus. */}
-                <View style={s.airportHeadRow}>
+                {/* ── THE PILL, AND ON A TRIP LEG THE COUNTDOWN BESIDE IT ──
+                    THE ONE LIVE THING ON THE CARD, and the only green one. It
+                    held the identity column's 20pt slot and then sat under the
+                    airline; both put an interval that is true for sixty seconds
+                    among facts that are true for the whole flight. In the header
+                    it is beside the status, which is the other thing on this
+                    card that changes while you look at it.
+
+                    space-between ONLY ON A TRIP LEG. Every other variant has one
+                    child in this row and keeps the centring it has. */}
+                <View style={[s.airportHeadRow, tripVariant && s.airportHeadRowTrip]}>
+                  {/* THE WORD IN A CONTAINER, WHICH IT HAS NEVER HAD. It floated
+                        on the card as loose text -- the only label in the app
+                        carrying a status colour with nothing to carry it. A pill
+                        is what every other status in this app's vocabulary sits
+                        in; this one was the exception by omission.
+
+                        GREEN ONLY WHEN THE FLIGHT IS IN THE AIR, and that is the
+                        whole of the colour rule. getStatusColor returns #4ade80
+                        for 'active' and for nothing else, so the test is the
+                        colour itself rather than a second list of words that
+                        could drift from it. Scheduled, landed, delayed and
+                        cancelled all take the neutral fill: green is this app's
+                        word for live, and a scheduled flight is not.
+
+                        THE TWO FILLS ARE getStatusBg's OWN, restricted to two of
+                      its five. No new colour enters the system. */}
                   {flightRecord !== null && (
-                    <StatusWord f={flightRecord} now={now} style={s.airportHeadStatus} />
+                    <View style={[
+                      s.airportHeadPill,
+                      flight.statusColor === CD_GREEN && s.airportHeadPillLive,
+                    ]}>
+                      <StatusWord f={flightRecord} now={now} style={s.airportHeadStatus} />
+                    </View>
+                  )}
+                  {/* AND ONLY WHILE SOMETHING IS STILL COMING. countdown() already
+                      returns null once a leg has landed; this also drops it on a
+                      cancelled or diverted flight, where the interval to a
+                      departure that will not happen is a number about nothing. */}
+                  {tripVariant && (tripPhase === 'before' || tripPhase === 'air')
+                    && countdown !== null && (
+                    <Text style={s.tripCountdown} numberOfLines={1}>{countdown.value}</Text>
                   )}
                 </View>
 
-                {/* THE MOVEMENTS FIRST, and the tiles under them. It was the
-                    other way round: the gate, terminal and belt led the card and
-                    these two sat below a rule. A gate number is where to stand
-                    once you know the flight is running; when it left and when it
-                    lands is the thing that decides whether any of the rest
-                    matters, so it reads first.
+                {/* ── A TRIP LEG IS LAID OUT ON ITS OWN NOW ──
+                    THE OTHER VARIANTS ARE UNTOUCHED and take the branch below,
+                    which is the identity column beside two movement lines and
+                    then the tile row -- character for character what it was, less
+                    the tripVariant tests that can no longer be true inside it.
 
-                    THEY SHARE THE ROW WITH AN IDENTITY COLUMN, and no longer
-                    have the card's full width. What that costs, and what was
-                    done about it, is set out at the two columns below. */}
-                <View style={s.airportSplit}>
-                  {/* WHEN, WHICH FLIGHT, ON WHICH CARRIER. Three facts that
-                      identify the record rather than report on it. The date
-                      leads at 20pt in white; the number and the airline sit at
-                      13 in the label grey — the sheet's own treatment of the same
-                      two — because neither changes while the flight is in the
-                      air.
-
-                      ON A TRIP LEG THE DATE IS NOT HERE and the countdown has
-                      its slot, so the two paragraphs below describe every
-                      variant BUT that one. See the note inside the column.
-
-                      CONTENT-SIZED, no flex, and the DATE is what sizes it: 120.0pt
-                      at 20pt mono against the widest airline's 111.8, so this
-                      column is 120 whatever carrier it holds. It had its own
-                      full-width row for a while, which cost the movements
-                      nothing; back here it costs them the 120.
-
-                      hasTime BEFORE routeDateLabel, as everywhere else: that
-                      helper passes through what it cannot parse, so "N/A" would
-                      survive formatting and render as a date. */}
-                  <View style={s.airportIdent}>
-                    {/* ── THE DATE GOES AND THE COUNTDOWN TAKES ITS PLACE ──
-                        ON A TRIP LEG ONLY. Everywhere else this is a card the
-                        user searched for, where the date is what tells them
-                        WHICH instance of a flight number they are looking at --
-                        AI2758 on the 29th and on the 31st are two records. On a
-                        trip the leg is already placed: the rail above it, the
-                        layover before it and the legs either side all say when
-                        it is, and the largest thing on the card was telling a
-                        traveller two hours from a gate what day it is.
-
-                        THE SAME TREATMENT, NOT A NEW ONE. airportDate's 20pt
-                        MONO_BOLD in white with 7 under it, unchanged -- so the
-                        countdown inherits the slot's weight and its spacing
-                        rather than inventing a size. It is the only thing on
-                        this card at that treatment, which is what makes it read
-                        first.
-
-                        WHAT THE COLUMN'S WIDTH DOES: it shrinks, and that is a
-                        gain rather than a cost. This column is content-sized and
-                        the date was what sized it at 120pt -- the note below
-                        says so and calls the 120 what the movements PAY. The
-                        widest thing left is the airline at 13pt (about 90 for
-                        "Alaska Airlines") or the countdown at 20pt (84 at its
-                        longest, "12h 05m"), so the column settles near 90 and
-                        the movements gain about 30 points of width they have
-                        wanted since they were put here.
-
-                        AND IT DOES NOT JITTER. gapLabel emits six or seven
-                        characters -- "2h 14m", "12h 05m", "3d 21h" -- so the
-                        countdown crosses one width boundary in the life of a
-                        flight, not one per minute, and on any carrier with a
-                        name longer than seven mono characters it never sizes
-                        the column at all. */}
-                    {tripVariant ? (
-                      countdown !== null && (
-                        <Text style={s.airportDate}>{countdown.value}</Text>
-                      )
-                    ) : (
-                      hasTime(flight.date) && (
-                        <Text style={s.airportDate}>{routeDateLabel(flight.date).toUpperCase()}</Text>
-                      )
-                    )}
-                    {/* ── AND THE ROUTE, SECOND ──
-                        IT WAS DROPPED WHEN A TRIP MEANT ONE FLIGHT. The route
-                        card came out of this variant because the user had just
-                        searched for the flight and knew where it went; on a
-                        four-leg journey the open card was the only element on
-                        the screen not saying that. Every collapsed row says it.
-
-                        A LINE, NOT THE ROUTE CARD. That block is a second
-                        surface with its own swipe and its own progress bar, and
-                        restoring it would put a card inside a card. This is the
-                        two codes at the trip variant's value treatment -- one
-                        step under the countdown, level with the times opposite.
-
-                        NO DURATION. It was dropped alongside the route and the
-                        layout does not need it back: the two movement times are
-                        the same fact stated at both ends, and a third figure
-                        between two codes would be competing with the countdown
-                        for the one thing this card is now about. */}
-                    {tripVariant && (
-                      <Text style={s.airportTripValue} numberOfLines={1}>
-                        {`${flight.from} → ${flight.to}`}
-                      </Text>
-                    )}
-                    <Text style={s.airportIdentNum} numberOfLines={1}>{flight.flight}</Text>
-                    <Text style={s.airportIdentName} numberOfLines={1}>{flight.airline}</Text>
-                  </View>
-
-                  {/* THE MOVEMENTS, unchanged but for the width they get. The
-                      pair and its gap are airportTimes exactly as before; this
-                      adds the flex that claims the remainder and the gutter that
-                      holds it off the date.
-
-                      120pt HERE, AND MovementLine STILL TAKES THREE LINES.
-                      The worst case it was sized for was "10:15 (wheels up) ·
-                      50m late" — 28 characters, 252.0pt, the whole card
-                      interior, which two lines of 120 could not hold however it
-                      broke. With the suffix removed the worst case is "10:15 ·
-                      50m late", 16 characters and 144pt, which fits in two.
-                      THE THIRD LINE IS THEREFORE SLACK NOW rather than load-
-                      bearing, and it is left in place: numberOfLines is a
-                      ceiling, not a height, so an unused third line costs
-                      nothing and taking it away is a layout change nobody asked
-                      for. Worth removing deliberately, not as a side effect. */}
-                  <View style={[s.airportTimes, s.airportMovements]}>
-                    {/* THE SAME RULE THE SHEET USES, through the same function.
-                        See MovementLine and movementTile. */}
-                    <MovementLine
-                      cell={movementTile(flight.depTimeLabel, flight.depTimeValue, flight.depDelay)}
-                    />
-                    <MovementLine
-                      cell={movementTile(flight.arrTimeLabel, flight.arrTimeValue, flight.arrDelay)}
-                    />
-                    {/* ── THE GATE COMES UP HERE ──
-                        IT WAS IN THE TILE ROW UNDER THE RULE, two levels down
-                        the card from the estimated departure, and the two are
-                        one thought: when to be somewhere, and where. Separated,
-                        the reader assembles them; together they are a single
-                        instruction.
-
-                        THE MOVEMENTS' OWN PAIRING, not a tile: airportTimeRow
-                        with its label and value, so it sits in the column it
-                        joined rather than looking like a tile that wandered up.
-                        No delay colour -- a gate is not late, and the two tones
-                        either side of it mean something this line cannot.
-
-                        hasTime, BECAUSE "N/A" IS WHAT THE BACKEND WRITES for a
-                        gate it has none of. The tile row prints an em dash there
-                        on purpose; a pair in this column has no slot to hold, so
-                        it goes. */}
-                    {tripVariant && hasTime(flight.gate) && (
-                      <View style={s.airportTimeRow}>
-                        <Text style={s.airportTimeLabel}>{'Gate'}</Text>
-                        <Text style={s.airportTimeValue}>{flight.gate}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                {/* THE BAR, ON A TRIP LEG, BECAUSE THERE IS NOWHERE ELSE FOR IT.
-                    It lives inside the route card on every other variant, on the
-                    argument that it measures the distance between the two
-                    airports named on either side of it and belongs with them.
-                    The trip variant renders no route card, and the bar is the
-                    one thing that block held which is not repeated in the sheet
-                    -- so it comes here rather than being lost.
-
-                    UNDER THE MOVEMENTS AND ABOVE THE RULE, which is where it
-                    still measures something the card has just said: the two
-                    times immediately above it are the ends of the distance it is
-                    drawing. Below the rule it would be sitting among the gate
-                    and the belt, which are facts about a building.
-
-                    SAME CONDITIONS, UNCHANGED. Hidden entirely when the flight
-                    state cannot place it -- see the route card's copy. */}
-                {tripVariant && progressValue !== null && (flight.status === 'ACTIVE' || flight.status === 'LANDED') && (
-                  <ProgressBar
-                    progress={progressValue}
-                    color={flight.statusColor}
-                    style={s.cardProgress}
-                  />
-                )}
-
-                {/* ── THE RULE AND WHAT IS UNDER IT, ON A TRIP LEG ──
-                    THE BAND WAS BUYING TWELVE CHARACTERS A FULL WIDTH. Gate,
-                    Terminal and Desk divided the whole card between them at
-                    20pt, which is the treatment the countdown now has alone --
-                    so the row was both the widest and the loudest thing under a
-                    ladder it sits at the bottom of.
-
-                    WITH THE GATE GONE UP, what is left is a terminal, sometimes
-                    a belt and sometimes a desk: two or three short values that
-                    have no reason to be spread across 252 points. They are a
-                    content-sized row now, wrapping if they must, at the trip
-                    variant's value treatment -- one step down from the tiles'
-                    20 and level with the route and the times.
-
-                    THE RULE GOES WITH THEM. It separated the ladder from the
-                    band; with nothing to separate on a leg that has no terminal,
-                    no belt and no desk, it would be a line under the last thing
-                    on the card. Both are gated on there being something to draw.
-
-                    EVERY OTHER VARIANT KEEPS AirportTiles EXACTLY, and that is
-                    why this is a branch rather than an edit to the component:
-                    home, search and the map still render the evenly divided row
-                    with its dashes and its own rules. */}
+                    WHY THIS ONE DIVERGED. The card on home and search describes a
+                    flight somebody has just looked up: they know where it goes
+                    and are reading what it is doing. A trip leg is read standing
+                    in a terminal, and the questions are where do I go, when, and
+                    from which gate -- asked of two ends of one journey. Two
+                    labelled columns answer that shape; one column of movement
+                    lines answered the other one. */}
                 {tripVariant ? (
-                  (hasTime(flight.terminal) || (showBelt && hasTime(flight.baggage))
-                    || flight.checkinDesk !== null) && (
-                    <>
-                      <View style={s.airportRule} />
-                      <View style={s.airportFacts}>
-                        {hasTime(flight.terminal) && (
-                          <View style={s.airportFact}>
-                            <Text style={s.airportTileLabel}>{'Terminal'}</Text>
-                            <Text style={s.airportTripValue}>{flight.terminal}</Text>
-                          </View>
-                        )}
-                        {showBelt && hasTime(flight.baggage) && (
-                          <View style={s.airportFact}>
-                            <Text style={s.airportTileLabel}>{'Belt'}</Text>
-                            <Text style={s.airportTripValue}>{flight.baggage}</Text>
-                          </View>
-                        )}
-                        {flight.checkinDesk !== null && (
-                          <View style={s.airportFact}>
-                            <Text style={s.airportTileLabel}>{'Desk'}</Text>
-                            <Text style={s.airportTripValue}>{flight.checkinDesk}</Text>
-                          </View>
-                        )}
+                  <>
+                    {/* ── THE ROUTE, AND IT LEADS EVERY PHASE BUT THE LAST TWO ──
+                        It is what a leg IS: a card in a column of legs is found
+                        by where it goes long before it is found by its number.
+                        The two ended phases put the identity first instead --
+                        see them. */}
+                    {(tripPhase === 'before' || tripPhase === 'air') && (
+                      <>
+                        <TripRoute from={flight.from} to={flight.to} />
+                        <TripIdent flight={flight} />
+                      </>
+                    )}
+
+                    {/* THE BAR, IN THE AIR AND NOWHERE ELSE. Before departure it
+                        would draw an empty track under a flight that has not
+                        moved; after landing it is a full one under a flight that
+                        is over, and the arrival time says that better. */}
+                    {tripPhase === 'air' && progressValue !== null && (
+                      <ProgressBar
+                        progress={progressValue}
+                        color={flight.statusColor}
+                        style={s.cardProgress}
+                      />
+                    )}
+
+                    {/* ── PHASE ONE: BOTH ENDS, BECAUSE BOTH ARE STILL AHEAD ──
+                        THE COLUMN HEADER IS THE TIME'S OWN LABEL, not the end it
+                        belongs to. "Departure" says which end, which the times
+                        either side already say by position; what a reader cannot
+                        see is whether a clock is a timetable, a prediction or a
+                        record, and that is what the label carries. It follows the
+                        source: Scheduled before anyone has spoken, Estimated once
+                        an airline revises, Actual once it happens.
+
+                        GATE AND DESK ARE THE DEPARTURE'S ALONE -- both are places
+                        you stand before you fly -- and the arrival carries only
+                        its terminal, because a belt before landing is a number
+                        nobody has assigned. */}
+                    {tripPhase === 'before' && (
+                      <View style={s.tripCols}>
+                        <TripColumn
+                          head={flight.depTimeLabel}
+                          time={flight.depTimeValue}
+                          live={depLive}
+                          when={whenLine(flight.depTimeIso, flight.dep)}
+                          delay={flight.depDelay}
+                          rows={[
+                            { label: 'Terminal', value: flight.terminal, always: true },
+                            { label: 'Gate', value: flight.gate, always: true },
+                            // NO `always`, AND IT IS THE ONLY ROW WITHOUT IT. See
+                            // TripColumn: a desk is absent rather than pending.
+                            { label: 'Desk', value: flight.checkinDesk },
+                          ]}
+                        />
+                        {/* ── THE RULE BETWEEN THEM ──
+                            TWO COLUMNS SIDE BY SIDE WITH ONLY A GAP READ AS ONE
+                            BLOCK OF TEXT that happened to wrap, particularly
+                            where a label on the left and a value on the right sat
+                            on the same line. A rule says they are two things.
+
+                            airportRule's OWN TREATMENT, TURNED NINETY DEGREES.
+                            Same 1 pixel and the same rgba(255,255,255,0.06), so
+                            this is the card's existing divider rather than a
+                            second one at a different weight -- see s.tripRule.
+
+                            alignSelf stretch IS WHAT MAKES IT FULL HEIGHT. The
+                            row's children are two flex columns of whatever height
+                            their contents need; a fixed height here would be a
+                            guess that breaks the moment a label wraps. */}
+                        <View style={s.tripRule} />
+                        <TripColumn
+                          head={flight.arrTimeLabel}
+                          time={flight.arrTimeValue}
+                          live={arrLive}
+                          when={whenLine(flight.arrTimeIso, flight.arr)}
+                          delay={flight.arrDelay}
+                          rows={[
+                            { label: 'Terminal', value: flight.arrTerminal, always: true },
+                            { label: 'Gate', value: flight.arrGate, always: true },
+                          ]}
+                        />
                       </View>
-                    </>
-                  )
+                    )}
+
+                    {/* ── PHASE TWO: THE ARRIVAL IS THE WHOLE QUESTION ──
+                        THE DEPARTURE HAS HAPPENED AND STOPS BEING A COLUMN. What
+                        is left of it is one fact -- when the aircraft actually
+                        left -- and it goes on one quiet line, because a traveller
+                        in the air is not choosing a gate any more. The gate and
+                        the desk go with it for the same reason.
+
+                        THE ARRIVAL TAKES THE FULL WIDTH, which is what says it is
+                        the subject. Its label still follows the source, so it
+                        reads "Estimated Arrival" while the aircraft is moving and
+                        becomes "Actual Arrival" the moment it is down. */}
+                    {tripPhase === 'air' && (
+                      <>
+                        {/* GATE HERE TOO, AND THIS IS WHERE IT IS MOST LIKELY TO
+                            ARRIVE. A column that shows Gate before departure and
+                            drops it in the air teaches the reader that gates
+                            stopped existing -- at exactly the moment an arrival
+                            gate actually gets published. */}
+                        <TripColumn
+                          head={flight.arrTimeLabel}
+                          time={flight.arrTimeValue}
+                          live={arrLive}
+                          when={whenLine(flight.arrTimeIso, flight.arr)}
+                          delay={flight.arrDelay}
+                          rows={[
+                            { label: 'Terminal', value: flight.arrTerminal, always: true },
+                            { label: 'Gate', value: flight.arrGate, always: true },
+                          ]}
+                        />
+                        {hasTime(flight.depTimeValue) && (
+                          <Text style={s.tripQuiet} numberOfLines={1}>
+                            {`departed ${flight.depTimeValue}`}
+                          </Text>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── PHASE THREE: WHAT HAPPENED, AND WHERE THE BAGS ARE ──
+                        THE IDENTITY LEADS HERE, NOT THE ROUTE. A landed leg is
+                        read to find out how it went and where to stand; which
+                        flight it was is the thing that identifies the answer.
+
+                        NO GATE, NO TERMINAL, NO DEPARTURE, NO COUNTDOWN AND NO
+                        BAR. Every one of those is a fact about a journey that is
+                        over -- a gate number from four hours ago is not a gate
+                        number, it is a place somebody already left.
+
+                        THE LABEL IS STILL THE SOURCE'S AND IS NOT FORCED TO SAY
+                        "Actual". A flight the provider has marked Arrived may
+                        carry no actual time, and printing the word anyway would
+                        be claiming a record the data does not hold.
+
+                        THE BELT IS THE ONLY ROW, under the rule it has always
+                        had. It is empty for a while after landing -- a carousel
+                        is assigned minutes later -- and the card is not empty in
+                        that window: the status, the identity, the route and the
+                        arrival are all still on it. */}
+                    {tripPhase === 'landed' && (
+                      <>
+                        <TripIdent flight={flight} />
+                        <TripRoute from={flight.from} to={flight.to} />
+                        <TripColumn
+                          head={flight.arrTimeLabel}
+                          time={flight.arrTimeValue}
+                          live={arrLive}
+                          when={whenLine(flight.arrTimeIso, flight.arr)}
+                          // THE GATE IS OUTSIDE THE ROW, DELIBERATELY. showBelt is
+                          // landed AND bagsClaimedHere, and when it is false the
+                          // row must not exist -- not exist empty. An empty "Belt"
+                          // on a through-checked connection sends a passenger to
+                          // reclaim instead of their next gate. Past that gate the
+                          // label stays while the carousel is still unassigned,
+                          // which is the minutes after touchdown.
+                          rows={showBelt
+                            ? [{ label: 'Belt', value: flight.baggage, always: true }]
+                            : []}
+                        />
+                      </>
+                    )}
+
+                    {/* ── PHASE FOUR: IT IS NOT OPERATING ──
+                        CANCELLED OR DIVERTED, AND THE PRE-DEPARTURE LAYOUT WOULD
+                        HAVE BEEN A LIE. It would have printed a countdown and a
+                        gate for a flight nobody is boarding, which is the class
+                        of error this card exists to stop making.
+
+                        THE SCHEDULED DEPARTURE, EXPLICITLY, rather than whichever
+                        time the precedence would have chosen. depIso and dep are
+                        the SCHEDULED pair -- they always were -- and on a flight
+                        that is not running the only useful clock is the one it
+                        was sold at, because that is what tells the reader WHICH
+                        flight this was.
+
+                        NO DIVERSION AIRPORT, AND THAT IS NOT AN OMISSION. Nothing
+                        in the DTO carries one: "Diverted" exists as a status and
+                        the arrival airport stays the ORIGINAL destination. There
+                        is nothing to show and inventing one is not available.
+
+                        SO A DIVERTED FLIGHT SHOWS ITS ORIGIN ALONE, and this is
+                        the one place the two ended states differ. "DXB → BOM"
+                        over a diverted flight ASSERTS a destination the aircraft
+                        is not reaching -- the arrival code is the original one
+                        and nothing has replaced it -- and an arrow to a place
+                        this app cannot confirm is exactly the claim the card must
+                        not make. "DXB" alone is true, and it is all that is true.
+
+                        A CANCELLED FLIGHT KEEPS ITS FULL ROUTE. Nothing flew, so
+                        nothing went anywhere else: where it was going remains a
+                        fact about the flight and is what identifies it. */}
+                    {tripPhase === 'off' && (
+                      <>
+                        <TripIdent flight={flight} />
+                        {/* null RATHER THAN A ROUTE, ON A DIVERTED FLIGHT. See
+                            TripRoute: the arrow goes with the destination, so
+                            what renders is the origin alone. */}
+                        <TripRoute
+                          from={flight.from}
+                          to={tripEffective === 'diverted' ? null : flight.to}
+                        />
+                        <TripColumn
+                          head="Scheduled Departure"
+                          time={clock24(flight.depIso, flight.dep)}
+                          live={false}
+                          when={whenLine(flight.depIso, flight.dep)}
+                          rows={[]}
+                        />
+                      </>
+                    )}
+
+                  </>
                 ) : (
                   <>
+                    <View style={s.airportSplit}>
+                      {/* WHEN, WHICH FLIGHT, ON WHICH CARRIER. The date leads at
+                          20pt in white; the number and the airline sit at 13 in
+                          the label grey, because neither changes while the flight
+                          is in the air.
+
+                          hasTime BEFORE routeDateLabel, as everywhere else: that
+                          helper passes through what it cannot parse, so "N/A"
+                          would survive formatting and render as a date. */}
+                      <View style={s.airportIdent}>
+                        {hasTime(flight.date) && (
+                          <Text style={s.airportDate}>{routeDateLabel(flight.date).toUpperCase()}</Text>
+                        )}
+                        <Text style={s.airportIdentNum} numberOfLines={1}>{flight.flight}</Text>
+                        <Text style={s.airportIdentName} numberOfLines={1}>{flight.airline}</Text>
+                      </View>
+                      {/* THE MOVEMENTS, through the same rule the sheet uses. See
+                          MovementLine and movementTile. */}
+                      <View style={[s.airportTimes, s.airportMovements]}>
+                        <MovementLine
+                          cell={movementTile(flight.depTimeLabel, flight.depTimeValue, flight.depDelay)}
+                        />
+                        <MovementLine
+                          cell={movementTile(flight.arrTimeLabel, flight.arrTimeValue, flight.arrDelay)}
+                        />
+                      </View>
+                    </View>
                     <View style={s.airportRule} />
                     {/* Three tiles in one row, four as two by two. The layout and
                         the rules both live in AirportTiles; see the note there. */}
@@ -3014,50 +3468,28 @@ export function FlightCard({
                   </>
                 )}
 
-                {/* AND ON A TRIP LEG IT COMES BACK INSIDE, WHICH REVERSES THE
-                    NOTE FURTHER DOWN -- conditionally, and only for this variant.
+                {/* ── THE STATUS LINE IS NOT HERE ANY MORE ──
+                    IT PRINTED THE COUNTDOWN A SECOND TIME, and the two did not
+                    agree. This card already leads with countdown(leg, now) from
+                    app/flights.tsx; the line under it computed its own from
+                    flightLineSegments, and the two differ three ways: gapLabel
+                    rounds where formatCountdown floors, so they were a minute
+                    apart about half the time; departureTs prefers an ACTUAL
+                    departure where flightLineSegments reads only the estimate and
+                    the schedule; and the line gates its countdown on the record's
+                    freshness where the card does not, so one could vanish while
+                    the other kept counting.
 
-                    THAT NOTE IS NOT WRONG AND IS NOT BEING DELETED. It argues
-                    the line belongs to neither card and therefore to the page:
-                    last child of the result, under both cards, on no surface,
-                    which is what says it describes the whole result rather than
-                    any part of it. Every word of it holds where it was written
-                    -- and it was written when A ROUTE CARD SAT BETWEEN THE
-                    FLIGHT CARD AND THE PAGE. Scope over two things needs two
-                    things.
+                    THE ONE THAT STAYS IS THE ONE THE ROWS USE. The collapsed legs
+                    above and below take countdown() too, so the open card and its
+                    neighbours cannot disagree -- which was the whole reason that
+                    function is passed in rather than computed here.
 
-                    THERE IS NO ROUTE CARD HERE. One line of 11pt mono alone on
-                    black under a single card does not read as scope; it reads as
-                    something that fell off the card above it. The same
-                    positioning that said "this is about the whole result" says
-                    "this is a stray" the moment the result is one card.
-
-                    SO THE ARGUMENT IS UNCHANGED AND ONLY THE ARRANGEMENT MOVED.
-                    It sits on the surface it describes, because on this screen
-                    that surface IS the whole result.
-
-                    hideStatus AND hideAbsolute ARE UNCHANGED, and both reasons
-                    survive the move intact. The word is in the card's own
-                    heading, four rows up. The absolute time the tail would
-                    append is a dep or arr clock -- and the movement lines print
-                    both of them, in full, on this very card; the route card was
-                    never the only thing repeating it.
-
-                    NO style, AND routeStatus IS NOT REUSED. That style is
-                    marginTop 8 stacked on resultWrap's gap of 10, which is a
-                    page gap holding a note clear of a pair of cards. Inside the
-                    card, airportCard's own gap of 14 is the interior rhythm --
-                    the same gap that already sits between the rule and the tiles
-                    -- and this is another of the card's rows. */}
-                {tripVariant && flightRecord !== null && (
-                  <StatusLine
-                    f={flightRecord}
-                    now={now}
-                    hideStatus
-                    hideAbsolute
-                    numberOfLines={1}
-                  />
-                )}
+                    "updated 4m ago" WENT WITH IT, deliberately. It was the only
+                    place this card said when it last refreshed, and a traveller
+                    two hours from a gate is not reading provenance. Every other
+                    variant keeps the line, on the page, where it describes a
+                    search result -- see the copy further down. */}
               </View>
               </TouchableOpacity>
             </ReanimatedSwipeable>
@@ -3621,7 +4053,105 @@ const s = StyleSheet.create({
   // there -- so this is the one visible consequence of item 1 beyond the heading
   // disappearing, and it is left as the flow puts it rather than being re-centred
   // with a property the row never had.
-  airportHeadRow: { flexDirection: "row", alignItems: "center" },
+  // justifyContent CENTRE, WHICH IS NEW AND IS THE PILL'S DOING. The word read
+  // as centred because it spanned the row -- first absolutely, then on a flex of
+  // 1. A pill that spans the card is not a pill, so the container hugs the word
+  // and the ROW is what centres it now. Same appearance, different mechanism.
+  airportHeadRow: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
+  // THE PILL. Neutral by default and green only when the flight is in the air --
+  // see the note at the call site. Both fills are getStatusBg's own values for
+  // 'scheduled' and 'active', so nothing new enters the palette.
+  airportHeadPill: {
+    backgroundColor: "#aeaeb212",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  airportHeadPillLive: { backgroundColor: "#4ade8012" },
+  // ONLY ON A TRIP LEG, where the row has a second child. Every other variant
+  // keeps one centred pill.
+  airportHeadRowTrip: { justifyContent: "space-between" },
+  // THE COUNTDOWN, AND IT IS THE ONE GREEN THING ON THE CARD. 15 rather than the
+  // route's 20: it is the liveliest fact here, not the largest one, and colour is
+  // what carries that rather than size.
+  tripCountdown: { fontSize: 15, fontFamily: MONO_BOLD, color: CD_GREEN },
+
+  // ── THE TRIP LEG'S OWN TYPE ──
+  // 20 WHITE MONO_BOLD, which is airportDate's treatment: the slot at the top of
+  // a card that says what this thing is. Here it is the route.
+  tripRoute: { fontSize: 20, color: "#ffffff", fontFamily: MONO_BOLD },
+  // THE ROW THAT SPREADS THEM. baseline rather than center, so a 20pt code and
+  // the arrow between them sit on one line rather than being centred against
+  // each other's boxes.
+  tripRouteRow: { flexDirection: "row", alignItems: "baseline" },
+  // EQUAL HALVES. See TripRoute: this is what puts the arrow at the midpoint
+  // whatever the codes are, and what makes the two insets equal without either
+  // being written down.
+  tripRouteStart: { flex: 1, textAlign: "left" },
+  tripRouteEnd: { flex: 1, textAlign: "right" },
+  // DIMMER THAN THE CODES IT JOINS. The arrow is punctuation: it says these two
+  // are one journey and is not itself one of the facts.
+  tripRouteArrow: {
+    fontSize: 20, fontFamily: MONO, color: "rgba(226,226,226,0.4)",
+    paddingHorizontal: 8,
+  },
+  // ONE LINE, THREE FAMILIES. The size and colour live on the parent so a nested
+  // Text only has to say which family it takes.
+  tripIdent: { fontSize: 13, color: "rgba(226,226,226,0.4)" },
+  tripIdentMono: { fontFamily: MONO },
+  tripIdentSans: { fontFamily: SANS },
+  // Dimmer than the values it separates, so the line reads as three facts rather
+  // than as five things of equal weight.
+  tripIdentDot: { fontFamily: MONO, color: "rgba(226,226,226,0.25)" },
+
+  // ── THE TWO COLUMNS ──
+  // EQUAL HALVES WITH A GUTTER. flex 1 each rather than a percentage, so the pair
+  // divides whatever the card's padding leaves and neither can overflow it.
+  tripCols: { flexDirection: "row", gap: 12 },
+  // THE VERTICAL DIVIDER, which is airportRule's 1px at the same 6% white with
+  // the axes swapped. stretch rather than a height: the row sizes to its taller
+  // column and this follows it.
+  tripRule: { width: 1, alignSelf: "stretch", backgroundColor: "rgba(255,255,255,0.06)" },
+  tripCol: { flex: 1, gap: 6 },
+  // THE SHEET'S HEADING TREATMENT, which is what this is: a word naming the group
+  // under it. Inter semibold at 11, tracked and uppercased.
+  tripColHead: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
+    letterSpacing: 1, textTransform: "uppercase",
+  },
+  // THE CLOCK, AND THE LARGEST THING IN THE COLUMN. White is the timetable and
+  // green is a time that has moved or happened -- see the call site for why an
+  // estimate alone does not earn it.
+  tripColTime: { fontSize: 20, color: "#ffffff", fontFamily: MONO_BOLD },
+  tripColTimeLive: { color: CD_GREEN },
+  // 12 IS THE FLOOR AND THIS IS AT IT. The date and the zone are the safety half
+  // of this card -- which day, whose clock -- and they do not go smaller to fit.
+  // If they cannot fit they wrap; see the note at the element.
+  tripColWhen: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
+  // THE OFFSET, DIRECTLY UNDER THE TIME IT QUALIFIES. 12pt mono, which is
+  // tripColWhen's size: this and the date are both things you read AFTER the
+  // clock, and they should not compete with it or with each other.
+  //
+  // GREY IS THE DEFAULT AND IT MEANS EARLY. Amber is the exception. Neither is
+  // green, for the reason at delayText.
+  tripColDelay: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
+  tripColDelayLate: { color: CD_LATE },
+  // Label and value on one line, baseline-aligned so an 11pt word and a 13pt
+  // value sit on the same rule rather than centred against each other.
+  tripColRow: { flexDirection: "row", gap: 6, alignItems: "baseline" },
+  tripColLabel: { fontSize: 11, fontFamily: SANS, color: "rgba(226,226,226,0.4)" },
+  tripColValue: { fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD },
+  // ── THE DEPARTURE, ONCE IT IS BEHIND YOU ──
+  //
+  // 12pt MONO AT HALF INK, which is tripColWhen's treatment: this is the same
+  // KIND of fact -- a time that has already happened and is being kept for
+  // reference -- and it should not compete with the arrival above it. Lowercase
+  // "departed" rather than a label-and-value pair, because a pair would give it
+  // the weight of a row in a column it is no longer part of.
+  tripQuiet: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
+  // tripDelay, tripDelayLate AND tripDelayEarly WENT WITH THE LINE THEY DRESSED.
+  // See the note where it was computed: the figure was ambiguous about whether it
+  // had happened, and the green clock and its label already carry both halves.
   // IN THE FLOW, WHICH IT WAS NOT. It used to span the row absolutely -- left 0,
   // right 0 -- so that it centred on the CARD rather than on the space left
   // beside the "FLIGHT CARD" heading it shared the row with.
@@ -3637,12 +4167,11 @@ const s = StyleSheet.create({
   // -- it is what decides where the word sits, and re-deriving that later is how
   // a layout comes back wrong.
   airportHeadStatus: {
-    // flex: 1 SO IT STILL SPANS THE ROW. Absolute positioning was what gave the
-    // word the card's full width to centre in; in the flow it would be
-    // content-sized and sit at the left, which would MOVE a word that has always
-    // read as centred. This restores the span without restoring the side effect
-    // -- a flex child is measured, so the row keeps its height.
-    flex: 1,
+    // NO flex ANY MORE. It spanned the row so the word would centre in it; the
+    // word is inside a pill now and a pill that stretches is a banner, so the
+    // centring moved to the row's own justifyContent. textAlign is kept for the
+    // reason it was kept before: it is what decides the word's place the moment
+    // anything gives this element a width.
     textAlign: "center", fontFamily: MONO, fontSize: 11,
   },
   // TWO COLUMNS UNDER THE DATE: identity on the left, movements on the right.

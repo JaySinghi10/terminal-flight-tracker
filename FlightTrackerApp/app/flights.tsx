@@ -1016,6 +1016,39 @@ export default function Flights() {
   // rule rather than an exception to it: green means live and actionable, and on
   // a page with no trips on it this is the only actionable thing there is. The
   // label stays at the ordinary ink -- one mark, not a green button.
+  // ── THE SAME ACT, AS A MARK IN THE HEADER ─────────────────────────────────
+  //
+  // THE FULL BUTTON BELOW THE TRIP WAS DEAD SPACE THE MOMENT A TRIP EXISTED. It
+  // sat under the last leg with 32 points above it, so a screen with one flight
+  // on it ended in a wide control for adding a second -- which is not what
+  // somebody opening this screen mid-journey is there to do.
+  //
+  // A MARK RATHER THAN A BUTTON, because in the header it is not the subject any
+  // more. The plus alone is the whole control, at the title's own optical weight,
+  // and the label is gone: "Add your flight" beside "My Flights" would be two
+  // headings competing.
+  //
+  // GREEN, AND IT IS THE SAME EXCEPTION THE FULL BUTTON CLAIMS. Green means
+  // actionable; this is the one action in the header.
+  //
+  // THE FULL BUTTON IS NOT DELETED. It is the empty state's, where the screen has
+  // nothing else to say and the act IS the subject -- see the empty branch.
+  const headerAdd = (
+    <TouchableOpacity
+      style={st.headerAdd}
+      activeOpacity={0.7}
+      onPress={() => { EXPAND_HAPTIC(); openOverlay('menu'); }}
+      accessibilityRole="button"
+      accessibilityLabel="add your flight"
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <Path d="M12 5v14" fill="none" stroke={CD_GREEN} strokeWidth={1.75} strokeLinecap="round" />
+        <Path d="M5 12h14" fill="none" stroke={CD_GREEN} strokeWidth={1.75} strokeLinecap="round" />
+      </Svg>
+    </TouchableOpacity>
+  );
+
   const addButton = (
     <TouchableOpacity
       style={st.addBtn}
@@ -1147,7 +1180,13 @@ export default function Flights() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={st.brand}>{'>_'}</Text>
-        <Text style={st.title}>{'My Flights'}</Text>
+        {/* THE TITLE AND THE ONE ACTION, ON ONE LINE. The plus is only here while
+            there is a trip: on an empty screen the act is the subject and it
+            takes the full button in the middle of the page instead. */}
+        <View style={st.titleRow}>
+          <Text style={st.title}>{'My Flights'}</Text>
+          {current.length > 0 && headerAdd}
+        </View>
         {/* HOME'S OWN CLOCK LINE, character for character: 15pt MONO at 0.4,
             3 under the title. It reads the tick this screen already keeps for
             the phases and the countdowns -- see `now` -- rather than starting a
@@ -1318,7 +1357,6 @@ export default function Flights() {
               </View>
             )}
 
-            {addButton}
           </>
         )}
 
@@ -1350,7 +1388,19 @@ const st = StyleSheet.create({
   // marginTop 10, NOT 36, which is the greeting's own gap under the >_ mark.
   // Matching the treatment means matching the spacing; 36 was this screen's and
   // put the title half a screen below a mark it belongs to.
-  title: { fontFamily: SANS_SEMI, fontSize: 24, color: '#e2e2e2', marginTop: 10 },
+  // THE TITLE'S OWN ROW, so the add mark can sit at the far end of it. The
+  // marginTop moved here from the title itself -- a row that positions its
+  // children cannot also be positioned by one of them.
+  titleRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginTop: 10,
+  },
+  title: { fontFamily: SANS_SEMI, fontSize: 24, color: '#e2e2e2' },
+  // NO SURFACE AND NO PADDING. The full button is a card because it stands alone
+  // on an empty page; this is a mark on a header line, and a fill behind it would
+  // make the header look like it had a control bolted to it. The hit area comes
+  // from hitSlop instead, so the target is comfortable without the glyph growing.
+  headerAdd: { alignItems: 'center', justifyContent: 'center' },
   // index.tsx's clock line, character for character.
   clock: { fontFamily: MONO, fontSize: 15, color: 'rgba(226,226,226,0.4)', marginTop: 3 },
 

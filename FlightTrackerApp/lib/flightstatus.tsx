@@ -103,6 +103,30 @@ export function stripZoneLabel(t: string): string {
   return m ? m[1] : t;
 }
 
+// THE OTHER HALF OF THE SAME STRING, and it exists because the label is already
+// there. stripZoneLabel drops "GMT+4" off "9:40 PM GMT+4"; this returns it.
+//
+// THE PROVIDER'S OWN LABEL, NOT A DERIVED ONE, which is the whole reason to read
+// it rather than compute it: the backend emits a real letter code where the zone
+// has one -- "IST", "GMT+4" otherwise -- and an Intl-derived short name would be
+// a SECOND answer to the same question, free to disagree with the string printed
+// beside it.
+//
+// THE SAME ANCHOR AS ITS PAIR. Both key on the meridiem, so a value the provider
+// sent without one -- an unlabelled "18:40", or the "N/A" it writes for a time
+// that does not exist -- yields null here exactly as it passes through
+// unchanged there. Null means "no label to show", not "no zone".
+//
+// ONE ZONE PER ENDPOINT, WHICH IS WHY ANY OF THE THREE STRINGS WILL DO. The
+// scheduled, estimated and actual times of one movement are all read at the same
+// airport, so the caller can take the label off whichever it has -- and the
+// scheduled one is always present.
+export function zoneLabel(t: string | null | undefined): string | null {
+  if (typeof t !== 'string') return null;
+  const m = /[AP]M\s+(\S.*)$/.exec(t.trim());
+  return m ? m[1].trim() : null;
+}
+
 // --- Live-countdown helpers -------------------------------------------------
 export const CD_GREEN = '#4ade80';
 const CD_AGE = 'rgba(226,226,226,0.3)';

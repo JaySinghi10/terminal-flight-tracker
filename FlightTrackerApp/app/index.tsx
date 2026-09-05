@@ -148,6 +148,11 @@ import {
   badgeLabel,
   hasTime,
   movementTimeCell,
+  // WHICH ISO THE CHOSEN TIME CAME FROM. movementTimeCell picks the VALUE and
+  // this picks the matching ISO, so the pair cannot drift -- see its note. It is
+  // imported for the same reason every other name here is: this screen builds a
+  // card's worth of data of its own and must do it through the same functions.
+  isoForSource,
   displayStatus,
   scheduledDuration,
   airportFullLabel,
@@ -1401,8 +1406,23 @@ export default function Index() {
       depTimeValue: depCell.value,
       arrTimeLabel: arrCell.label,
       arrTimeValue: arrCell.value,
+      // THE FIVE FIELDS FlightData GREW, filled exactly as flightDataFromSaved
+      // fills them. This literal is a third copy of that builder and has been
+      // one for a long time; adding to it rather than replacing it is deliberate
+      // here, because the two are NOT identical -- see `date` at the foot of
+      // this object -- and reconciling them is a change of its own.
+      depTimeSource: depCell.source,
+      arrTimeSource: arrCell.source,
+      depTimeIso: isoForSource(depCell.source,
+        saved.from.actualIso, saved.from.estimatedIso, saved.from.scheduledIso),
+      arrTimeIso: isoForSource(arrCell.source,
+        saved.to.actualIso, saved.to.estimatedIso, saved.to.scheduledIso),
       duration: scheduledDuration(saved.from.scheduledIso, saved.from.timezone, saved.to.scheduledIso, saved.to.timezone),
-      terminal: saved.from.terminal || "N/A",
+      // null RATHER THAN THE SENTINEL, matching the field's new type. hasTime
+      // reads both identically, so nothing on screen moves.
+      terminal: saved.from.terminal,
+      arrTerminal: saved.to.terminal,
+      arrGate: saved.to.gate,
       gate: saved.from.gate || "N/A",
       checkinDesk: saved.from.checkinDesk ?? null,
       aircraft: saved.aircraftModel ?? null,

@@ -1,14 +1,21 @@
 // Reading the stored ISO fields. One implementation, imported by everything.
 //
-// THERE ARE TWO KINDS OF ISO IN THIS APP AND ONLY ONE MAY BECOME AN INSTANT.
+// EVERY *_iso IN THIS APP CARRIES LOCAL WALL-CLOCK DIGITS, AND THE DIGITS ARE
+// THE TRUTH.
 //
-// The ROUTE payload's *_iso fields carry a TRUE UTC offset, so Date.parse reads
-// them correctly. The FLIGHT DTO's *_iso fields do not: they carry LOCAL
-// WALL-CLOCK DIGITS under a bogus +00:00, so the offset on the string is a lie
-// and the digits are the truth. `new Date(iso)` on one of those re-expresses the
-// instant in the DEVICE's zone and silently shifts every time on screen — and it
-// shifts the two kinds differently, which is what makes the mistake so hard to
-// see once it is made.
+// THIS NOTE USED TO SAY THE FLIGHT DTO ATTACHED A BOGUS +00:00. It does not, and
+// has not for some time: mcp_server.py's _to_wire_iso builds these strings with
+// the TRUE local offset -- '2026-09-05T21:40+04:00' -- and says so in its own
+// docstring. The route payload does the same. Both kinds now agree, which is
+// what that function means by "both readings agree and nothing here is
+// deliberately wrong".
+//
+// THE RULE BELOW IS UNCHANGED AND IS STILL THE POINT. `new Date(iso)` would
+// re-express the instant in the DEVICE's zone and silently shift every time on
+// screen. zonedIsoToTs reads the digits and re-derives the offset from the
+// airport's IANA zone rather than trusting the one on the string -- so a record
+// saved before the offset was correct, or one whose offset and zone disagree,
+// still resolves to the airport's own clock.
 //
 // So there are exactly two questions to ask of these fields, and one function
 // for each:
