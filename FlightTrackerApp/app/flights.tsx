@@ -214,23 +214,50 @@ const FOLDER_STYLE: 'strip' | 'divider' | 'carousel' = 'strip';
 // halts, and an abrupt stop after high velocity reads as an overshoot even though
 // nothing overshoots.
 //
-// ONE CURVE BOTH WAYS, AND IT HAS A TAIL AT BOTH ENDS. bezier(0.4, 0, 0.2, 1)
-// accelerates out of rest and decelerates into it, which is the shape for
-// something that travels a long way and has to STOP. The deceleration is the half
-// that removes the bounce.
+// ONE CURVE BOTH WAYS, AND IT HAS A TAIL AT BOTH ENDS. The shape for something
+// that travels a long way and has to STOP is one that leaves rest and arrives at
+// rest, and the deceleration is the half that removes the bounce.
 //
-// 300 AND 240, STILL ASYMMETRIC. Long enough that six hundred points is not a
-// snap, short of the four hundred or so where a collapse starts to feel sluggish,
-// and leaving still does not make you wait. Not scaled linearly with distance --
-// that would be seconds.
+// bezier(0.2, 0, 0, 1) RATHER THAN bezier(0.4, 0, 0.2, 1), AND THE DIFFERENCE IS
+// AT BOTH ENDS. The old curve holds still for the first four tenths of its time
+// before moving -- a hesitation nobody could see behind a snap and everybody will
+// see now -- and its second control point at x = 0.2 leaves it still moving as it
+// arrives. This one starts at 0.2, so it goes when tapped, and its second control
+// point sits at x = 0, which makes the tangent at the end HORIZONTAL: it arrives
+// with zero vertical velocity. That is the strongest deceleration a cubic can
+// have, and it is what the bounce was the absence of.
+//
+// NOT A SPRING, AND THE REASON IS THIS CONTAINER SPECIFICALLY. A spring with any
+// overshoot expands the box PAST the content's natural height, and a clipping
+// container with nothing left to show renders that as a flash of empty space
+// before it pulls back. overshootClamping would prevent it and leaves a
+// front-loaded ease-out: right for opening, wrong for closing, where it would
+// collapse fast and then creep. Springs do carry velocity through an interruption,
+// which a timing cannot, and that is a real loss -- it does not pay for two
+// different feels in one object.
+//
+// THE TRAVEL IS 321 POINTS, MEASURED, NOT SIX HUNDRED GUESSED. A log of `h` gave
+// 337 open and 16 shut on a two-leg trip -- the 16 being folderInner's own padding
+// -- so a folder moves about 321. At 320ms that is roughly 1000 points a second,
+// which is twenty-odd times the panel's rather than the sixty I estimated from a
+// height I had never measured.
+//
+// 320 AND 260, AND THEY ARE BEING SEEN FOR THE FIRST TIME. The previous pair was
+// chosen while a one-frame snap was masking the animation entirely -- the motion
+// played after the eye had already been shown the result, so no duration could
+// have looked like anything. These are a little longer than that guess because
+// the travel is now the visible event.
+//
+// STILL ASYMMETRIC, BUT ONLY JUST. Leaving should not make you wait; a toggle
+// tapped twice in a row should not feel like two different controls.
 //
 // DECLARED HERE AND NOT IN lib/glass, which is explicitly the app's GLASS
 // vocabulary and whose motion pairs are all tuned for 10 to 28 points of overlay
 // travel. A folder body is not glass and its motion is not theirs; a third pair
 // in that file would invite the next person to put a collapse timing on a panel.
-const FOLD_IN_MS = 300;
-const FOLD_OUT_MS = 240;
-const FOLD_EASE = Easing.bezier(0.4, 0, 0.2, 1);
+const FOLD_IN_MS = 320;
+const FOLD_OUT_MS = 260;
+const FOLD_EASE = Easing.bezier(0.2, 0, 0, 1);
 
 const STRIP_PAD = 4;
 const RAIL_X = STRIP_PAD + 10;
@@ -1235,7 +1262,28 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
   // height is undefined and the container is exactly its content, for ever. A few
   // points of error during 200ms of travel is invisible; the same error at rest
   // is this bug.
-  const [settled, setSettled] = useState(true);
+  // ── WHICH `open` WE ARE AT REST AT, RATHER THAN WHETHER WE ARE AT REST ────
+  //
+  // A BARE settled FLAG SNAPPED THE FOLDER TO ITS FINAL STATE BEFORE ANIMATING.
+  // It was set false inside an EFFECT, and effects run after the render commits --
+  // so the render in which `open` flipped still had settled true and took the
+  // at-rest branch with the NEW `open`. A log of it, opening:
+  //
+  //   {open: true, settled: true,  h: 16,  branch: "AUTO"}   full height, at once
+  //   {open: true, settled: false, h: 337, branch: "ANIM"}   then animates 0 -> 1
+  //
+  // and closing, the same thing pointing the other way: height 0 immediately, then
+  // a jump back to 337 and a smooth collapse. The animation was running correctly
+  // the whole time -- eighteen frames on the right curve -- but the eye had
+  // already been shown the answer, so what it read was the snap. That is why
+  // changing the duration did nothing.
+  //
+  // STORING WHICH VALUE WE SETTLED AT FIXES IT WITHOUT AN EFFECT. `open` flips and
+  // restAt still holds the old one, so atRest is false IN THE SAME RENDER and the
+  // animated branch is taken immediately -- with anim still at the old end, which
+  // is the height it already had. Nothing moves until the animation moves it.
+  const [restAt, setRestAt] = useState(open);
+  const atRest = restAt === open;
 
   // ── THE CHILDREN ARE ALWAYS MOUNTED, AND UNMOUNTING THEM WAS MY OWN BUG ───
   //
@@ -1258,6 +1306,14 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
   // protection from was imaginary.
   const firstRun = useRef(true);
 
+  // ── WHETHER THE BOX IS LEFT TO ITS CONTENT THIS RENDER ────────────────────
+  //
+  // ONE BOOLEAN READ BY BOTH THE HEIGHT AND THE MEASUREMENT, so they cannot come
+  // to disagree about whether the container is clamped. It is true at rest, and
+  // true when `h` is still unknown -- there is nothing to interpolate toward.
+  const natural = atRest || h === 0;
+
+
   // ── AND NOTHING ANIMATES ON MOUNT ─────────────────────────────────────────
   //
   // THE EFFECT RAN ON MOUNT AND ANIMATED A VALUE TO ITSELF. anim starts at the
@@ -1270,7 +1326,6 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
       firstRun.current = false;
       return;
     }
-    setSettled(false);
     Animated.timing(anim, {
       toValue: open ? 1 : 0,
       duration: open ? FOLD_IN_MS : FOLD_OUT_MS,
@@ -1280,7 +1335,10 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
       // rest at both ends. See FOLD_EASE.
       easing: FOLD_EASE,
       useNativeDriver: false,
-    }).start(({ finished }) => { if (finished) setSettled(true); });
+      // THE VALUE IT ANIMATED TO, captured by this closure. An interrupted
+      // animation reports finished false and leaves restAt alone, so a folder
+      // tapped twice never records a state it did not reach.
+    }).start(({ finished }) => { if (finished) setRestAt(open); });
   }, [open]);
 
   return (
@@ -1303,7 +1361,7 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
         style={[
           st.folderBody,
           {
-            height: settled || h === 0
+            height: natural
               ? (open ? undefined : 0)
               : anim.interpolate({ inputRange: [0, 1], outputRange: [0, h] }),
           },
@@ -1345,23 +1403,36 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
               }),
             },
           ]}
-          // ── MEASURED AT REST AND NOWHERE ELSE ──
+          // ── MEASURED ONLY WHILE THE BOX IS UNCLAMPED, WHICH IS CONFIRMED ──
           //
-          // onLayout FIRES DURING THE TRANSITION TOO, and setting `h` then rewrites
-          // the outputRange of the interpolation that is being read at that moment.
-          // The travel jumps partway. During a transition the height we started
-          // with is the height we want; a fresher one is the bug.
+          // YOGA DOES REPORT THE CLAMPED BOX, AND A LOG SETTLED IT. Shut, this view
+          // measured 16 -- folderInner's own paddingVertical and nothing else, the
+          // content clipped to zero. The old guard refused a measurement of ZERO
+          // and 16 sails through it, so every closed folder was overwriting a good
+          // height of 337 with the height of its own padding. That is a stale `h`
+          // by any other name.
           //
-          // AND A ZERO IS NEVER ACCEPTED. A folder always has at least one leg, so
-          // a measurement of nothing is not a real answer -- it would be Yoga
-          // reporting the clamped box rather than the content, which is the one
-          // thing about this arrangement I have not been able to verify without a
-          // device. Refusing it means the worst case is a stale height rather than
-          // a zero one, and a zero would make the next open jump rather than
-          // animate.
+          // SO THE TEST IS THE CONTAINER'S STATE, NOT THE NUMBER'S. `natural &&
+          // open` is exactly when the height is left undefined and the content is
+          // laying itself out at its own size; anything measured at any other
+          // moment is a reading of the clamp.
+          //
+          // IT ALSO COVERS THE TRANSITION, which the old guard covered separately:
+          // during a collapse the box is clamped, so nothing is taken, so the
+          // outputRange cannot be rewritten under an interpolation that is being
+          // read.
+          //
+          // THE FIRST OPEN OF A FOLDER THAT STARTED SHUT DOES NOT ANIMATE ITS
+          // HEIGHT, and that is the cost. Its `h` is still 0, so `natural` is true,
+          // so the box goes straight to its content -- and the opacity, which needs
+          // no measurement, fades the cards in over the same 320ms. The layout is
+          // taken on that render and every open afterwards animates properly. A
+          // content height simply cannot be known before it has been allowed to
+          // exist once; the alternative is rendering every shut folder unclamped
+          // for a frame at mount, which is a flash on every launch instead of a
+          // soft first open.
           onLayout={e => {
-            const next = e.nativeEvent.layout.height;
-            if (settled && next > 0) setH(next);
+            if (natural && open) setH(e.nativeEvent.layout.height);
           }}
         >
             {/* THE THREAD STARTS AT THE HEADER AND STOPS AT THE LAST CARD. An
