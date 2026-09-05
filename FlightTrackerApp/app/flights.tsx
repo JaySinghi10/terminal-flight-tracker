@@ -62,8 +62,19 @@ import { mapRouteFor } from '../lib/flightcard';
 import { airportByCode } from '../lib/airports';
 // formatClock IS HOME'S HEADER LINE, and it is imported rather than restated
 // because this screen now wears the same header. See the note where it lives.
-import { StatusLine, routeDateLabel, formatClock, CD_GREEN } from '../lib/flightstatus';
-import { CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, SURFACE_EDGE } from '../lib/cards';
+// CD_LATE JOINS CD_GREEN for the folder's accent. They are the app's one pair
+// for late and on time -- the card's clock and its delay figure take the same
+// two -- so the folder cannot come to disagree with the leg inside it.
+import {
+  StatusLine, routeDateLabel, formatClock, CD_GREEN, CD_LATE,
+} from '../lib/flightstatus';
+// SURFACE_1 AND SURFACE_2 JOIN THEM FOR THE FOLDER HEADERS. See the scale in
+// lib/cards: level is decided by what sits UNDERNEATH, so a header on the page
+// takes SURFACE_1 and the date block inside one takes SURFACE_2.
+import {
+  CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, SURFACE_EDGE,
+  SURFACE_1, SURFACE_2,
+} from '../lib/cards';
 import {
   GlassLayers, g,
   EASE_OUT, EASE_IN, CAL_RISE,
@@ -127,7 +138,38 @@ const NOT_REACHABLE = () => {};
 // lines up with the cards' left edge while its background reaches back past the
 // line and breaks it -- which is what puts the words ON the thread rather than
 // beside it.
-const RAIL_X = 6;
+// ── WHICH FOLDER HEADER IS BEING TRIED ────────────────────────────────────
+//
+// THREE SHAPES FOR ONE CONTROL, SWITCHED HERE AND NOWHERE ELSE. They are not
+// three settings a user will ever see; they are three answers to the same
+// question, kept side by side so they can be looked at on a device and two of
+// them deleted.
+//
+//   'strip'     an aviation flight strip: a square date block with a green edge,
+//               then the route and the count packed against it. Everything on the
+//               left, nothing spanning an empty bar.
+//   'divider'   no container at all. Date over route on the page, a hairline
+//               between items, the count and the expander at the right edge.
+//   'carousel'  fixed-width stubs scrolling sideways, with the open trip beneath.
+//               NOT A FOLDER MODEL -- see the note at the render.
+//
+// WHEN ONE IS CHOSEN the other two go, and so does this constant. It is a literal
+// union rather than a string so a typo is a compile error.
+const FOLDER_STYLE: 'strip' | 'divider' | 'carousel' = 'strip';
+
+// 10, UP FROM 6, AND THE FOLDER ICON DECIDED IT. The strip header puts the icon
+// first with no left padding, so its centre is half of its own 20 points -- and
+// the thread has to drop from there or it does not read as coming out of the
+// folder at all. Six was the old bare-text header's guess.
+//
+// THE CARDS ARE STILL CLEAR OF IT. RAIL_INSET is 22 and the line's right edge is
+// now 11, so the gutter is 11 points where it was 15. Tighter, and nothing is on
+// the line.
+//
+// layoverTime IS UNAFFECTED: its PAGE_BG background starts at the row's own left
+// edge and runs to RAIL_INSET, so it still covers the thread wherever the thread
+// is inside that span. See its note for what that background is for.
+const RAIL_X = 10;
 const RAIL_W = 1;
 const RAIL_INSET = 22;
 
@@ -770,6 +812,442 @@ function CollapsedLeg({ leg, state, belt, now, onPress }: {
   );
 }
 
+// ── A FOLDER, SHUT AND OPEN ───────────────────────────────────────────────
+//
+// DRAWN HERE RATHER THAN IMPORTED, AND THAT IS NOT FOR WANT OF A LIBRARY.
+// @expo/vector-icons is in package.json -- and is imported by nothing in this
+// app. Every icon on screen is a hand-written path in components/swipe.tsx:
+// ICON_REFRESH, ICON_MAP, ICON_DELETE, BOOKMARK_D. Pulling a font-based icon set
+// in for one glyph would be a second icon system for the sake of not typing a
+// path, and it would arrive with a different stroke weight and a different
+// optical size than everything beside it.
+//
+// SO THESE FOLLOW ICON_REFRESH's OWN CONVENTION, value for value: a 24-unit
+// viewBox drawn at 20 points, fill none, strokeWidth 1.75, round caps and joins.
+// Nothing here is a new number.
+//
+// TWO SHAPES RATHER THAN ONE THAT MORPHS. Interpolating between path data needs
+// a library this project does not have and should not gain for an 8pt icon; two
+// static paths crossfaded say the same thing and cost nothing.
+const FOLDER_SHUT = (
+  <Path
+    d="M4 6.5A1.5 1.5 0 0 1 5.5 5h3.6l2 2h7.4A1.5 1.5 0 0 1 20 8.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5z"
+    fill="none"
+    stroke={DIM}
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />
+);
+
+// THE BACK PLATE STOPS SHORT AND THE FRONT LEANS AWAY, which is the whole of what
+// makes a folder read as open rather than as a differently-shaped box.
+const FOLDER_OPEN = (
+  <>
+    <Path
+      d="M4 16.5v-10A1.5 1.5 0 0 1 5.5 5h3.6l2 2h7.4A1.5 1.5 0 0 1 20 8.5V10"
+      fill="none"
+      stroke={DIM}
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M3.2 18.4 5.4 11.7A1 1 0 0 1 6.4 11h14.1a1 1 0 0 1 .95 1.3l-2 6.2a1 1 0 0 1-.95.7H4.2a1 1 0 0 1-.95-1.3z"
+      fill="none"
+      stroke={DIM}
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </>
+);
+
+// ── WHETHER A TRIP IS RUNNING LATE ────────────────────────────────────────
+//
+// ONE LEG DECIDES IT, AND IT IS THE LEG THAT MATTERS NOW. Not "any leg is late":
+// a journey whose first hop ran forty minutes behind three days ago is not a late
+// trip, and a folder that says so about a flight already flown is reporting
+// history as though it were news.
+//
+// THE SAME LEG THE SCREEN ALREADY OPENS. currentLegIndex is the rule for which leg
+// a traveller is living in -- the one after a landing, or the first inside its
+// day -- so the accent follows the card rather than answering the question a
+// second way. Where it declines to open anything, the next leg still to fly is
+// the honest subject: a trip five days out is not late, but if its first
+// departure has already been moved, that is exactly what the folder should say.
+//
+// WHICH END OF THE LEG, ON THE SAME SWITCH countdown USES. Before the aircraft
+// moves, the departure delay is the fact; once it is airborne or down, the
+// arrival is. effectiveStatus rather than the clock, so a departure time passing
+// with nothing reported does not silently change which figure is read.
+//
+// THE DELAYS ARE ON THE RECORD, so nothing new is threaded in.
+// SavedFlightEndpoint carries `delay` at both ends -- the server's own figure,
+// compared against the scheduled time -- and a trip is a list of records. No
+// FlightData, no prop, no second arithmetic.
+//
+// NULL IS NEUTRAL AND IS NEVER GREEN. The server emits null when it had neither
+// an actual nor an estimate to compare, which is silence rather than punctuality.
+// This is the same three-way reading clockTone makes on the card -- late above
+// zero, on time at or below it, nothing at all for a null -- so the folder and
+// the leg inside it cannot disagree about whether a flight is late.
+//
+// EVERY LEG FLOWN RETURNS NULL. A finished journey has nothing still to be late
+// for, and a folder is not the place to relitigate one.
+function tripTone(legs: SavedFlight[], now: number): 'ontime' | 'late' | null {
+  const i = currentLegIndex(legs, now);
+  const leg = i >= 0 ? legs[i] : legs.find(l => l.landedAt === null);
+  if (leg === undefined) return null;
+  const s = effectiveStatus(leg, now);
+  const d = s === 'active' || s === 'landed' ? leg.to.delay : leg.from.delay;
+  if (typeof d !== 'number') return null;
+  return d > 0 ? 'late' : 'ontime';
+}
+
+// ── WHEN A TRIP LEAVES ────────────────────────────────────────────────────
+//
+// THE FIRST LEG'S DATE, WHICH NO HEADER SHOWED. A folder that names only a route
+// cannot be told apart from the same route flown last month, and a shut folder is
+// exactly where that matters -- the cards that carry the date are hidden.
+//
+// routeDateLabel IS SPLIT RATHER THAN RE-FORMATTED, the same way SheetFlightHeader
+// and whenLine split it. A second formatter reading the same field is a second
+// thing to keep in step.
+//
+// THE THREE-PART TEST IS A GUARD, not ceremony: routeDateLabel passes through
+// anything it cannot parse, so a malformed date arrives as one part rather than
+// three and this returns null instead of rendering half of itself.
+//
+// ISO_DAY_RE FIRST, because flightDate is the literal string "unknown" on a record
+// filed without one -- see makeFlightId.
+function tripDate(legs: SavedFlight[]): { day: string; mon: string; full: string } | null {
+  const d = legs[0].flightDate;
+  if (!ISO_DAY_RE.test(d)) return null;
+  const parts = routeDateLabel(d).split(' ');
+  if (parts.length !== 3) return null;
+  return {
+    // PADDED, because a column of dates that jitters between "5" and "12" is a
+    // column the eye has to re-find on every row.
+    day: parts[1].padStart(2, '0'),
+    mon: parts[2].toUpperCase(),
+    full: `${parts[0]} ${parts[1]} ${parts[2]}`.toUpperCase(),
+  };
+}
+
+// THE TWO SHAPES, CROSSFADED, AS ONE THING. Extracted because all three headers
+// want it and none of them wants to know how it works. See the note at the paths:
+// only View opacity animates, so no Svg prop ever changes.
+// THE CAROUSEL'S STUBS DRAW NO ICON, so they have no animation to hand one --
+// but FolderHead takes an Animated.Value either way and a component may not
+// create one conditionally. A module-level constant at rest is what they pass:
+// one object, never driven, never read by the branch that receives it.
+const STILL = new Animated.Value(0);
+
+function FolderIcon({ anim }: { anim: Animated.Value }) {
+  return (
+    <View style={st.folderIcon}>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, {
+          opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+        }]}
+      >
+        <Svg width={20} height={20} viewBox="0 0 24 24">{FOLDER_SHUT}</Svg>
+      </Animated.View>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: anim }]}>
+        <Svg width={20} height={20} viewBox="0 0 24 24">{FOLDER_OPEN}</Svg>
+      </Animated.View>
+    </View>
+  );
+}
+
+// ── WHAT A TRIP IS CALLED ─────────────────────────────────────────────────
+//
+// THE FIRST DEPARTURE AND THE LAST ARRIVAL. legsOfTrip has already ordered the
+// legs by departure instant, so the ends of the array are the ends of the journey
+// whatever order they were saved in.
+//
+// BOTH ENDS ARE IATA OR NEITHER IS, WHICH IS THE RULE. A code beside a city name
+// reads as two kinds of fact and invites the reader to think one is more precise
+// than the other. So when EITHER end is missing its code the whole title falls
+// back to the flight number -- always present, machine data like the codes it
+// replaces, and incapable of mixing.
+//
+// AND A MISSING CODE IS THE EMPTY STRING, NOT NULL. endpointFromApi writes
+// `iata: raw?.iata ?? ''` and isValid only checks the field is a string, so ''
+// reaches storage; a title built without this test would read " -> JFK". Same trap
+// hubOf closes for the connection rule, and closed the same way: emptiness first,
+// before the value is used for anything.
+//
+// NOT EDITABLE, AND NOTHING HERE ANTICIPATES THAT IT WILL BE. No tripName field
+// and no affordance. When a trip can be named this becomes the default rather
+// than the only answer.
+function tripTitle(legs: SavedFlight[]): string {
+  const from = legs[0].from.iata.trim().toUpperCase();
+  const to = legs[legs.length - 1].to.iata.trim().toUpperCase();
+  if (from === '' || to === '') return legs[0].flightNumber;
+  return `${from} \u2192 ${to}`;
+}
+
+// ── A TRIP, WITH A LID ────────────────────────────────────────────────────
+//
+// THE HEADER SITS ABOVE THE RAIL AND THE RAIL LIVES INSIDE THE THING THAT
+// COLLAPSES, which is the whole mechanism and the reason nothing here animates a
+// line. st.rail is position absolute with top: 0 and bottom: 0 -- its height is
+// not a value at all, it is pinned to its parent's box -- so when that parent's
+// height goes to zero the line retracts into the header for free. No second
+// animated value, no measurement of the line, nothing to keep in step.
+//
+// HEIGHT IS THE ONE THING ANIMATED, and it cannot go on the native driver in any
+// library because it is a layout property. This file already drives its three
+// overlays with react-native's Animated on EASE_OUT and EASE_IN; pulling
+// Reanimated in for one control would be a second animation system doing what the
+// first already does.
+//
+// THE CONTENT IS MEASURED RATHER THAN GUESSED, and re-measured on every layout,
+// because a card's height changes as `now` ticks and as legs land. onLayout on the
+// inner view reports its own content height even while the outer is clamped to
+// zero: Yoga lays every child out and overflow only clips the paint.
+//
+// BEFORE THE FIRST MEASUREMENT the height is left unset when open and forced to
+// zero when closed. Both are one frame and the asymmetry is deliberate -- a closed
+// folder flashing its whole contents is far worse than an open one arriving a
+// frame late, and the open one is the common case at the top of the screen.
+//
+// THE MARKER IS A FOLDER NOW AND IT WAS A TRIANGLE. The triangle said open or
+// shut and said nothing about WHAT was open; a row of them reads as a list with
+// disclosure arrows rather than as a shelf of journeys. The two shapes crossfade
+// on the same value that drives the height, so the lid and the contents are one
+// movement.
+//
+// OPACITY ON TWO STACKED Views, AND NO SVG PROP EVER CHANGES. Each shape sits in
+// its own absolutely positioned layer and only the layers' opacity animates --
+// which is a View property, not an Svg one, so react-native-svg never re-rasters.
+// That is the same rule FlightArc follows and for the same reason.
+//
+// THE VALUE IS THE NON-NATIVE ONE, which opacity did not have to be: it is
+// native-driver eligible where height is not. It rides the height's value anyway,
+// because one gesture split across two drivers is how the two come apart.
+// ── THE HEADER, IN THREE SHAPES ───────────────────────────────────────────
+//
+// ONE COMPONENT WITH THREE BRANCHES rather than three components, because the
+// PROPS are identical and only the arrangement differs -- and because two of the
+// three are going to be deleted, which is easier from one place than from three
+// call sites.
+function FolderHead({ title, count, date, tone, open, anim, first, onToggle }: {
+  title: string; count: number;
+  date: { day: string; mon: string; full: string } | null;
+  // WHAT THE ACCENT SAYS. See tripTone: the relevant leg's own delay, in the same
+  // three states the card's clock takes.
+  tone: 'ontime' | 'late' | null;
+  open: boolean; anim: Animated.Value; first: boolean; onToggle: () => void;
+}) {
+  const legs = `${count} ${count === 1 ? 'leg' : 'legs'}`;
+  const press = {
+    activeOpacity: 0.7,
+    onPress: onToggle,
+    accessibilityRole: 'button' as const,
+    accessibilityState: { expanded: open },
+    accessibilityLabel: date === null ? title : `${title}, ${date.full}, ${legs}`,
+  };
+
+  // ── A — THE FLIGHT STRIP ──
+  //
+  // EVERYTHING PACKED LEFT, WHICH IS THE WHOLE IDEA. A bar with a route at one
+  // end and a count at the other is mostly empty and reads as a table row; a
+  // strip reads as an object because its facts touch.
+  //
+  // THE GREEN EDGE IS THE ONE PLACE THIS FILE SPENDS CD_GREEN ON SOMETHING THAT
+  // IS NOT LIVE, and it is two points wide for that reason -- an accent on the
+  // date block rather than a statement about the flight. If that reads as a claim
+  // on a device it should become DIM.
+  if (FOLDER_STYLE === 'strip') {
+    return (
+      <TouchableOpacity {...press} style={st.stripHead}>
+        <View style={st.cardEdge} pointerEvents="none" />
+        {/* THE ICON IS FIRST AND FLUSH, AND RAIL_X IS SET TO ITS CENTRE. With no
+            left padding the glyph's middle is at 10 -- half of its own 20 -- and
+            the thread below drops from exactly there, so the line reads as coming
+            out of the folder rather than running past it. */}
+        <FolderIcon anim={anim} />
+        <Text style={st.stripRoute} numberOfLines={1}>{title}</Text>
+        {/* THE DATE BLOCK AT THE FAR EDGE, AND THE ACCENT IS ITS RIGHT BORDER.
+            Flush with the header's own edge, which is why stripHead carries no
+            right padding and clips to its radius -- the two points of colour end
+            where the card ends and the corners follow the curve.
+
+            STACKED, DAY OVER MONTH, because a column of folders is scanned down
+            the same edge: "05" over "SEP" puts the number that changes most in the
+            same place on every row, where "SAT 5 SEP" moves it about.
+
+            THE COUNT IS GONE AND STAYS GONE. How many legs a journey has is
+            answered by opening it; the date and the route are what you choose
+            between while it is shut. It is still in the accessibility label, which
+            pays nothing.
+
+            THE BORDER IS THE ONLY THING THE TONE TOUCHES. The block's fill stays
+            SURFACE_2 in every state, so a late trip is not a differently-shaped
+            object -- two points of colour on an edge is an accent, and anything
+            more would make amber the loudest thing on a screen of folders. */}
+        <View style={st.stripSpace} />
+        {date !== null && (
+          <View
+            style={[
+              st.stripDate,
+              tone === 'late' && st.stripDateLate,
+              tone === 'ontime' && st.stripDateOnTime,
+            ]}
+          >
+            <Text style={st.stripDay}>{date.day}</Text>
+            <Text style={st.stripMon}>{date.mon}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }
+
+  // ── B — NO CONTAINER AT ALL ──
+  //
+  // THE PAGE IS THE SURFACE AND A HAIRLINE IS THE ONLY CHROME. It is the rule
+  // colour the cards already use inside themselves -- rgba(255,255,255,0.06), the
+  // same one airportRule and tripRule take -- so nothing new enters the palette.
+  //
+  // NOT ON THE FIRST ITEM. A divider above the first row is a line under the
+  // screen's own header, which is a different statement.
+  if (FOLDER_STYLE === 'divider') {
+    return (
+      <TouchableOpacity {...press} style={[st.divHead, !first && st.divRule]}>
+        <View style={st.divText}>
+          {date !== null && <Text style={st.divDate}>{date.full}</Text>}
+          <Text style={st.divRoute} numberOfLines={1}>{title}</Text>
+        </View>
+        <View style={st.divPill}>
+          <Text style={st.divPillText}>{String(count)}</Text>
+          <FolderIcon anim={anim} />
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // ── C — A STUB IN A ROW OF STUBS ──
+  //
+  // FIXED WIDTH, STACKED, AND IT IS A TAB RATHER THAN A LID. See the note at the
+  // render for why this one is not a folder at all.
+  return (
+    <TouchableOpacity {...press} style={[st.stub, open && st.stubOn]}>
+      <View style={st.cardEdge} pointerEvents="none" />
+      {date !== null && <Text style={st.stubDate}>{date.full}</Text>}
+      <Text style={st.stubRoute} numberOfLines={1}>{title}</Text>
+      <View style={st.stubCount}>
+        <Text style={st.stripCountText}>{legs}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function TripFolder({ title, count, date, tone, open, first, onToggle, children }: {
+  title: string; count: number;
+  date: { day: string; mon: string; full: string } | null;
+  tone: 'ontime' | 'late' | null;
+  open: boolean; first: boolean; onToggle: () => void;
+  children: ReactNode;
+}) {
+  const [h, setH] = useState(0);
+  const anim = useRef(new Animated.Value(open ? 1 : 0)).current;
+  // ── AT REST THE BOX IS UNCONSTRAINED, AND THAT IS THE BUG FIX ──
+  //
+  // THE HEIGHT WAS PINNED TO A SINGLE MEASUREMENT FOR AS LONG AS THE FOLDER WAS
+  // OPEN, and anything that grew afterwards spilled out of the box and under the
+  // next header. overflow: hidden clipped the PAINT; the box is what the folder
+  // below is positioned after, so the layout was wrong even where the picture was
+  // not.
+  //
+  // AND SOMETHING ALWAYS GROWS. `now` ticks every sixty seconds and a card can
+  // gain a line; FlightArc draws nothing until it has measured its own width; a
+  // leg landing swaps a collapsed row for a full card. A number captured once
+  // cannot track any of that.
+  //
+  // SO THE MEASUREMENT IS ONLY USED WHILE THE FOLDER IS MOVING. Settled open, the
+  // height is undefined and the container is exactly its content, for ever. A few
+  // points of error during 200ms of travel is invisible; the same error at rest
+  // is this bug.
+  const [settled, setSettled] = useState(true);
+
+  // ── A SHUT FOLDER RENDERS NOTHING, AND THAT IS THE OVERLAP FIX ────────────
+  //
+  // THE LAST DIAGNOSIS WAS WRONG AND IS WORTH SAYING SO. It read the box as too
+  // SHORT and unpinned the height; settled and open, the container is now exactly
+  // its content, and the symptom survived that. So the open folder's box was never
+  // the problem.
+  //
+  // WHAT IS LEFT IS THE SHUT ONE. Its height is zero and overflow hidden was doing
+  // the clipping -- but its children were still mounted and still laid out at full
+  // height, waiting to be clipped. Android's overflow: hidden is not reliable when
+  // children are Animated or Reanimated views or carry elevation, and FlightCard's
+  // root IS a Reanimated.View inside a GestureDetector. When that clip fails, a
+  // closed folder's cards paint straight through at full height over whatever is
+  // beneath them -- which in a screenshot is indistinguishable from the folder
+  // ABOVE overflowing, because the cards you can see are covering the header they
+  // belong to.
+  //
+  // SO THERE IS NOTHING TO CLIP. Children mount when the folder opens, stay
+  // through the closing animation so there is something to collapse, and go when
+  // it is shut. It is also cheaper: five trips no longer render four hidden trees
+  // of flight cards, each with its own minute tick and its own two Modals.
+  //
+  // IT IS A HYPOTHESIS AND THE NEXT STEP IF IT SURVIVES IS A DIAGNOSTIC, not
+  // another guess: put a background colour on folderBody and see whether the box
+  // ends where the cards end or short of them. That separates a short box from a
+  // failed clip in one screenshot.
+  const show = open || !settled;
+
+  useEffect(() => {
+    setSettled(false);
+    Animated.timing(anim, {
+      toValue: open ? 1 : 0,
+      duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
+      easing: open ? EASE_OUT : EASE_IN,
+      useNativeDriver: false,
+    }).start(({ finished }) => { if (finished) setSettled(true); });
+  }, [open]);
+
+  return (
+    <View>
+      {/* THE LID, IN WHICHEVER SHAPE IS BEING TRIED. The rail below starts at
+          RAIL_X and the header is a solid block above it, so the thread reads as
+          dropping out of the folder whatever the header is made of -- none of the
+          three aligns anything to the line, and none needs to. */}
+      <FolderHead
+        title={title}
+        count={count}
+        date={date}
+        tone={tone}
+        open={open}
+        anim={anim}
+        first={first}
+        onToggle={onToggle}
+      />
+      <Animated.View
+        style={[
+          st.folderBody,
+          {
+            height: settled || h === 0
+              ? (open ? undefined : 0)
+              : anim.interpolate({ inputRange: [0, 1], outputRange: [0, h] }),
+          },
+        ]}
+      >
+        {show && (
+          <View onLayout={e => setH(e.nativeEvent.layout.height)}>
+            <View style={st.rail} pointerEvents="none" />
+            <View style={st.trip}>{children}</View>
+          </View>
+        )}
+      </Animated.View>
+    </View>
+  );
+}
+
 export default function Flights() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -819,104 +1297,26 @@ export default function Flights() {
   // different leg. An id names the record.
   const [focusOverride, setFocusOverride] = useState<string | null>(null);
 
-  // ── AND WHICH TRIP, WHICH IS A SEPARATE DECISION AT A SEPARATE LEVEL ──────
+  // ── WHICH FOLDERS ARE OPEN ────────────────────────────────────────────────
   //
-  // A SECOND STATE AND NOT A SECOND MEANING FOR focusOverride, which is per-LEG:
-  // it holds a leg id, it is looked up inside the focus trip's own leg list, and
-  // its clearing effect asks whether that leg is still showing. "Which leg is
-  // open" and "which trip is open" are different questions one level apart, and
-  // one state answering both would make that effect ambiguous about which
-  // decision it was discarding.
+  // EXPLICIT TOGGLES ONLY, AND THE DEFAULT IS DERIVED. A set of OPEN ids would go
+  // stale: tripsOf re-sorts on every tick, so the trip that should be open by
+  // default CHANGES the moment a journey finishes and the next is promoted. A
+  // record of what the user has actually tapped, read against a default computed
+  // fresh, follows that; a set seeded at mount does not.
   //
-  // A tripId, NOT AN INDEX INTO current, for exactly the reason focusOverride is
-  // an id rather than an index: tripsOf re-sorts as legs fly -- a trip whose last
-  // leg lands drops to rank 1 and moves -- so a stored index would silently come
-  // to name a different journey.
-  //
-  // NULL IS THE ORDINARY STATE AND MEANS "FOLLOW THE ORDERING". tripsOf puts the
-  // journey with the earliest leg still to fly first, which is almost always the
-  // one being taken; this is the user saying otherwise.
-  //
-  // IT DOES NOT SURVIVE A RELAUNCH, AND THAT IS THE DECISION RATHER THAN AN
-  // OMISSION. A persisted override would open a trip glanced at last week with
-  // nothing on screen saying an override existed or how to clear it -- silently
-  // wrong, and self-perpetuating. Resetting means every launch starts by
-  // following the journey, which is what currentLegIndex and nextLegIndex are
-  // built around. It also keeps one lifetime for one idea: focusOverride is
-  // in-memory and this is the same idea one level up.
-  const [tripOverride, setTripOverride] = useState<string | null>(null);
+  // IT DOES NOT SURVIVE A RELAUNCH, and the argument is stronger than it was for
+  // the focus override this replaces. A stale focus showed the wrong trip; a stale
+  // CLOSED on the current trip shows nothing at all for the journey you are on,
+  // with nothing on screen saying why. The default is right, this screen has no
+  // persistence of any kind, and the cost of being wrong is a blank.
+  const [openTrips, setOpenTrips] = useState<Record<string, boolean>>({});
 
-  // THE TRIP THE SCREEN IS OPENED ON. current[0] unless the user has said
-  // otherwise and the trip they named is still showing.
-  //
-  // A MISS FALLS THROUGH TO current[0] HERE rather than waiting for the effect
-  // below to clear the override, so the render is already correct on the frame
-  // the trip stops existing. Same shape as openIdx.
-  //
-  // NULL WHEN THERE IS NOTHING, which the render already gates on.
-  const focus = useMemo(() => {
-    if (current.length === 0) return null;
-    if (tripOverride !== null) {
-      const t = current.find(legs => legs[0].tripId === tripOverride);
-      if (t !== undefined) return t;
-    }
-    return current[0];
-  }, [current, tripOverride]);
 
-  // EVERY TRIP THAT IS NOT THE ONE OPEN, AND IT IS NO LONGER slice(1). The focus
-  // can sit anywhere in the ordering now, so the others are whatever is left
-  // after it is taken out -- by identity, since these are the very arrays `focus`
-  // was chosen from.
-  const others = useMemo(
-    () => current.filter(legs => legs !== focus),
-    [current, focus],
-  );
 
-  // AND THE OVERRIDE IS DROPPED WHEN THE TRIP IT NAMES STOPS SHOWING -- every leg
-  // archived, or the last one disowned. The memo above already falls through, so
-  // this only tidies; it is here for the same reason its sibling below is, which
-  // is that a render must not write state.
-  useEffect(() => {
-    if (tripOverride === null) return;
-    if (!current.some(legs => legs[0].tripId === tripOverride)) setTripOverride(null);
-  }, [current, tripOverride]);
 
-  // WHERE THE FOCUS TRIP'S ATTENTION SITS, and it is asked once rather than
-  // inside a map. `focus` is the journey being shown -- tripsOf ordered them and
-  // the user may have overruled that -- and every leg's state is measured
-  // against it.
-  //
-  // AN INDEX, because NEXT is the leg after this one and "after" is a position.
-  // It was an id while the states were decided per leg from the clock; now that
-  // one of them is defined relative to another, the list order is the thing both
-  // questions are asked of.
-  //
-  // THE OVERRIDE ONLY WINS WHILE IT NAMES A LEG THAT IS SHOWING. A miss falls
-  // through to currentLegIndex here rather than waiting for the effect below to
-  // clear it, so the render is already correct on the frame the trip changes.
-  //
-  // -1 WHEN NOTHING OPENS, which is an ordinary outcome rather than an empty-list
-  // guard: a trip more than a day out opens no card at all. See currentLegIndex.
-  //
-  // `now` IS A DEPENDENCY, because the window is a clock reading. It moves once a
-  // minute, which is exactly how often the answer can change.
-  const openIdx = useMemo(() => {
-    if (focus === null) return -1;
-    const legs = focus;
-    if (focusOverride !== null) {
-      const i = legs.findIndex(l => l.id === focusOverride);
-      if (i >= 0) return i;
-    }
-    return currentLegIndex(legs, now);
-  }, [focus, focusOverride, now]);
 
-  // AND THE ONE AFTER IT, WHICH IS THE ONLY LEG THAT MAY BE NEXT. Derived from
-  // openIdx rather than computed alongside it, so the two cannot disagree about
-  // which leg is open. See nextLegIndex.
-  const nextIdx = useMemo(
-    () => (focus === null ? -1 : nextLegIndex(focus, now, openIdx)),
-    [focus, now, openIdx],
-  );
+
 
   // AND IT IS DROPPED WHEN IT STOPS MEANING ANYTHING. The trip can change under
   // it: a leg is removed, the whole journey finishes and leaves `current`, or
@@ -926,11 +1326,15 @@ export default function Flights() {
   //
   // IN AN EFFECT RATHER THAN IN THE MEMO ABOVE, because a render must not write
   // state. The memo already falls through, so this only tidies up.
+  // ACROSS EVERY TRIP NOW, NOT JUST THE OPEN ONE. There is no single focus trip
+  // any more: every folder renders its own legs, so an override is still showing
+  // as long as ANY current trip contains that leg. It only clears when the leg
+  // leaves the screen entirely -- disowned, or its whole journey archived.
   useEffect(() => {
     if (focusOverride === null) return;
-    const showing = focus !== null && focus.some(l => l.id === focusOverride);
+    const showing = current.some(legs => legs.some(l => l.id === focusOverride));
     if (!showing) setFocusOverride(null);
-  }, [focus, focusOverride]);
+  }, [current, focusOverride]);
 
   // TAPPING A COLLAPSED LEG OPENS IT, AND TAPPING THE ONE THE JOURNEY WOULD
   // HAVE CHOSEN ANYWAY GIVES CONTROL BACK.
@@ -946,27 +1350,167 @@ export default function Flights() {
     setFocusOverride(i >= 0 && legs[i].id === leg.id ? null : leg.id);
   };
 
-  // ── AND TAPPING ANOTHER TRIP OPENS IT ─────────────────────────────────────
+
+
+  // ── WHICH FOLDER IS OPEN, AND THE DEFAULT THAT MOVES ──────────────────────
   //
-  // openLeg's SHAPE ONE LEVEL UP, INCLUDING THE HALF THAT LOOKS REDUNDANT.
-  // Choosing the trip the ordering would have chosen anyway sets the override to
-  // NULL rather than to that trip's own id: the two would look identical on the
-  // frame they happen and are different states afterwards, because an override
-  // pinned to the natural choice stops the screen following. When that journey
-  // finishes and tripsOf promotes the next one, a pinned id would hold the screen
-  // on the trip behind it.
+  // current[0] IS THE DEFAULT AND IS READ FRESH EVERY RENDER. tripsOf ranks a
+  // journey with a leg still to fly above one that is finished, so the trip that
+  // should be open by default CHANGES when a journey ends. Storing the answer
+  // would freeze it; storing only what the user has TAPPED lets the default
+  // follow.
   //
-  // AND IT CLEARS THE LEG OVERRIDE IN THE SAME BREATH. A leg id from the trip
-  // being left cannot be found in the trip being opened, so openIdx would fall
-  // through to currentLegIndex and the effect would tidy up a render later --
-  // correct either way. It is stated here rather than relied upon because a
-  // fall-through that is load-bearing is a fall-through somebody later simplifies
-  // away.
-  const chooseTrip = (legs: SavedFlight[]) => {
-    setFocusOverride(null);
-    setTripOverride(current.length > 0 && current[0] === legs
-      ? null
-      : legs[0].tripId);
+  // A tripId AND NOT AN INDEX, for the same reason focusOverride is an id: the
+  // ordering moves under both of them.
+  const isOpen = (legs: SavedFlight[]): boolean => {
+    const id = legs[0].tripId as string;
+    const explicit = openTrips[id];
+    return explicit === undefined ? current[0] === legs : explicit;
+  };
+
+  // TOGGLES AGAINST WHAT IS ON SCREEN, not against what was stored. Reading
+  // isOpen rather than the record means the first tap on a never-touched folder
+  // does the visible thing -- closing the default-open trip, opening any other --
+  // instead of depending on an entry that is not there.
+  const toggleTrip = (legs: SavedFlight[]) => {
+    const id = legs[0].tripId as string;
+    const next = !isOpen(legs);
+    // ── THE CAROUSEL IS SINGLE-SELECT AND THE OTHER TWO ARE NOT ──
+    //
+    // A ROW OF STUBS WITH ONE BODY UNDER IT CAN ONLY SHOW ONE TRIP, so choosing a
+    // stub has to close every other. The folders can have any number open at once
+    // because each carries its own body.
+    //
+    // AND A STUB CANNOT BE UNSELECTED. Tapping the open one again would leave the
+    // strip with nothing beneath it and no way back except tapping a stub, which
+    // is a state with no purpose; so the carousel ignores a tap on what is already
+    // chosen where a folder would shut.
+    if (FOLDER_STYLE === 'carousel') {
+      if (!next) return;
+      const only: Record<string, boolean> = {};
+      for (const t of current) only[t[0].tripId as string] = t[0].tripId === id;
+      setOpenTrips(only);
+      return;
+    }
+    setOpenTrips(prev => ({ ...prev, [id]: next }));
+  };
+
+  // ── ONE TRIP'S LEGS, AND ITS OWN TWO INDICES ──────────────────────────────
+  //
+  // THEY USED TO BE MEMOS AT THE TOP OF THIS COMPONENT because there was one
+  // open trip and therefore one answer. Every folder renders its own legs now,
+  // so every folder needs its own current leg and its own next -- and a hook
+  // cannot be called inside a map. currentLegIndex and nextLegIndex are pure
+  // functions of a leg list and a clock, so calling them straight is not a
+  // downgrade from useMemo; it is what useMemo was wrapping.
+  //
+  // THE LEG OVERRIDE IS STILL SHARED AND STILL WORKS. focusOverride holds a leg
+  // id, and ids are flightNumber|date -- unique across every trip -- so the
+  // findIndex below misses in every journey but the one that owns the leg and
+  // falls through to currentLegIndex there. One value, N folders, no collisions.
+  const renderLegs = (legs: SavedFlight[]) => {
+    const oIdx = (() => {
+      if (focusOverride !== null) {
+        const i = legs.findIndex(l => l.id === focusOverride);
+        if (i >= 0) return i;
+      }
+      return currentLegIndex(legs, now);
+    })();
+    const nIdx = nextLegIndex(legs, now, oIdx);
+    return legs.map((leg, i) => {
+      // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
+      // indices and the landing; nothing below re-derives any of them,
+      // and no clock is consulted here at all -- both windows were
+      // spent deciding openIdx and nextIdx above.
+      //
+      // showsBelt IS ASKED UNCONDITIONALLY AND NEEDS NO STATE GUARD:
+      // its own first two conditions are a belt number and a landing,
+      // so it is already false on every state but landed. Gating it
+      // here would be the same rule written twice.
+      const state = legState(leg, i, oIdx, nIdx);
+      const card = state !== 'current' ? (
+          <CollapsedLeg
+            leg={leg}
+            state={state}
+            belt={showsBelt(legs, i, now)}
+            now={now}
+            onPress={() => openLeg(legs, leg)}
+          />
+      ) : (
+      <FlightCard
+        flight={flightDataFromSaved(leg, effectiveStatus(leg, now))}
+        flightRecord={leg}
+        now={now}
+        // TRUE BY CONSTRUCTION. A leg is a record in savedFlights with
+        // a tripId on it, so a flight this screen can show is a flight
+        // that is saved -- the same argument the map card makes.
+        isSaved
+        handleToggleSave={NOT_REACHABLE}
+        routeOnMap={isOnMap(leg.id)}
+        toggleRouteOnMap={() => { void toggleLegOnMap(leg); }}
+        // TRUE BY CONSTRUCTION TOO: current[0] came out of tripsOf,
+        // which groups on a non-null tripId.
+        isOwnedFlight
+        // THE MENU ROW AND THE SWIPE ARE ONE ACTION. Both remove the
+        // leg, so both are handed the same function rather than two
+        // that could drift.
+        toggleOwned={() => { void remove(leg); }}
+        removeFromTrip={() => { void remove(leg); }}
+        refreshFlightCard={() => { void refreshLeg(leg); }}
+        closeFlightCard={NOT_REACHABLE}
+        tripVariant
+        // THE HALF OF THE BELT QUESTION THE CARD CANNOT ANSWER. See
+        // bagEligible above and the prop's own note on the card: it is
+        // about this leg's position in the trip, and the trip is here.
+        // The card still decides the other half, which is whether the
+        // flight has landed.
+        bagsClaimedHere={bagEligible(legs, i)}
+        // WHERE THIS LEG SITS IN THE JOURNEY, and both numbers were
+        // already here -- `i` is the map index and `legs` is the
+        // ordered leg list bagEligible above is reading. Nothing is
+        // derived and no trip model crosses the boundary; the card
+        // gets a position and a total, which is all a header tag is.
+        //
+        // legsOfTrip SORTED THEM BY DEPARTURE INSTANT before any of
+        // this saw them, so "leg 2 of 4" means the second flight taken
+        // rather than the second record stored.
+        legIndex={i}
+        legCount={legs.length}
+        // THE SAME COUNTDOWN THE COLLAPSED ROWS TAKE, from the same
+        // function on the same tick. The open card and the row above
+        // it must not disagree about how long is left, and one
+        // implementation is how that is guaranteed rather than
+        // checked. See the prop's note on the card.
+        countdown={countdown(leg, now)}
+      />
+      );
+      // THE KEY MOVED TO THE FRAGMENT, which is why neither element
+      // above carries one any more: a leg now renders as a PAIR --
+      // itself, and the gap that follows it -- and React keys the
+      // thing that is returned.
+      //
+      // AFTER EVERY LEG BUT THE LAST. A layover is what sits between
+      // two legs, so there are always exactly one fewer of them than
+      // there are legs, and a trailing one would be the space after
+      // the journey ends.
+      //
+      // A Fragment ADDS NO VIEW. Its children become direct children
+      // of st.trip, so CARD_GAP falls between the card and the row
+      // exactly as it falls between two cards.
+      return (
+        <Fragment key={leg.id}>
+          {/* THE SLOT IS WHAT HOLDS THE LEG OFF THE THREAD. The card
+              itself cannot carry the margin -- FlightCard's root is a
+              Swipeable this screen does not style -- so both levels
+              are wrapped, which also keeps the two variants the same
+              distance from the line. */}
+          <View style={st.legSlot}>{card}</View>
+          {i < legs.length - 1 && (
+            <Layover prev={leg} next={legs[i + 1]} />
+          )}
+        </Fragment>
+      );
+    });
   };
 
   // WHAT CAN BE IMPORTED: watched, not already owned, not already archived.
@@ -1324,7 +1868,7 @@ export default function Flights() {
             takes the full button in the middle of the page instead. */}
         <View style={st.titleRow}>
           <Text style={st.title}>{'My Flights'}</Text>
-          {focus !== null && headerAdd}
+          {current.length > 0 && headerAdd}
         </View>
         {/* HOME'S OWN CLOCK LINE, character for character: 15pt MONO at 0.4,
             3 under the title. It reads the tick this screen already keeps for
@@ -1332,12 +1876,11 @@ export default function Flights() {
             second one. */}
         <Text style={st.clock}>{formatClock(now)}</Text>
 
-        {/* focus === null RATHER THAN current.length === 0, and the two are the
-            same condition -- focus is null exactly when there is no trip to show.
-            Written this way it also NARROWS: everything in the other branch reads
-            `focus` as a leg list rather than as a maybe-null, so the render needs
-            no assertions of its own. */}
-        {focus === null ? (
+        {/* BACK TO current.length, because there is no `focus` to be null. It was
+            written the other way to NARROW a maybe-null leg list for the branch
+            below; the branch below now takes its list from a map or from
+            current[0] behind its own length test, so there is nothing to narrow. */}
+        {current.length === 0 ? (
           // ── NOTHING YET, AND IT IS THE CENTRE OF THE SCREEN ──
           //
           // THE SEARCH SCREEN'S OWN NO-RESULTS TREATMENT, character for
@@ -1356,10 +1899,11 @@ export default function Flights() {
           </View>
         ) : (
           <>
-            {/* ── THE FOCUS TRIP, AT THREE LEVELS OF ATTENTION ──
-                `focus` is the journey with the earliest leg still to fly —
-                tripsOf decided that — or whichever one the user has tapped, and
-                it is the only one this screen opens out.
+            {/* ── THE TRIPS, AT THREE LEVELS OF ATTENTION WITHIN EACH ──
+                tripsOf ordered them: a journey with a leg still to fly outranks
+                one that is finished, and the earliest unflown departure breaks
+                the tie. Every one of them opens out now; what varies is which
+                folders are open.
 
                 IT USED TO OPEN OUT EVERY LEG EQUALLY, and that was the mistake.
                 A four-leg journey was four full cards, each with its own gate,
@@ -1398,140 +1942,97 @@ export default function Flights() {
                 no gutter at all. Insetting the legs individually leaves the
                 column's own left edge at zero, which is where the line and the
                 layover label both need to measure from. */}
-            <View style={st.tripWrap}>
-              <View style={st.rail} pointerEvents="none" />
-              <View style={st.trip}>
-              {focus.map((leg, i) => {
-                // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
-                // indices and the landing; nothing below re-derives any of them,
-                // and no clock is consulted here at all -- both windows were
-                // spent deciding openIdx and nextIdx above.
-                //
-                // showsBelt IS ASKED UNCONDITIONALLY AND NEEDS NO STATE GUARD:
-                // its own first two conditions are a belt number and a landing,
-                // so it is already false on every state but landed. Gating it
-                // here would be the same rule written twice.
-                const state = legState(leg, i, openIdx, nextIdx);
-                const card = state !== 'current' ? (
-                    <CollapsedLeg
-                      leg={leg}
-                      state={state}
-                      belt={showsBelt(focus, i, now)}
-                      now={now}
-                      onPress={() => openLeg(focus, leg)}
-                    />
-                ) : (
-                <FlightCard
-                  flight={flightDataFromSaved(leg, effectiveStatus(leg, now))}
-                  flightRecord={leg}
-                  now={now}
-                  // TRUE BY CONSTRUCTION. A leg is a record in savedFlights with
-                  // a tripId on it, so a flight this screen can show is a flight
-                  // that is saved -- the same argument the map card makes.
-                  isSaved
-                  handleToggleSave={NOT_REACHABLE}
-                  routeOnMap={isOnMap(leg.id)}
-                  toggleRouteOnMap={() => { void toggleLegOnMap(leg); }}
-                  // TRUE BY CONSTRUCTION TOO: current[0] came out of tripsOf,
-                  // which groups on a non-null tripId.
-                  isOwnedFlight
-                  // THE MENU ROW AND THE SWIPE ARE ONE ACTION. Both remove the
-                  // leg, so both are handed the same function rather than two
-                  // that could drift.
-                  toggleOwned={() => { void remove(leg); }}
-                  removeFromTrip={() => { void remove(leg); }}
-                  refreshFlightCard={() => { void refreshLeg(leg); }}
-                  closeFlightCard={NOT_REACHABLE}
-                  tripVariant
-                  // THE HALF OF THE BELT QUESTION THE CARD CANNOT ANSWER. See
-                  // bagEligible above and the prop's own note on the card: it is
-                  // about this leg's position in the trip, and the trip is here.
-                  // The card still decides the other half, which is whether the
-                  // flight has landed.
-                  bagsClaimedHere={bagEligible(focus, i)}
-                  // WHERE THIS LEG SITS IN THE JOURNEY, and both numbers were
-                  // already here -- `i` is the map index and `focus` is the
-                  // ordered leg list bagEligible above is reading. Nothing is
-                  // derived and no trip model crosses the boundary; the card
-                  // gets a position and a total, which is all a header tag is.
-                  //
-                  // legsOfTrip SORTED THEM BY DEPARTURE INSTANT before any of
-                  // this saw them, so "leg 2 of 4" means the second flight taken
-                  // rather than the second record stored.
-                  legIndex={i}
-                  legCount={focus.length}
-                  // THE SAME COUNTDOWN THE COLLAPSED ROWS TAKE, from the same
-                  // function on the same tick. The open card and the row above
-                  // it must not disagree about how long is left, and one
-                  // implementation is how that is guaranteed rather than
-                  // checked. See the prop's note on the card.
-                  countdown={countdown(leg, now)}
-                />
-                );
-                // THE KEY MOVED TO THE FRAGMENT, which is why neither element
-                // above carries one any more: a leg now renders as a PAIR --
-                // itself, and the gap that follows it -- and React keys the
-                // thing that is returned.
-                //
-                // AFTER EVERY LEG BUT THE LAST. A layover is what sits between
-                // two legs, so there are always exactly one fewer of them than
-                // there are legs, and a trailing one would be the space after
-                // the journey ends.
-                //
-                // A Fragment ADDS NO VIEW. Its children become direct children
-                // of st.trip, so CARD_GAP falls between the card and the row
-                // exactly as it falls between two cards.
-                return (
-                  <Fragment key={leg.id}>
-                    {/* THE SLOT IS WHAT HOLDS THE LEG OFF THE THREAD. The card
-                        itself cannot carry the margin -- FlightCard's root is a
-                        Swipeable this screen does not style -- so both levels
-                        are wrapped, which also keeps the two variants the same
-                        distance from the line. */}
-                    <View style={st.legSlot}>{card}</View>
-                    {i < focus.length - 1 && (
-                      <Layover prev={leg} next={focus[i + 1]} />
-                    )}
-                  </Fragment>
-                );
-              })}
+            {/* ── ONE TRIP IS A TRIP; TWO ARE FOLDERS ──
+                A SINGLE JOURNEY GETS NO HEADER, because there is nothing to
+                tell it apart from. A folder answers "which of these am I
+                looking at", and with one trip the question does not arise: a
+                title over the only thing on the screen is chrome naming the
+                screen.
+
+                NOTHING SWAPS POSITION ANY MORE. One trip used to render as
+                cards and every other as a single tappable line, and tapping
+                promoted a trip to the top. Folders keep every journey where
+                tripsOf put it and vary only what is VISIBLE, so opening one no
+                longer moves another. tripOverride and chooseTrip went with
+                that: they existed to decide which trip was drawn as cards, and
+                now all of them are. */}
+            {current.length === 1 ? (
+              <View style={st.tripWrap}>
+                <View style={st.rail} pointerEvents="none" />
+                <View style={st.trip}>{renderLegs(current[0])}</View>
               </View>
-            </View>
+            ) : FOLDER_STYLE === 'carousel' ? (
+              /* ── C IS NOT A FOLDER MODEL, AND THIS IS THE FLAG ──
+                 A HORIZONTAL STRIP CANNOT CONTAIN A TRIP THAT EXPANDS. A folder
+                 holds its own legs and grows in place, which is what lets any
+                 number be open and nothing move. Stubs scroll sideways in a fixed
+                 height, so the legs have to render SOMEWHERE ELSE -- and the only
+                 place is beneath the strip.
 
-            {/* EVERY OTHER TRIP, AS ONE LINE, AND EACH ONE OPENS. They were
-                inert, and the note here said a tap that swapped the focus was a
-                decision this screen had not been asked to make. It has been now.
+                 WHICH MAKES IT THE FOCUS MODEL AGAIN, in better clothes. One trip
+                 is shown at a time, choosing a stub swaps what is underneath, and
+                 the body's contents change while the strip stays put. It is
+                 exactly what tripOverride and chooseTrip did before folders
+                 replaced them; the stub row is a nicer picker for the same idea.
 
-                NOT slice(1) ANY MORE. The focus can sit anywhere in tripsOf's
-                ordering once the user has overruled it, so these are whatever is
-                left after it is removed -- see `others`.
+                 SO IT BREAKS TWO OF THE RULES THE OTHER TWO KEEP. Only one trip
+                 can be open, and tapping does move something -- not the strip, but
+                 everything below it. Nothing else in this file is affected: the
+                 rail, the legs and the cards are the same, and the strip is
+                 genuinely good at the one thing folders are bad at, which is
+                 seeing six journeys at once.
 
-                THE DIM ON PRESS IS THE WHOLE AFFORDANCE, at the same 0.7 every
-                other surface in this app uses, and there is no chevron: the route
-                card's own note makes the argument, and a marker here would be
-                chrome on a line that is one line precisely because it is not the
-                subject.
-
-                THE ROW IS PADDED RATHER THAN hitSlop'd. At 11pt the text is about
-                14 points tall, which is not a target; 8 above and below makes 30,
-                and padding does it without the overlapping touch regions hitSlop
-                would create against an 8pt gap. It is still under the 44 a
-                primary control should have -- accepted, because the same journey
-                is reachable by scrolling and this is the secondary way in. */}
-            {others.length > 0 && (
-              <View style={st.others}>
-                {others.map((legs, i) => (
-                  <TouchableOpacity
-                    key={legs[0].tripId ?? String(i)}
-                    activeOpacity={0.7}
-                    onPress={() => chooseTrip(legs)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`open ${legs[0].from.iata} to ${legs[legs.length - 1].to.iata}`}
+                 IT IS BUILT SO IT CAN BE LOOKED AT rather than because it fits. If
+                 it wins, the pinned model goes with it and that should be a
+                 decision rather than a side effect. */
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={st.stubs}
+                >
+                  {current.map((legs, i) => (
+                    <FolderHead
+                      key={legs[0].tripId as string}
+                      title={tripTitle(legs)}
+                      count={legs.length}
+                      date={tripDate(legs)}
+                      tone={tripTone(legs, now)}
+                      open={isOpen(legs)}
+                      anim={STILL}
+                      first={i === 0}
+                      onToggle={() => toggleTrip(legs)}
+                    />
+                  ))}
+                </ScrollView>
+                {(() => {
+                  // THE CHOSEN TRIP, OR THE FIRST. isOpen already defaults to
+                  // current[0], so an untouched screen shows the journey being
+                  // taken and a touched one shows whatever was picked.
+                  const shown = current.find(legs => isOpen(legs)) ?? current[0];
+                  return (
+                    <View style={st.tripWrap}>
+                      <View style={st.rail} pointerEvents="none" />
+                      <View style={st.trip}>{renderLegs(shown)}</View>
+                    </View>
+                  );
+                })()}
+              </>
+            ) : (
+              <View style={FOLDER_STYLE === 'divider' ? st.divList : st.folders}>
+                {current.map((legs, i) => (
+                  <TripFolder
+                    key={legs[0].tripId as string}
+                    title={tripTitle(legs)}
+                    count={legs.length}
+                    date={tripDate(legs)}
+                    tone={tripTone(legs, now)}
+                    open={isOpen(legs)}
+                    first={i === 0}
+                    onToggle={() => toggleTrip(legs)}
                   >
-                    <Text style={st.otherLine} numberOfLines={1}>
-                      {`${legs[0].flightNumber}  ${legs[0].from.iata} → ${legs[legs.length - 1].to.iata}  ${routeDateLabel(legs[0].flightDate)}`}
-                    </Text>
-                  </TouchableOpacity>
+                    {renderLegs(legs)}
+                  </TripFolder>
                 ))}
               </View>
             )}
@@ -1616,6 +2117,179 @@ const st = StyleSheet.create({
   // first card rather than 20 points above it.
   tripWrap: { marginTop: 20 },
   trip: { gap: CARD_GAP },
+  // ── THE FOLDERS ──
+  //
+  // 20 ON TOP IS tripWrap's OWN MARGIN, so a stack of folders begins where a
+  // single bare trip would. CARD_GAP between them is the gap between any two
+  // cards in this app, which is what a closed folder reduces to.
+  folders: { marginTop: 20, gap: CARD_GAP },
+  // ── THE LID, AS A SURFACE ──
+  //
+  // IT WAS BARE TEXT ON THE PAGE and read as a caption rather than as something
+  // you press. It is a card now, in the app's own three constants: CARD_FILL,
+  // CARD_RADIUS and cardEdge over it, which is what compactLeg, addBtn, importRow
+  // and pastRow are all made of.
+  //
+  // CARD_FILL AND NOT SURFACE_2, WHICH IS WHAT THE PILLS TAKE, AND THE SCALE IS
+  // WHY. lib/cards defines the levels by what is UNDERNEATH: SURFACE_1 is what
+  // sits on the page, SURFACE_2 is what sits on a SURFACE_1. The badges are
+  // SURFACE_2 because they are inside a card; this header is on the PAGE, so the
+  // same RELATIONSHIP is SURFACE_1 even though the pills' literal value is a step
+  // up. Using their value here would make a folder lid lighter than the cards it
+  // contains, which inverts the hierarchy the scale exists to state.
+  //
+  // paddingVertical 10 MAKES THE TARGET, not hitSlop. The row is 20 points of
+  // icon and 20 of padding, so 40 -- against 29 for the bare text it replaces,
+  // and near enough the 44 a primary control wants.
+  //
+  // THE RAIL NO LONGER EMERGES FROM THE ICON, AND THAT IS THE COST OF THE
+  // SURFACE. paddingLeft used to be 2 so the marker's centre landed on RAIL_X;
+  // with 10 points of padding the icon sits at about 20 and the line at 6 comes
+  // out from under the block's left edge instead. Moving RAIL_X to match would
+  // leave two points of gutter before RAIL_INSET's 22 and put the cards on the
+  // line. A solid lid with the thread dropping from beneath it still reads as one
+  // object; alignment to the glyph mattered when there was nothing but a glyph.
+  // ── A: THE FLIGHT STRIP ──
+  //
+  // NO paddingLeft AT ALL, AND RAIL_X IS BUILT ON THAT. The icon is the first
+  // child and flush to the edge, so its centre is at 10 and the thread drops from
+  // there. Any padding here moves the icon and the line stops meeting it.
+  //
+  // paddingVertical 12 MAKES THE TARGET. The row is 20 points of icon and 24 of
+  // padding, so 44 -- which is the figure a primary control should have and the
+  // first header on this screen to reach it.
+  // NO PADDING ON ANY SIDE, AND BOTH EDGES DEPEND ON THAT. The icon is flush left
+  // so its centre lands on RAIL_X; the date block is flush right so its accent
+  // border ends where the card does. overflow hidden makes both corners follow
+  // the radius instead of squaring it.
+  //
+  // THE HEIGHT COMES FROM THE DATE BLOCK, which carries the only vertical padding
+  // in the row -- two stacked lines and 8 either side, about 49 points. Well past
+  // the 44 a control should have, and the icon and route centre against it.
+  stripHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: CARD_FILL,
+    borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
+  },
+  // NO flex. The route sits against the icon rather than stretching, which is what
+  // keeps the two together and lets the spacer do the pushing.
+  stripRoute: { fontFamily: MONO_BOLD, fontSize: 15, color: '#ffffff' },
+  // THE ONE THING THAT STRETCHES, and it holds nothing. A flex on the ROUTE would
+  // have done the same job and would also have let a long route truncate itself
+  // into the date; an empty spacer takes the slack without ever being the thing
+  // that gives.
+  stripSpace: { flex: 1 },
+  // 44 WIDE, WHICH IS THE ONE MEASUREMENT HERE THAT IS NOT ARBITRARY: "SEP" is
+  // three characters of 11pt mono at 6.6, so 19.8, and 44 leaves twelve either
+  // side of it.
+  //
+  // THE BORDER IS ON THE RIGHT and the block is the last child, so those two
+  // points of colour are the card's own right edge.
+  //
+  // NEUTRAL IS THE DEFAULT AND IT IS THE PAGE'S RULE GREY, not a fourth tone.
+  // Nothing to compare means nothing is claimed -- see tripTone, which returns
+  // null rather than guessing, and never green on an unknown.
+  stripDate: {
+    width: 44, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 8,
+    borderRightWidth: 2, borderRightColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: SURFACE_2,
+  },
+  // COLOUR ONLY, BOTH OF THEM, so the block does not change size when a delay
+  // lands. CD_LATE and CD_GREEN are the pair the card's own clock takes; one
+  // definition of each, read rather than respelled.
+  stripDateLate: { borderRightColor: CD_LATE },
+  stripDateOnTime: { borderRightColor: CD_GREEN },
+  stripDay: { fontFamily: MONO_BOLD, fontSize: 15, color: '#ffffff' },
+  stripMon: { fontFamily: MONO, fontSize: 10, color: DIM, marginTop: 1 },
+  // KEPT FOR THE CAROUSEL, which still shows a count in its stubs. The strip's own
+  // badge went with the count -- see the header.
+  stripCountText: { fontFamily: MONO, fontSize: 11, color: DIM },
+
+  // ── B: NO CONTAINER ──
+  //
+  // THE LIST HAS NO GAP. The rule between items is the separation, and a gap on
+  // top of it would put the line in the middle of the space rather than between
+  // two rows.
+  divList: { marginTop: 20 },
+  divHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 12,
+  },
+  // THE CARDS' OWN RULE COLOUR, which airportRule and tripRule already take.
+  divRule: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  divText: { flex: 1, gap: 2 },
+  divDate: { fontFamily: SANS, fontSize: 11, color: DIM, letterSpacing: 1 },
+  divRoute: { fontFamily: MONO_BOLD, fontSize: 17, color: '#ffffff' },
+  divPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: SURFACE_1, borderRadius: 6,
+    paddingLeft: 8, paddingRight: 5, paddingVertical: 4,
+  },
+  divPillText: { fontFamily: MONO, fontSize: 11, color: DIM },
+
+  // ── C: THE STUBS ──
+  //
+  // 170 WIDE, WHICH FITS THE LONGEST THING IN THEM: "SAT 5 SEP" is 49.8 at 11pt
+  // Inter and the route is 70.2 at 13pt mono bold, so the padding is what decides
+  // it rather than the text.
+  //
+  // paddingRight 20 ON THE ROW so the last stub does not sit against the screen
+  // edge, and paddingLeft 0 so the first lines up with everything above it.
+  stubs: { gap: CARD_GAP, paddingRight: 20, paddingVertical: 20 },
+  stub: {
+    width: 170, gap: 6,
+    backgroundColor: CARD_FILL, borderRadius: CARD_RADIUS,
+    padding: 12,
+  },
+  // THE CHOSEN ONE IS A STEP UP THE SCALE, not a new colour and not an outline.
+  // SURFACE_2 on a page is one level too high by the scale's own reckoning -- but
+  // a stub that is SELECTED is being lifted toward the body it controls, which is
+  // the one case where skipping a level says something true.
+  stubOn: { backgroundColor: SURFACE_2 },
+  stubDate: { fontFamily: SANS, fontSize: 11, color: DIM, letterSpacing: 1 },
+  stubRoute: { fontFamily: MONO_BOLD, fontSize: 15, color: '#ffffff' },
+  stubCount: {
+    alignSelf: 'flex-start',
+    backgroundColor: SURFACE_2, borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+  // A FIXED BOX FOR TWO STACKED LAYERS. Both shapes are absolutely positioned
+  // inside it, so it has to carry the size itself -- 20 to match every other Svg
+  // this app draws.
+  folderIcon: { width: 20, height: 20 },
+  // folderName AND folderCount WENT WITH THE ONE HEADER THEY DRESSED. Each
+  // variant carries its own type now -- see stripRoute, divRoute and stubRoute.
+  // overflow hidden IS THE CLIP AND IT IS ALWAYS ON. The height animates to zero
+  // and the content inside keeps its full layout -- which is what lets onLayout
+  // report a real height while the folder is shut.
+  // ── THE FOLDER'S OWN BREATHING ROOM, TOP AND BOTTOM ──
+  //
+  // IT WAS NEVER AN OVERLAP. A diagnostic background answered in one screenshot
+  // what two rounds of reasoning got wrong: the box starts exactly where the
+  // header ends and finishes exactly where the cards do. The container was right
+  // the whole time and there was simply NO GAP -- the first card sat flush against
+  // the underside of its own header, which reads as a card overlapping the chrome
+  // above it.
+  //
+  // SO BOTH EDGES GET ONE. paddingTop holds the first card off its own header;
+  // paddingBottom holds the last card off the next one.
+  //
+  // PADDING AND NOT MARGIN, WHICH IS THE PART THAT MATTERS. A margin sits OUTSIDE
+  // the box, so a SHUT folder -- height zero -- would still push its neighbours
+  // apart and the list would breathe unevenly depending on what was open. Padding
+  // is inside: part of the auto height when the folder is open, clipped to nothing
+  // when the height is clamped to zero.
+  //
+  // CARD_GAP BOTH WAYS, which is the gap between any two cards in this app. On top
+  // of the list's own CARD_GAP the last card clears the next header by sixteen
+  // points, and two shut headers stay eight apart.
+  folderBody: {
+    overflow: 'hidden',
+    paddingTop: CARD_GAP,
+    paddingBottom: CARD_GAP,
+  },
   // THE THREAD. One pixel in the gutter, in DIM -- the same tone the duration
   // written on it takes, because the line and the label are one element. See
   // RAIL_X and RAIL_INSET for why the numbers are constants rather than literals.
@@ -1735,13 +2409,8 @@ const st = StyleSheet.create({
   // gap 4 RATHER THAN 8, because the rows carry 8 of their own padding now and
   // the space between two lines of text is what the eye reads -- 4 of gap plus 16
   // of facing padding is the 20 that 8 alone used to be, near enough.
-  others: { marginTop: 20, gap: 4 },
-  // paddingVertical 8 IS THE TOUCH TARGET. See the note at the rows: 14pt of text
-  // and 16 of padding is 30, which is what a secondary control gets here.
-  otherLine: {
-    fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.5)',
-    paddingVertical: 8,
-  },
+  // others AND otherLine WENT WITH THE FLAT LIST. Every trip is a folder now and
+  // there is no second, quieter way of rendering one.
 
   // ── THE ONE ADD CONTROL ──
   //
