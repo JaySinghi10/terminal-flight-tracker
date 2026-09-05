@@ -70,13 +70,35 @@ function platformName(): 'ios' | 'android' | 'unknown' {
   return 'unknown';
 }
 
+// THE SHARED SECRET /watch AND /unwatch REQUIRE. Both endpoints 404 without it.
+//
+// EXPO_PUBLIC_ IS THE PREFIX THAT MAKES IT REACH THE BUNDLE AT ALL — Expo inlines
+// only those at build time, and a variable without it is simply undefined here.
+// That prefix is also Expo's own way of saying the value is NOT SECRET: it is
+// compiled into the shipped JavaScript, so anyone with the app has it. It is kept
+// out of this repository rather than out of the binary, which is a smaller claim
+// than it looks and is the honest one. See the note above the endpoints in api.py.
+//
+// UNDEFINED IS A REAL STATE, not a bug to guard against: a local `expo start`
+// with no .env sends the header with an empty value, the server compares it and
+// refuses, and registration silently stops — exactly as it would with a wrong
+// value. There is nothing better this file could do with that, for the reason
+// the note at the top gives.
+const WATCH_SECRET = process.env.EXPO_PUBLIC_WATCH_SECRET ?? '';
+
 // One place the request is actually made, so both endpoints behave the same
 // way. A non-2xx does not throw and is not read — there is nothing this side
 // could usefully do with it.
+//
+// THE SECRET RIDES HERE RATHER THAN AT THE TWO CALL SITES, so /watch and
+// /unwatch cannot come to disagree about whether they send it.
 async function post(apiBase: string, path: string, payload: object): Promise<void> {
   await fetch(`${apiBase}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Watch-Secret': WATCH_SECRET,
+    },
     body: JSON.stringify(payload),
   });
 }
