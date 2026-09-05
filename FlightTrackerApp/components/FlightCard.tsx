@@ -2758,6 +2758,20 @@ export function FlightCard({
     ? 'Arrived'
     : flight.arrTimeLabel;
 
+  // HOW FAR OFF THE TIMETABLE THE LANDING WAS, for the card that says it landed.
+  //
+  // THE LANDED CARD HAD NO OFFSET AND THAT WAS AN OMISSION RATHER THAN A RULE.
+  // Phase three's old column was called without a `delay` prop, so delayText was
+  // never reached and nothing rendered; the layout that replaced it carried the
+  // label and the clock alone and inherited the gap without anybody deciding to.
+  // A flight that got in twenty minutes early is worth being told about after the
+  // fact as much as before it.
+  //
+  // delayText IS THE SAME FUNCTION THE OTHER PHASES CALL, so the triangle, the
+  // minutes, the suppression of zero and the silence on a null all come from one
+  // place. Nothing about the treatment is restated here.
+  const arrOffset = delayText(flight.arrDelay);
+
   // ── WHERE THIS FLIGHT IS IN ITS OWN LIFE ──────────────────────────────────
   //
   // FOUR PHASES, AND THE CARD IS A DIFFERENT CARD IN EACH. One layout for every
@@ -4408,6 +4422,34 @@ export function FlightCard({
                                   numberOfLines={1}
                                 >
                                   {flight.arrTimeValue}
+                                  {/* NESTED INSIDE THE CLOCK, which is how every
+                                      other phase does it -- see TripColumn. The
+                                      run shares the line and the baseline and
+                                      overrides family, size and colour, all three
+                                      of which differ from the clock it sits on.
+
+                                      arrTone === 'late' IS EXACTLY delay > 0 HERE
+                                      and is reused rather than tested again.
+                                      arrOffset is non-null only when the delay is
+                                      a number and not zero, and clockTone returns
+                                      'late' for a positive number and 'ontime' for
+                                      anything else -- so inside this branch the
+                                      two conditions cannot disagree.
+
+                                      ONE SPACE, as in the columns. There is room
+                                      to spare here that phase one does not have --
+                                      the answer side is about 165pt against a
+                                      96pt clock and offset -- but a gap that
+                                      varies by phase is a gap the reader notices.
+                                  */}
+                                  {arrOffset !== null && (
+                                    <Text
+                                      style={[s.tripColDelay,
+                                        arrTone === 'late' && s.tripColDelayLate]}
+                                    >
+                                      {` ${arrOffset}`}
+                                    </Text>
+                                  )}
                                 </Text>
                               </>
                             )}
