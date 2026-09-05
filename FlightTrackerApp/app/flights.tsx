@@ -21,6 +21,9 @@ import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from '
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
   Modal, Animated,
+  // FOR THE FOLDER'S OWN CURVE, which is declared here rather than taken from
+  // lib/glass. See FOLD_EASE.
+  Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -186,6 +189,49 @@ const FOLDER_STYLE: 'strip' | 'divider' | 'carousel' = 'strip';
 // layoverTime IS UNAFFECTED: its PAGE_BG background starts at the row's own left
 // edge and runs to RAIL_INSET, so it still covers the thread wherever the thread
 // is inside that span. See its note for what that background is for.
+// ── HOW A FOLDER OPENS, AND WHY IT IS NOT THE PANEL'S MOTION ──────────────
+//
+// THE OVERLAY TIMINGS WERE TUNED AGAINST TEN POINTS OF TRAVEL. lib/glass states
+// it two lines above them: OVERLAY_RISE is 10, and PANEL_IN_MS 220 / PANEL_OUT_MS
+// 150 are the pair that suits a surface moving that far. A folder with three legs
+// collapses six hundred:
+//
+//   panel rise      10pt over 220ms  ->    45 pt/s
+//   folder open    600pt over 220ms  ->  2700 pt/s
+//   folder close   600pt over 150ms  ->  4000 pt/s
+//
+// SIXTY TO NINETY TIMES THE SPEED THE CURVES WERE CHOSEN FOR. The easing was not
+// wrong; the same easing over sixty times the distance is a different motion.
+//
+// AND THE TWO CURVES FAILED IN OPPOSITE DIRECTIONS. EASE_OUT is expo-out --
+// bezier(0.16, 1, 0.3, 1) -- which spends about 85% of its travel in the first
+// fifth of its time. Over ten points that reads as arriving and settling; over six
+// hundred the folder is open inside fifty milliseconds and the rest is an
+// invisible tail. That was the snap. EASE_IN is bezier(0.4, 0, 1, 1), whose second
+// control point sits at the far corner: it has NO DECELERATION PHASE and arrives
+// at the end well above average velocity, then stops dead. That was the bounce --
+// the neighbour is pushed by that edge, travels a long way on the final frame and
+// halts, and an abrupt stop after high velocity reads as an overshoot even though
+// nothing overshoots.
+//
+// ONE CURVE BOTH WAYS, AND IT HAS A TAIL AT BOTH ENDS. bezier(0.4, 0, 0.2, 1)
+// accelerates out of rest and decelerates into it, which is the shape for
+// something that travels a long way and has to STOP. The deceleration is the half
+// that removes the bounce.
+//
+// 300 AND 240, STILL ASYMMETRIC. Long enough that six hundred points is not a
+// snap, short of the four hundred or so where a collapse starts to feel sluggish,
+// and leaving still does not make you wait. Not scaled linearly with distance --
+// that would be seconds.
+//
+// DECLARED HERE AND NOT IN lib/glass, which is explicitly the app's GLASS
+// vocabulary and whose motion pairs are all tuned for 10 to 28 points of overlay
+// travel. A folder body is not glass and its motion is not theirs; a third pair
+// in that file would invite the next person to put a collapse timing on a panel.
+const FOLD_IN_MS = 300;
+const FOLD_OUT_MS = 240;
+const FOLD_EASE = Easing.bezier(0.4, 0, 0.2, 1);
+
 const STRIP_PAD = 4;
 const RAIL_X = STRIP_PAD + 10;
 const RAIL_W = 1;
@@ -1227,8 +1273,12 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
     setSettled(false);
     Animated.timing(anim, {
       toValue: open ? 1 : 0,
-      duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
-      easing: open ? EASE_OUT : EASE_IN,
+      duration: open ? FOLD_IN_MS : FOLD_OUT_MS,
+      // THE SAME CURVE IN BOTH DIRECTIONS, which the overlays deliberately do not
+      // do. Theirs arrive and depart differently because they are appearing and
+      // disappearing; a folder is one object changing size, and it has to come to
+      // rest at both ends. See FOLD_EASE.
+      easing: FOLD_EASE,
       useNativeDriver: false,
     }).start(({ finished }) => { if (finished) setSettled(true); });
   }, [open]);
@@ -1259,8 +1309,42 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
           },
         ]}
       >
-        <View
-          style={st.folderInner}
+        {/* ── THE CONTENT DISSOLVES INSTEAD OF BEING SCRAPED AWAY ──
+            A MOVING CLIP EDGE GUILLOTINES THE BOTTOM CARD. It is a hard line
+            travelling through the content, cutting a card in half on its way past;
+            a fade means the cards go as a whole rather than being sliced.
+
+            ONE INTERPOLATION SERVES BOTH DIRECTIONS, which is the part worth
+            reading twice. Opacity is zero below 0.6 and rises to one at 1, so
+            OPENING it stays invisible for the first sixty per cent of the travel
+            and appears into space that already exists, and CLOSING -- the same
+            value running backwards -- it is gone within the first forty per cent
+            and the rest is an empty container shutting. The leading edge of the
+            motion in each direction, from one line.
+
+            COMPRESSED RATHER THAN FULL-LENGTH, AND THAT IS WHAT STOPS IT READING
+            AS TWO MOTIONS. A fade over the whole duration would run at equal
+            weight against the shrink and neither would be the thing happening.
+            Confined to a fifth of a second at one end, it is an attribute of the
+            collapse rather than a second animation.
+
+            IT COSTS NOTHING TO DRIVE. Same value, one more interpolate, no second
+            animation and no driver split -- height is already off the native
+            driver, so opacity riding beside it changes nothing.
+
+            THE RAIL FADES WITH THE CARDS because it is inside this view. That is a
+            consequence rather than a choice, and it is the right one: the thread
+            belongs to the content it threads. */}
+        <Animated.View
+          style={[
+            st.folderInner,
+            {
+              opacity: anim.interpolate({
+                inputRange: [0, 0.6, 1],
+                outputRange: [0, 0, 1],
+              }),
+            },
+          ]}
           // ── MEASURED AT REST AND NOWHERE ELSE ──
           //
           // onLayout FIRES DURING THE TRANSITION TOO, and setting `h` then rewrites
@@ -1292,7 +1376,7 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
                 and the carousel body have no padding to correct for. */}
           <View style={[st.rail, st.railFolder]} pointerEvents="none" />
           <View style={st.trip}>{children}</View>
-        </View>
+        </Animated.View>
       </Animated.View>
     </View>
   );
