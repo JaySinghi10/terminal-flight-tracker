@@ -335,6 +335,26 @@ export function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFli
   });
 }
 
+// ── HOW LONG A BELT IS WORTH SHOWING ────────────────────────────────────────
+//
+// FORTY-FIVE MINUTES FROM TOUCHDOWN. The belt is the one fact on a finished leg
+// that is still actionable, and it stops being actionable once the bags are off
+// it and in a hand.
+//
+// IT LIVES HERE BECAUSE IT HAS TWO READERS AND THEY MUST NOT DRIFT. app/flights
+// uses it for the belt on a COLLAPSED leg and for how long focus stays on a leg
+// that has just landed; components/FlightCard uses it for whether the open card
+// shows its belt or its arrival. A screen cannot be imported by a component, so
+// the shared rules file is the only place both can read -- which is the same
+// argument that put effectiveStatus and bagEligible's siblings here.
+//
+// IT WAS SIXTY, IN app/flights, AND ONLY THE COLLAPSED ROWS READ IT. Moving it
+// shortens that window by a quarter of an hour, which is a real change to an
+// existing surface and was made deliberately rather than inherited: one number
+// meaning "the bags are still worth showing" is worth more than two that agree
+// today and will not later.
+export const BAG_WINDOW_MS = 45 * 60 * 1000;
+
 // ── OWNERSHIP ───────────────────────────────────────────────────────────────
 //
 // A FLIGHT THE USER IS FLYING, as against one they are watching. The store has

@@ -43,6 +43,10 @@ import {
   // against the airport's own zone, and a second copy of that precedence here
   // would be a layover that disagrees with the cards either side of it.
   arrivalTs,
+  // HOW LONG A BELT IS WORTH SHOWING, and it is imported rather than declared
+  // because the flight card reads the same number for the same reason. See its
+  // note: it was sixty minutes here and is forty-five there now.
+  BAG_WINDOW_MS,
   departureTs,
   OWN_MSG,
 } from '../lib/saved';
@@ -339,10 +343,38 @@ const NEXT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 // does one whose every leg has landed. Both are correct: there is nothing to be
 // at an airport for, and a screen that always opens something would be opening
 // it for the sake of the layout.
+// ── AND THE HANDOVER WAITS FOR THE BAGS ───────────────────────────────────
+//
+// A LEG THAT HAS JUST LANDED KEEPS FOCUS FOR BAG_WINDOW_MS BEFORE THE NEXT ONE
+// TAKES IT. Without that clause the moment leg one touched down, focus moved to
+// leg two -- and the open card's landed layout, which exists to put a carousel
+// number in front of somebody who has just walked off an aircraft, was a state
+// almost nothing could reach. It rendered only if the user went back and tapped
+// the leg they had just flown.
+//
+// THE LAST LEG IS THE CASE THE LOOP CANNOT SEE, and it needs its own clause. The
+// loop looks for an UNLANDED leg whose predecessor has landed; when the final leg
+// lands there is no such leg, so a finished journey opened nothing at exactly the
+// moment its bags were coming out. It now holds that leg for the same window and
+// closes afterwards, which is the -1 a completed trip should settle to.
+//
+// IT IS THE CLOCK, NOT THE BELT. This asks only how long ago the aircraft landed;
+// whether there is a carousel number yet, and whether the bags are even claimed
+// at this airport, are the card's and bagEligible's questions. Holding focus on a
+// through-checked leg for forty-five minutes costs one card being open; deciding
+// it here would mean this function taking a trip-position rule it does not have.
 function currentLegIndex(legs: SavedFlight[], now: number): number {
   for (let i = 1; i < legs.length; i++) {
-    if (legs[i].landedAt === null && legs[i - 1].landedAt !== null) return i;
+    if (legs[i].landedAt === null && legs[i - 1].landedAt !== null) {
+      const landed = legs[i - 1].landedAt as number;
+      return now - landed < BAG_WINDOW_MS ? i - 1 : i;
+    }
   }
+  // EVERY LEG HAS FLOWN, OR THERE IS ONLY ONE AND IT HAS. The loop starts at 1
+  // and needs an unlanded leg, so neither case reaches it.
+  const last = legs.length - 1;
+  if (last >= 0 && legs[last].landedAt !== null
+    && now - (legs[last].landedAt as number) < BAG_WINDOW_MS) return last;
   if (legs.length > 0 && legs[0].landedAt === null) {
     const t = departureTs(legs[0]);
     if (t !== null && t - now < CURRENT_WINDOW_MS) return 0;
@@ -442,9 +474,10 @@ function countdown(leg: SavedFlight, now: number): { label: string; value: strin
 
 // ── WHETHER A LEG'S BELT IS WORTH PRINTING ──────────────────────────────────
 //
-// AN HOUR AFTER LANDING. The belt is the one fact on a finished leg that is
-// still actionable, and it stops being actionable once the bags are off it.
-const BAG_WINDOW_MS = 60 * 60 * 1000;
+// BAG_WINDOW_MS IS lib/saved's NOW. It was declared here at sixty minutes and
+// read by nothing else; the flight card wants the same window for the open
+// card's own belt, and two constants meaning "the bags are still worth showing"
+// would agree today and drift later. It is forty-five minutes there.
 // lib/airports.ts carries FULL COUNTRY NAMES, not codes -- see the Airport type.
 // Spelled once so the two comparisons below cannot drift apart.
 const US_COUNTRY = 'United States';

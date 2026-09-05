@@ -73,7 +73,10 @@ import { zonedIsoToTs, clock24 } from '../lib/time';
 // THE STORE'S RULES, NOT THE STORE. Both are pure functions of a record and a
 // clock. One implementation, so the card, the watchlist rows and the refresh loop
 // cannot come to disagree about what a flight is doing.
-import { effectiveStatus, isArchived } from '../lib/saved';
+// BAG_WINDOW_MS JOINS THEM, and for the same reason: it is a RULE about a record
+// and a clock rather than any screen's state. app/flights reads the same constant
+// for the collapsed rows and for how long focus stays on a leg that has landed.
+import { effectiveStatus, isArchived, BAG_WINDOW_MS } from '../lib/saved';
 import {
   getStatusColor,
   routeDateLabel,
@@ -2679,6 +2682,82 @@ export function FlightCard({
   // card is not describing.
   const showBelt = flight.status === 'LANDED' && bagsClaimedHere;
 
+  // ── WHICH OF THE TWO LANDED CARDS THIS IS ─────────────────────────────────
+  //
+  // THE BELT STATE FOR THE FIRST FORTY-FIVE MINUTES, THE ARRIVAL AFTER IT. A
+  // traveller walking off an aircraft wants a carousel; an hour later the leg is
+  // history and the only thing worth keeping is when it actually got in.
+  //
+  // landedAt AND NOT A STATUS, which is the whole reason this is a separate test
+  // from showBelt above. flight.status is badgeLabel's word and tripPhase is
+  // effectiveStatus's, and the two can disagree -- but landedAt is the record of
+  // an aircraft touching down, written once by saveFlight or touchSavedFlight the
+  // first time a refresh came back landed, and never guessed from a schedule. It
+  // is also the only one of the three that carries a TIME, which a window needs.
+  //
+  // IT DOES NOT ASK WHETHER THERE IS A BELT NUMBER, AND THAT IS THE POINT. A
+  // carousel is assigned minutes AFTER touchdown, so gating on the value would
+  // show the arrival, then flip to a belt, then flip back -- a card that sprouts
+  // a new fact and takes it away again. Held open with an empty slot, the pill
+  // says the app reports this and is waiting, and filling in is the answer
+  // arriving. Same dash, same grey, same reasoning as every other always-row.
+  //
+  // bagsClaimedHere IS STILL THE SAFETY HALF. A through-checked connection never
+  // reaches the belt state at all, whatever the clock says -- see bagEligible.
+  // The card cannot answer that question and does not try.
+  const landedAt = flightRecord?.landedAt ?? null;
+  const beltState = bagsClaimedHere
+    && landedAt !== null
+    && now - landedAt < BAG_WINDOW_MS;
+
+  // ── "ARRIVED", WHEN THE FLIGHT IS DOWN AND THE CLOCK IS ONLY AN ESTIMATE ──
+  //
+  // THE LABEL FOLLOWS THE SOURCE EVERYWHERE ELSE AND THIS IS THE ONE EXCEPTION.
+  // movementTimeCell names a time by where it came from -- Actual, Estimated,
+  // Scheduled -- and the landed card printed that verbatim, so a flight the
+  // provider had marked down but given no actual arrival for read ESTIMATED ARR.
+  // That is precise about the data and wrong about the flight: the aircraft is on
+  // the ground and the card is the only thing still calling the arrival a
+  // prediction.
+  //
+  // ── THIS LABELS AN ESTIMATE AS A RECORD, AND THAT IS THE COST ────────────
+  //
+  // SAY IT PLAINLY BECAUSE IT IS A REAL COMPROMISE. "ARRIVED" over 02:13 tells
+  // the reader the flight is in and lets them believe 02:13 is when -- and 02:13
+  // is a prediction that was never confirmed. Nothing else in this app does that;
+  // the whole Scheduled/Estimated/Actual distinction exists to stop it.
+  //
+  // IT IS ACCEPTED HERE FOR ONE REASON AND THE REASON DOES NOT TRAVEL. The flight
+  // has demonstrably landed, and once it has, NOTHING THE READER DOES DEPENDS ON
+  // THE EXACT MINUTE. They are walking up a jet bridge. A pre-departure estimate
+  // is the opposite case -- somebody is deciding when to leave for an airport on
+  // it -- and the same shortcut there would be dangerous. This is not licence to
+  // relax the rule anywhere else in the file, and a future reader looking for
+  // precedent should read this paragraph as the argument AGAINST doing so.
+  //
+  // landedAt AND NOTHING ELSE, WHICH IS WHAT KEEPS IT STRICT. It is written once
+  // by saveFlight or touchSavedFlight the first time a refresh came back landed,
+  // and is never guessed from a schedule -- so this cannot fire on a flight still
+  // in the air, and it cannot fire because a clock has passed. Not tripPhase,
+  // which is effectiveStatus's word; not flight.status, which is badgeLabel's.
+  // The provider reported a landing or this does not run.
+  //
+  // AN ACTUAL TIME KEEPS ITS OWN LABEL. If the source IS 'actual' there is a real
+  // record and "ACTUAL ARR" is both true and more informative, so the exception is
+  // narrowed to the case that needs it.
+  //
+  // A SCHEDULED SOURCE TAKES IT TOO. The strict reading is "landed with only an
+  // estimate", but a landed flight showing SCHEDULED ARR is the same fault a
+  // degree worse -- the timetable presented as the arrival -- and "ARRIVED" is
+  // exactly as honest about the landing and no less honest about the minute.
+  //
+  // headLabel PASSES IT THROUGH UNCHANGED. That helper shortens the movement noun
+  // in a two-word label and returns a single word as it stands, so "Arrived" needs
+  // no special case there.
+  const arrHead = landedAt !== null && flight.arrTimeSource !== 'actual'
+    ? 'Arrived'
+    : flight.arrTimeLabel;
+
   // ── WHERE THIS FLIGHT IS IN ITS OWN LIFE ──────────────────────────────────
   //
   // FOUR PHASES, AND THE CARD IS A DIFFERENT CARD IN EACH. One layout for every
@@ -4261,24 +4340,87 @@ export function FlightCard({
                         arrival are all still on it. */}
                     {tripPhase === 'landed' && (
                       <>
-                        <TripIdent flight={flight} />
+                        {/* ── IDENTITY ON THE LEFT, THE ANSWER ON THE RIGHT ──
+                            ITS OWN LAYOUT RATHER THAN THE COLUMNS BENT INTO ONE.
+                            TripColumn is a label over a clock over a date over a
+                            stack of rows, and this needs two of those at most;
+                            TripIdent is one inline line and this wants the number
+                            ABOVE the carrier. Every TYPE style here is already in
+                            the file -- airportIdentNum, airportIdentName and their
+                            gap of 3 are the identity treatment the non-trip card
+                            uses, and the right-hand side borrows tripColHead,
+                            tripColTime and the badge styles unchanged. What is new
+                            is two containers.
+
+                            THE NUMBER STAYS AT THE IDENTITY TIER, 13pt in the label
+                            grey. A finished leg is not shouting: the loud thing on
+                            this card is whichever answer sits opposite. */}
+                        <View style={s.tripDoneRow}>
+                          <View style={s.airportIdent}>
+                            <Text style={s.airportIdentNum} numberOfLines={1}>
+                              {flight.flight}
+                            </Text>
+                            {flight.airline !== '' && (
+                              <Text style={s.airportIdentName} numberOfLines={1}>
+                                {flight.airline}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={s.tripDoneAnswer}>
+                            {beltState ? (
+                              /* THE BELT, IN THE ROW WRAPPER THE OTHER BADGES USE.
+                                 tripPill carries flex: 1 and expects a
+                                 tripPillRow around it -- alone in one it takes the
+                                 whole width, which is what a single badge should
+                                 do here. Reusing the wrapper rather than
+                                 overriding the flex is what keeps this pill the
+                                 same object as Terminal, Gate and Desk. */
+                              <View style={s.tripPillRow}>
+                                <View style={s.tripPill}>
+                                  <Text style={s.tripPillLabel} numberOfLines={1}>
+                                    {'Belt'}
+                                  </Text>
+                                  <Text
+                                    style={[s.tripPillValue,
+                                      !hasTime(flight.baggage) && s.tripSlotEmpty]}
+                                    numberOfLines={1}
+                                  >
+                                    {hasTime(flight.baggage) ? flight.baggage : DASH}
+                                  </Text>
+                                </View>
+                              </View>
+                            ) : (
+                              /* ACTUAL ARR WHEN THERE IS A RECORD, ARRIVED WHEN
+                                 THE FLIGHT IS DOWN AND THERE IS NOT. See arrHead,
+                                 which carries the argument and the reason it does
+                                 not generalise -- this is the one place in the app
+                                 that lets a label outrun its source. */
+                              <>
+                                <Text style={s.tripColHead} numberOfLines={1}>
+                                  {headLabel(arrHead)}
+                                </Text>
+                                <Text
+                                  style={[
+                                    s.tripColTime,
+                                    arrTone === 'ontime' && s.tripColTimeOnTime,
+                                    arrTone === 'late' && s.tripColTimeLate,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {flight.arrTimeValue}
+                                </Text>
+                              </>
+                            )}
+                          </View>
+                        </View>
+                        {/* THE ROUTE STAYS, AND THE ARGUMENT FOR DROPPING IT LOST
+                            TO ONE OBSERVATION: every collapsed leg above and below
+                            prints DXB -> BOM, so a card without it would mean
+                            TAPPING a leg REMOVES information from the screen. The
+                            case for cutting it was that a landed leg is read to
+                            find out what happened rather than where it went, which
+                            is true and is not worth that. */}
                         <TripRoute from={flight.from} to={flight.to} />
-                        <TripColumn
-                          head={flight.arrTimeLabel}
-                          time={flight.arrTimeValue}
-                          tone={arrTone}
-                          when={whenLine(flight.arrTimeIso, flight.arr)}
-                          // THE GATE IS OUTSIDE THE ROW, DELIBERATELY. showBelt is
-                          // landed AND bagsClaimedHere, and when it is false the
-                          // row must not exist -- not exist empty. An empty "Belt"
-                          // on a through-checked connection sends a passenger to
-                          // reclaim instead of their next gate. Past that gate the
-                          // label stays while the carousel is still unassigned,
-                          // which is the minutes after touchdown.
-                          rows={showBelt
-                            ? [{ label: 'Belt', value: flight.baggage, always: true }]
-                            : []}
-                        />
                       </>
                     )}
 
@@ -5282,6 +5424,21 @@ const s = StyleSheet.create({
   // "departed" rather than a label-and-value pair, because a pair would give it
   // the weight of a row in a column it is no longer part of.
   tripQuiet: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
+  // ── THE LANDED CARD'S ONE ROW ──
+  //
+  // IDENTITY LEFT, ANSWER RIGHT, AND THE ANSWER TAKES THE REMAINDER. flex: 1 on
+  // the right alone means the identity is content-sized and the belt or the clock
+  // fills whatever a flight number and a carrier leave -- which is what lets a
+  // single badge stretch to a real width rather than hugging the word "Belt".
+  //
+  // alignItems flex-start, so a two-line identity and a two-line answer both hang
+  // from the top of the row rather than centring against each other. 12 is the
+  // gutter tripCols uses between its own two halves.
+  tripDoneRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  // 4 IS tripPill's OWN LABEL-TO-VALUE GAP plus a point, which is what the label
+  // and clock want between them here; the badge branch ignores it because a pill
+  // is one child.
+  tripDoneAnswer: { flex: 1, gap: 4 },
   // ── THE ARC'S BOX ──
   //
   // A FIXED HEIGHT AND A RELATIVE POSITION, and that is the whole of it. The
