@@ -1305,6 +1305,17 @@ export default function Flights() {
                   // The card still decides the other half, which is whether the
                   // flight has landed.
                   bagsClaimedHere={bagEligible(current[0], i)}
+                  // WHERE THIS LEG SITS IN THE JOURNEY, and both numbers were
+                  // already here -- `i` is the map index and current[0] is the
+                  // ordered leg list bagEligible above is reading. Nothing is
+                  // derived and no trip model crosses the boundary; the card
+                  // gets a position and a total, which is all a header tag is.
+                  //
+                  // legsOfTrip SORTED THEM BY DEPARTURE INSTANT before any of
+                  // this saw them, so "leg 2 of 4" means the second flight taken
+                  // rather than the second record stored.
+                  legIndex={i}
+                  legCount={current[0].length}
                   // THE SAME COUNTDOWN THE COLLAPSED ROWS TAKE, from the same
                   // function on the same tick. The open card and the row above
                   // it must not disagree about how long is left, and one

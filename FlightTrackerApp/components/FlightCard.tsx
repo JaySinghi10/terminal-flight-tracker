@@ -33,7 +33,11 @@
 // The three stylesheets are index's own entries, lifted out of its `s`, `sf` and
 // `pg` into local ones of the same names, so every render block below is
 // character-for-character what it was.
-import { useState, useRef, useEffect, useCallback } from "react";
+// useMemo IS NEW, and the arc is its only reader: the curve's path string and
+// the marker's interpolation stops are derived from ONE number, the measured
+// width, and rebuilding them on every minute tick would hand <Path> a fresh `d`
+// sixty times an hour for a curve that has not moved. See FlightArc.
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Svg, { Path } from 'react-native-svg';
 // The Reanimated one, deliberately, and the same import app/index.tsx uses for
 // the watchlist rows. See the note there.
@@ -46,6 +50,10 @@ import Reanimated, {
   useAnimatedStyle, useSharedValue,
   runOnJS, type SharedValue,
   withTiming,
+  // THE ONE ADDITION, AND THE PULSE IS ITS ONLY READER. withRepeat(-1, true) is
+  // an unbounded reversing loop, which is what makes the dot breathe rather than
+  // blink: the value walks down and back up rather than snapping to the start.
+  withRepeat,
 } from 'react-native-reanimated';
 import {
   View,
@@ -102,7 +110,14 @@ import {
   EASE_OUT, EASE_IN, CAL_RISE, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
   OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
 } from '../lib/glass';
-import { CARD_RADIUS, CARD_PAD, CARD_FILL, PAGE_BG, SURFACE_EDGE } from '../lib/cards';
+// SURFACE_2 IS THE PILL'S FILL, and it is imported rather than spelled for the
+// reason the scale itself gives: nine unnamed white alphas were what it replaced.
+// See the note at the badge styles -- a control inside a card is level 2 by that
+// file's own definition, and this is the first thing in this component to need
+// one.
+import {
+  CARD_RADIUS, CARD_PAD, CARD_FILL, PAGE_BG, SURFACE_EDGE, SURFACE_2,
+} from '../lib/cards';
 // HOW FAR THE BLACK TAKES TO BECOME GLASS, in points, measured from the bottom
 // of the cutout downward.
 //
@@ -307,6 +322,22 @@ export function badgeLabel(rawStatus: string | null | undefined, fallback: strin
 export function hasTime(v: string | null | undefined): v is string {
   return typeof v === 'string' && v.trim() !== '' && v !== 'N/A';
 }
+
+// ── WHAT STANDS WHERE A VALUE HAS NOT ARRIVED ─────────────────────────────
+//
+// AN EM DASH, WHICH IS THE ONE THIS APP ALREADY DRAWS FOR THIS. AirportTile has
+// rendered '\u2014' for an unassigned gate since before the trip card existed,
+// on the same reasoning: a dash where a gate number goes says the gate is
+// unassigned. A hyphen here would be a SECOND glyph meaning one thing, and the
+// two would sit six inches apart on a card and its own sheet.
+//
+// A CONSTANT BECAUSE THERE ARE NOW THREE READERS -- the tile, the pill and the
+// plain row -- and a character written three times is a character that comes
+// back inconsistent.
+//
+// AND IT IS ONLY EVER REACHED THROUGH `always`. A row without that flag is
+// filtered out when it has no value and never gets here; see TripColumn.
+const DASH = '\u2014';
 
 // WHICH OF THE THREE TIMES A MOVEMENT IS SHOWING. The label used to be the only
 // record of this -- "Actual" against "Estimated" against "Scheduled" -- which
@@ -1270,16 +1301,28 @@ function TripIdent({ flight }: { flight: FlightData }) {
 // knows it, a belt is decided minutes after landing. Showing the label says the
 // card reports this thing and has not been told yet.
 //
-// NO DASH AND NO "N/A", WHICH IS THE WHOLE DISTINCTION. A dash asserts that a
-// value was looked for and found missing. An empty slot asserts nothing at all,
-// which is the true state -- and it is why this is not simply AirportTile's em
-// dash moved to a new layout.
+// AND IT IS A DASH RATHER THAN AN EMPTY SLOT, WHICH IS A REVERSAL. The slot was
+// left bare on the argument that a dash ASSERTS a value was looked for and found
+// missing where an empty slot asserts nothing. That reading was right about what
+// the two characters mean and wrong about what a reader sees: a label with
+// nothing beside it does not read as "pending", it reads as a row that failed to
+// finish drawing -- and on a pill, whose whole purpose is to be a filled shape,
+// an empty half is a box with a hole in it.
+//
+// SO THE ASSERTION IS THE POINT. "This card reports a gate, and does not have one
+// yet" is exactly what is true, and the dash is how AirportTile has said it for
+// as long as it has existed. See DASH.
 //
 // WITHOUT `always` A ROW IS OMITTED ENTIRELY, and one row wants that: the
 // check-in desk. A desk is not pending -- plenty of airports and airlines never
 // publish one, and it is released before departure anyway -- so a permanent
 // empty "Desk" would promise something that is never coming, which is the dash's
 // fault in a quieter font.
+//
+// IT IS STILL A BADGE, AND THAT IS NOT A CONTRADICTION. `pill` decides the shape
+// a row takes when it renders; this flag decides whether it renders at all. The
+// desk is the one row that says yes to the first and no to the second -- see the
+// note at `pill`, where all four combinations are set out.
 //
 // AND THE BELT IS GATED BEFORE IT GETS HERE, by the caller rather than by this
 // flag. When bags are through-checked to a later leg the row must not exist at
@@ -1297,29 +1340,55 @@ function TripIdent({ flight }: { flight: FlightData }) {
 // unambiguous -- the label says whether it has happened and the figure says by
 // how much it differs.
 //
-// ON ITS OWN LINE RATHER THAN ON THE SAME ONE, AND THE ARITHMETIC DECIDED THAT.
-// A phase-one column is 102.5pt at a 320pt screen -- the card interior is 230
-// once the page margin, the thread's inset and the padding are taken off, less
-// the gap and the rule. "21:40" is 60pt at 20pt mono and "17m early" is 64.8 at
-// 12; side by side with a gap they are 130.8, which overflows by 28. On a 390pt
-// phone the column is 137.5 and they fit by seven points, until a three-digit
-// delay takes them past it again. Shrinking the time to make room was ruled out,
-// so the figure takes a line -- and it takes the same line in phase two, where
-// the column IS wide enough, because a figure that moves between phases is one
-// the reader has to find twice.
+// ── A SIGNED FIGURE, WHICH IS WHAT MADE IT FIT ────────────────────────────
+//
+// IT READ "17m early" AND THE PROSE WAS THE PROBLEM, not the point size. Beside
+// a 20pt clock in a phase-one column there was no legible size for nine
+// characters: the column is 102.5pt at a 320pt screen -- the card interior is 230
+// once the page margin, the thread's inset and the padding come off, less the gap
+// and the rule -- and "02:08" takes 60 of it. Nine characters in the remaining
+// 42.5 needs SIX AND A HALF POINT TYPE, and shrinking the clock was ruled out. So
+// the figure went on its own line, and the answer was to make it shorter rather
+// than smaller.
+//
+// "-17m" IS FOUR CHARACTERS AND 28.8pt AT 12. With a single space between them
+// the pair is 96pt against 102.5 and clears by 6.5, at the size the card had
+// already settled on for a qualifier. Nothing about the clock changed.
+//
+// THE SIGN CARRIES WHAT THE WORDS DID, and it is not carrying it alone. A minus
+// is early and a plus is late -- the departure-board convention -- and the COLOUR
+// says the same thing again: amber for late, grey for early. The label above the
+// clock says whether the time has happened. Three devices, and the word was the
+// most expensive of them.
+//
+// ASCII '-' AND '+', NOT U+2212. Both are certainly in JetBrains Mono at a fixed
+// advance, which is what the arithmetic above assumes; a typographic minus is a
+// character this app has never needed and would be one more thing that has to be
+// in a bundled face.
+//
+// ONE NOTATION IN EVERY PHASE. Phase two's column is the card's full width and
+// has room for the prose -- but a figure that changes its spelling between phases
+// is one the reader has to learn twice, which was the objection to moving its
+// POSITION between phases and applies just as well to its words.
 //
 // ZERO IS NOT A DELAY AND NULL IS NOT ZERO. Zero is the commonest value there is
-// and "0m late" is a line that says nothing; null is the server having had
-// nothing to compare -- see _delay_minutes -- which is silence rather than
-// punctuality. Both render nothing.
+// and "+0m" is a figure that says nothing; null is the server having had nothing
+// to compare -- see _delay_minutes -- which is silence rather than punctuality.
+// Both render nothing.
 //
-// LATE IS AMBER AND EARLY IS GREY, NOT GREEN. Green means live on this card and
-// nowhere else means anything else; an early arrival is news about a time, not a
-// statement that the time is live. The green already sits on the clock above,
-// where it says the same thing the figure is quantifying.
+// NEITHER IS GREEN. Green means live on this card and nowhere else means anything
+// else; an early arrival is news about a time, not a statement that the time is
+// live. The green already sits on the clock beside it, where it says the same
+// thing the figure is quantifying.
+//
+// THE ONE CASE THAT DOES NOT FIT is a delay of 100 minutes or more on a 320pt
+// screen: "+120m" is 36pt and the trio comes to 103.2 against 102.5, so the
+// trailing "m" ellipsises. It overflows by seven tenths of a point on a device
+// released in 2016; at 375pt the column is 130 and it clears by 27. The clock
+// stays whole either way -- numberOfLines is 1 and the nested run is what gives.
 function delayText(delay: number | null | undefined): string | null {
   if (typeof delay !== 'number' || delay === 0) return null;
-  return `${Math.abs(delay)}m ${delay > 0 ? 'late' : 'early'}`;
+  return `${delay > 0 ? '+' : '-'}${Math.abs(delay)}m`;
 }
 
 function TripColumn({ head, time, live, when, delay, rows }: {
@@ -1327,49 +1396,388 @@ function TripColumn({ head, time, live, when, delay, rows }: {
   time: string;
   live: boolean;
   when: string | null;
+  // `inline` WAS HERE AND HAS GONE WITH THE PROSE THAT NEEDED IT. It existed so
+  // phase two could put the offset beside the clock while phase one, whose
+  // columns are 102.5pt, kept it on a line of its own -- and once the figure
+  // became "-17m" rather than "17m early" it fits beside the clock in BOTH, so a
+  // parameter every caller would pass identically had stopped saying anything.
+  // See delayText for the arithmetic that closed it.
+  //
   // ABSENT IN THE TWO ENDED PHASES, and not merely null. A landed flight states
   // its actual arrival and a cancelled one is not running; in both, a figure
   // measured against a timetable answers a question nobody is asking.
   delay?: number | null;
-  rows: { label: string; value: string | null; always?: boolean }[];
+  // ── TWO SHAPES OF ROW, AND `pill` CHOOSES ─────────────────────────────────
+  //
+  // A BADGE FOR THE FACTS SOMEBODY IS STANDING IN A TERMINAL TO READ: a terminal,
+  // a gate, a check-in desk. Every one of them is a PLACE TO WALK TO, and stacked
+  // as identical label-and-value lines the card gave them the same claim as the
+  // clock's date and the belt.
+  //
+  // ── `pill` AND `always` ARE ORTHOGONAL, AND THE DESK IS WHAT PROVES IT ────
+  //
+  // THE TWO FLAGS ANSWER DIFFERENT QUESTIONS and reading one off the other is the
+  // mistake this note used to make. `always` asks WHETHER A ROW SURVIVES AN EMPTY
+  // VALUE -- pending, or absent. `pill` asks WHAT SHAPE IT TAKES WHEN IT RENDERS.
+  //
+  // The desk takes `pill` and not `always`, which is the combination that says
+  // what a desk actually is: a place to walk to, and one that frequently does not
+  // exist. It is a badge when there is one and nothing at all when there is not.
+  // An earlier version of this comment argued the desk should be a plain line
+  // BECAUSE it was value-gated, which was one judgement being made to serve
+  // another -- a desk you have been given is exactly as much a destination as a
+  // gate you have been given.
+  //
+  // AND THE BELT IS THE OTHER CORNER: `always` and no `pill`. It is pending
+  // rather than absent -- a carousel is assigned minutes after landing -- and it
+  // is not somewhere you choose to go, it is where you end up. All four
+  // combinations mean something and none is derivable from another.
+  //
+  // IT IS A FIELD ON A ROW AND NOT A PROP ON THE COLUMN, because one column can
+  // carry both kinds -- see the belt, which is a plain row in a phase whose other
+  // rows would be badges. A column-level flag could only have said "these are all
+  // badges".
+  //
+  // SURFACE_2, WHICH IS THE SCALE'S OWN ANSWER AND NOT A NEW COLOUR. lib/cards
+  // defines it as "what sits on a SURFACE_1" and names this exact case -- a
+  // control inside a card. The card is SURFACE_1 on a #0a0a0a page; the pill is
+  // one step above it. Nothing is invented and nothing is darker than the card.
+  //
+  // IT WRAPS RATHER THAN STACKING, AND THAT IS WHAT ABSORBED THE THIRD BADGE. The
+  // pills are content-sized, so the row packs what fits and breaks where it must:
+  // in a 102.5pt phase-one column "Terminal" takes a line of its own at about 60
+  // and "Gate" and "Desk" share the next at roughly 42 and 43 with the 6pt gap
+  // between them. Three badges cost two lines rather than three, and phase two's
+  // full-width column still lays its pair out in one. No phase test, and nothing
+  // to keep in step with the phase machine.
+  rows: { label: string; value: string | null; always?: boolean; pill?: boolean }[];
 }) {
   const shown = rows.filter(r => r.always === true || hasTime(r.value));
+  // SPLIT RATHER THAN BRANCHED INSIDE THE MAP, because the pills share a wrapping
+  // row and the plain rows do not. Order is preserved at every call site: the
+  // badges are the first rows given and the desk and the belt follow them.
+  const badges = shown.filter(r => r.pill === true);
+  const lines = shown.filter(r => r.pill !== true);
   const offset = delayText(delay);
+  // Read twice -- once for each placement -- so the test is written once.
+  const late = typeof delay === 'number' && delay > 0;
   return (
     <View style={s.tripCol}>
       <Text style={s.tripColHead}>{head}</Text>
       <Text style={[s.tripColTime, live && s.tripColTimeLive]} numberOfLines={1}>
         {time}
+        {/* NESTED, WHICH IS THIS FILE'S OWN WAY OF PUTTING A QUALIFIER ON A
+            VALUE -- see MovementLine's suffix and the sheet's. A nested Text
+            shares the line and the baseline and overrides only what differs, so
+            a 12pt figure sits on a 20pt clock's own baseline with nothing
+            aligning it.
+
+            IT MUST OVERRIDE THE COLOUR AND DOES. The clock beside it may be
+            green, and an offset is never green: tripColDelay carries its own
+            grey, and the amber replaces that rather than the parent's.
+
+            ONE SPACE, AND IT IS LOAD-BEARING. At 12pt mono a space is 7.2pt,
+            which is the whole of the gap between the clock and the figure and is
+            counted in delayText's arithmetic. Two would overflow the phase-one
+            column by seven tenths of a point. */}
+        {offset !== null && (
+          <Text style={[s.tripColDelay, late && s.tripColDelayLate]}>
+            {` ${offset}`}
+          </Text>
+        )}
       </Text>
       {/* TWO LINES ALLOWED, AND ONLY AS INSURANCE. "5 Sep · GMT+5:30" is
           sixteen characters -- about 115 points at 12pt mono against a column
           of roughly 120 -- so it fits, and the longest zone labels are what it
           fits by. Given a second line it breaks at its own separator rather
           than truncating a zone to "GMT+5:3". */}
-      {offset !== null && (
-        <Text
-          style={[s.tripColDelay, delay !== null && delay !== undefined && delay > 0
-            && s.tripColDelayLate]}
-          numberOfLines={1}
-        >
-          {offset}
-        </Text>
-      )}
       {when !== null && (
         <Text style={s.tripColWhen} numberOfLines={2}>{when}</Text>
       )}
-      {shown.map(r => (
+      {/* THE BADGES, AS A ROW THAT WRAPS ITSELF. See the `pill` flag. */}
+      {badges.length > 0 && (
+        <View style={s.tripPills}>
+          {badges.map(r => (
+            <View key={r.label} style={s.tripPill}>
+              <Text style={s.tripPillLabel} numberOfLines={1}>{r.label}</Text>
+              {/* THE DASH IS INSIDE THE PILL, which is the whole reason the pill
+                  can exist at all: a badge is a filled shape, and a filled shape
+                  with an empty half is a box with a hole in it rather than a
+                  fact that has not arrived. It takes the LABEL's grey, so the
+                  pill reads as holding a name and nothing else yet -- a dash at
+                  the value's white would be a placeholder claiming a value's
+                  weight, which is what "N/A" did and why it was removed. */}
+              <Text
+                style={[s.tripPillValue, !hasTime(r.value) && s.tripSlotEmpty]}
+                numberOfLines={1}
+              >
+                {hasTime(r.value) ? r.value : DASH}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+      {lines.map(r => (
         <View key={r.label} style={s.tripColRow}>
           <Text style={s.tripColLabel}>{r.label}</Text>
-          {/* THE SLOT IS LEFT EMPTY RATHER THAN FILLED WITH A PLACEHOLDER. The
-              row is a flex row, so an absent value leaves the label with nothing
-              beside it and nothing collapses -- no minimum height is needed and
-              none is set. */}
-          {hasTime(r.value) && (
-            <Text style={s.tripColValue} numberOfLines={1}>{r.value}</Text>
-          )}
+          {/* THE SAME DASH AND THE SAME GREY AS THE PILL'S, so the belt and the
+              gate say "not yet" in one voice. Only a row carrying `always` can
+              reach this branch -- a value-gated row with nothing in it was
+              filtered out above and does not render at all. */}
+          <Text
+            style={[s.tripColValue, !hasTime(r.value) && s.tripSlotEmpty]}
+            numberOfLines={1}
+          >
+            {hasTime(r.value) ? r.value : DASH}
+          </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+// ── THE ONE THING ON THE CARD THAT MOVES BY ITSELF ────────────────────────
+//
+// A FLIGHT IN THE AIR IS THE ONLY STATE WORTH ANIMATING, and this renders in no
+// other. A scheduled flight is not live and must not look it: a dot pulsing
+// beside a departure four hours away would be the card claiming something is
+// happening when the only thing happening is the clock. Phases one, three and
+// four get nothing, and the gate is at the call site rather than a prop here --
+// a component that renders itself away is a component you have to read to find
+// out it did nothing.
+//
+// REANIMATED RATHER THAN THE Animated THIS FILE ALSO USES, and the two coexist
+// here on purpose -- the header says so. This one belongs on the UI thread: it
+// is an unbounded loop that runs for as long as the aircraft is airborne, which
+// is hours, and driving that from JS would mean a mapper firing sixty times a
+// second underneath a screen that also has a swipe, a scroll and a minute tick
+// on it. useAnimatedStyle runs the whole loop natively and costs the JS thread
+// nothing after the first frame.
+//
+// OPACITY AND NOT SIZE. A dot that grows and shrinks is a heartbeat and reads as
+// an alarm; a dot that brightens and dims reads as something transmitting. The
+// floor is 0.25 rather than 0 because a dot that vanishes entirely reads as a
+// rendering fault at the bottom of every cycle -- it has to stay present and
+// merely quieten.
+//
+// 1100ms EACH WAY, SO THE CYCLE IS 2.2 SECONDS. Fast enough to be seen as
+// deliberate, slow enough that a card sat on screen for twenty minutes is not
+// flashing at somebody. `true` is what reverses it: without that the value snaps
+// back to full and the dot blinks.
+//
+// CD_GREEN, WHICH IS THE APP'S ONE WORD FOR LIVE. It is the same constant the
+// status pill turns and the countdown is written in; no new colour, and the dot
+// is green for exactly the reason those two are.
+function PulseDot() {
+  const dim = useSharedValue(1);
+  useEffect(() => {
+    dim.value = withRepeat(withTiming(0.25, { duration: 1100 }), -1, true);
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: dim.value }));
+  return <Reanimated.View style={[s.tripPulse, style]} pointerEvents="none" />;
+}
+
+// ── THE FLIGHT, AS THE SHAPE IT ACTUALLY MAKES ────────────────────────────
+//
+// IT REPLACES THE PROGRESS BAR IN PHASE TWO RATHER THAN JOINING IT. Both draw
+// one fraction, and two elements stating one fact is the duplicate-countdown
+// mistake this card has already made once and removed: the bar and the arc would
+// have been the same number in two shapes, free to be read as two.
+//
+// ── WHY NONE OF THIS IS INSIDE THE SVG ────────────────────────────────────
+//
+// react-native-svg RE-RASTERISES A MOUNTED TREE ON ANY PROP CHANGE, and this
+// codebase has already paid for that once: components/WorldMap.tsx was retired
+// for it -- see the note at the top of GlobeMap.tsx -- because permanently
+// mounted geometry meant re-rasterising the whole canvas every frame.
+//
+// THE SCALE HERE IS NOT WORLDMAP'S. This is ONE Path. Rasterising one path is
+// not the thing to be afraid of; rasterising it EIGHTY-FOUR TIMES over a 1400ms
+// travel is, and that is what animating the marker as an SVG node would cost --
+// useNativeDriver does not drive SVG props in react-native-svg 15, so every
+// frame would be a JS-thread prop write and a re-rasterise.
+//
+// SO NOTHING IN THE SVG EVER CHANGES. `d` is a pure function of the measured
+// width, memoised on it, so it is built on mount and on rotation and at no other
+// time -- twice in the life of a card. The aircraft is not an SVG node at all:
+// it is an Animated.View outside the <Svg>, moved by transforms.
+//
+// AND TRANSFORMS RATHER THAN left/top, WHICH IS BETTER THAN THE BAR IT REPLACES.
+// ProgressBar animates a `left` percentage, and layout properties cannot go on
+// the native driver -- so its plane costs a JS-thread write per frame. translate
+// and rotate CAN, so this runs entirely on the UI thread and the travel survives
+// a busy JS thread that would make the bar's plane stutter.
+//
+// ── THE GEOMETRY, WHICH IS ONE QUADRATIC AND TWO CLOSED FORMS ─────────────
+//
+// A Bezier from (0, ARC_BASE) to (w, ARC_BASE) with its control at
+// (w/2, ARC_BASE - 2*ARC_RISE). Expanded, that curve is:
+//
+//   x(t) = t*w                          -- LINEAR, exactly what the bar already
+//                                          interpolates
+//   y(t) = ARC_BASE - 4*ARC_RISE*t*(1-t)  -- a parabola, apex at t = 0.5
+//
+// x IS LINEAR AND y IS NOT, so x is one two-point interpolation and y is sampled
+// at eleven stops. Eleven is chosen rather than guessed: Animated joins its stops
+// with straight lines, and the worst error of a chord across a tenth of this
+// parabola is 4*ARC_RISE/(4*100), about a tenth of a point. Invisible, and the
+// alternative -- a listener recomputing y in JS -- would put the whole animation
+// back on the thread this exists to keep it off.
+//
+// THE ROTATION IS THE TANGENT, sampled the same way. dy/dx is
+// -4*ARC_RISE*(1-2t)/w, so the aircraft noses up out of the departure, levels at
+// the apex and noses down into the arrival. It is not decoration: a marker that
+// slides along a curve without turning reads as a bead on a wire.
+const ARC_H = 72;
+// WHERE THE ENDPOINTS SIT, AND THE MARKER'S OWN BOX DECIDED BOTH. The glyph is
+// centred in a 24pt box, so it reaches 12 above and below whatever point it is
+// on: 58 leaves 14 under the arrival end and 14 - 12 = 2 over the apex. Nothing
+// clips at either extreme, which is what the numbers are for.
+const ARC_BASE = 58;
+const ARC_RISE = 44;
+// A KNOWN BOX AROUND AN UNKNOWN GLYPH. U+2708 is in neither bundled face -- the
+// note at footerPlane checked both cmap tables -- so it comes from the platform's
+// fallback and its advance is not knowable here. Centring it inside a box of a
+// size WE set means the translations can subtract half of that box and land the
+// aircraft on the curve exactly, whatever width the platform gives the glyph.
+const ARC_MARK = 24;
+const ARC_STOPS = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+
+// ── HOW BIG A CHANGE HAS TO BE TO BE WORTH SHOWING ────────────────────────
+//
+// FIVE PER CENT, AND IT IS THE MARKER'S OWN BODY LENGTH. The arc is about 206pt
+// wide on a 320pt screen and the aircraft's box is 24, so half a body is 12pt --
+// 5.8% of the span. 0.05 is that, rounded to a number a person can hold, and it
+// works out at 10.3pt of travel.
+//
+// UNDER ITS OWN HALF-LENGTH THERE IS NOTHING TO SEE, WHICH IS THE WHOLE ARGUMENT.
+// An animation exists to show a change; if the aircraft has not moved half its
+// own width, a 1400ms travel is 1400ms of nothing, and on a CURVE the eye reads
+// that as the card twitching. It was survivable on a straight bar because a
+// horizontal creep of one point is what a bar looks like anyway.
+//
+// AND A MINUTE IS ALWAYS UNDER IT, WHICH IS THE CASE THIS EXISTS FOR. `now` ticks
+// every sixty seconds, so on a three-hour flight a tick is 1/190 of the journey
+// -- 0.0053, or 1.1pt. On a sixteen-hour haul it is 0.2pt. Every ordinary tick
+// falls two orders of magnitude short of this threshold and settles instead.
+//
+// WHAT DOES CLEAR IT IS A REVISED ESTIMATE: an airline moving an arrival by
+// nine minutes on a three-hour leg, or by three quarters of an hour on a long
+// one. That is news, and news is exactly what should be shown moving.
+const ARC_SETTLE = 0.05;
+
+function FlightArc({ progress }: { progress: number }) {
+  // MEASURED RATHER THAN DERIVED. The card's interior is CARD_PAD off a leg slot
+  // that is RAIL_INSET off a page margin off the window -- four numbers owned by
+  // three files -- and re-deriving that chain here would be a fifth place for it
+  // to be kept in step. onLayout is what the width actually is.
+  const [w, setW] = useState(0);
+  const t = useRef(new Animated.Value(0)).current;
+  // WHERE THE MARKER WAS PUT LAST, WHICH IS NOT THE SAME AS `progress`. The delta
+  // has to be measured against what is ON SCREEN, and a prop cannot say that: on
+  // the render after a settle, `progress` and the previous `progress` differ by
+  // one tick while the marker has already been moved to the new one. A ref
+  // carries the shown value across renders without causing any.
+  const at = useRef(0);
+  // FIRST RUN OR NOT, and it is a ref rather than a test on `at` because zero is
+  // a legitimate position -- computeProgress floors at 0.02, but a mount at 0.02
+  // against an initial 0 would be a delta of 0.02, under the threshold, and the
+  // arrival would snap into place with no travel at all.
+  const flown = useRef(false);
+
+  // ── IT ARRIVES ONCE AND THEN SETTLES ──────────────────────────────────────
+  //
+  // THE MOUNT ANIMATES, AND IT IS THE BAR'S OWN TRAVEL, VALUE FOR VALUE: 1400ms
+  // after a 300ms delay on Easing.out(cubic). The arc is the bar in a different
+  // shape and should arrive the way the bar did.
+  //
+  // EVERY MINUTE TICK AFTER THAT SNAPS. `now` re-renders this card sixty times an
+  // hour, and re-running a 1.4 second travel for a point of movement reads as a
+  // glitch on a curve -- see ARC_SETTLE for the arithmetic.
+  //
+  // SNAPPING RATHER THAN IGNORING, AND THE DISTINCTION IS THE POINT. setValue
+  // moves the aircraft to exactly where it is, instantly; only the MOTION is
+  // suppressed, not the update. Holding the marker still until the delta cleared
+  // the threshold would have left it up to ten points -- nine minutes of flight
+  // -- behind the truth, which is a card lying to save an animation. This is
+  // always exact and merely quiet.
+  useEffect(() => {
+    const moved = Math.abs(progress - at.current);
+    at.current = progress;
+    if (flown.current && moved < ARC_SETTLE) {
+      t.setValue(progress);
+      return;
+    }
+    flown.current = true;
+    Animated.timing(t, {
+      toValue: progress,
+      duration: 1400,
+      delay: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [progress]);
+
+  // ONE MEMO FOR ALL FOUR, because all four are functions of w alone and
+  // splitting them would be four dependency lists saying the same thing.
+  const geo = useMemo(() => ({
+    d: `M 0 ${ARC_BASE} Q ${w / 2} ${ARC_BASE - 2 * ARC_RISE} ${w} ${ARC_BASE}`,
+    xs: ARC_STOPS.map(k => k * w - ARC_MARK / 2),
+    ys: ARC_STOPS.map(k => ARC_BASE - 4 * ARC_RISE * k * (1 - k) - ARC_MARK / 2),
+    // NEGATIVE IS NOSE UP, because screen y grows downward: the first half of the
+    // curve has a negative dy and therefore a negative angle. atan2 rather than
+    // atan so a zero width cannot divide.
+    rots: ARC_STOPS.map(k =>
+      `${(Math.atan2(-4 * ARC_RISE * (1 - 2 * k), w) * 180 / Math.PI).toFixed(1)}deg`),
+  }), [w]);
+
+  return (
+    <View style={s.tripArc} onLayout={e => setW(e.nativeEvent.layout.width)}>
+      {/* NOTHING UNTIL THERE IS A WIDTH. The first render measures and draws no
+          curve; the second has w and draws it. Rendering at zero would put a
+          degenerate path and a marker at the origin on screen for one frame. */}
+      {w > 0 && (
+        <>
+          {/* THE TRACK, AND IT IS THE BAR'S OWN INK. pg.track is
+              rgba(255,255,255,0.07) and this is that value, bent -- so the arc
+              reads as the same measuring device rather than as a new one.
+              strokeWidth 2 against the bar's 3pt height because a dashed line
+              lays down less ink than a solid one over the same distance.
+
+              DASHED BECAUSE IT IS A ROUTE AND NOT A FILL. A solid line would
+              invite the flown half to be painted in, which is the bar's idiom;
+              the aircraft's POSITION is what says how far along this is, and it
+              says it more precisely than a filled length can. */}
+          <Svg width={w} height={ARC_H}>
+            <Path
+              d={geo.d}
+              fill="none"
+              stroke="rgba(255,255,255,0.07)"
+              strokeWidth={2}
+              strokeDasharray="5 5"
+              strokeLinecap="round"
+            />
+          </Svg>
+          {/* PINNED AT THE ORIGIN AND MOVED ENTIRELY BY TRANSFORM. left and top
+              stay 0 so nothing here is a layout property and the whole animation
+              is native-driver eligible. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              s.tripArcMark,
+              {
+                transform: [
+                  { translateX: t.interpolate({ inputRange: ARC_STOPS, outputRange: geo.xs }) },
+                  { translateY: t.interpolate({ inputRange: ARC_STOPS, outputRange: geo.ys }) },
+                  { rotate: t.interpolate({ inputRange: ARC_STOPS, outputRange: geo.rots }) },
+                ],
+              },
+            ]}
+          >
+            <Text style={s.tripArcPlane}>{'\u2708'}</Text>
+          </Animated.View>
+        </>
+      )}
     </View>
   );
 }
@@ -1606,6 +2014,30 @@ type FlightCardProps = {
   // the flight is airborne. A card handed milliseconds would have to ask that
   // question again to caption it.
   countdown?: { label: string; value: string } | null;
+  // ── WHICH LEG OF HOW MANY ─────────────────────────────────────────────────
+  //
+  // ABSENT EVERYWHERE ELSE, AND THAT IS THE CONTRACT, exactly as tripVariant's,
+  // bagsClaimedHere's and countdown's are. Home, search and the map pass nothing
+  // and render an unchanged card.
+  //
+  // TWO NUMBERS RATHER THAN A TRIP, AND NO TRIP MODEL IS INVENTED. The card holds
+  // one flight and must not learn what a journey is -- the note at
+  // bagsClaimedHere sets that out at length, and this is the same boundary: the
+  // screen that HAS the ordered legs answers a question about position and hands
+  // over the answer. app/flights.tsx passes the map index and the length of the
+  // list it is mapping; both were already in hand at that call site, beside the
+  // bagEligible(legs, i) that goes through the same gap.
+  //
+  // THE INDEX IS ZERO-BASED, because it is an array index and pretending
+  // otherwise at the boundary is how an off-by-one gets built in. The +1 happens
+  // once, where the words are written.
+  //
+  // NOTHING AT ALL ON A ONE-LEG TRIP. tripsOf groups on a non-null tripId, so a
+  // single-flight trip exists and "LEG 1 OF 1" is a tag that tells the reader
+  // something they can see -- there is one card. The header earns its line only
+  // where there is an ordering to be placed in.
+  legIndex?: number;
+  legCount?: number;
 };
 
 export function FlightCard({
@@ -1627,6 +2059,8 @@ export function FlightCard({
   // saying the question does not arise -- and where it does not arise the bags
   // are on the belt at the arrival airport, which is the ordinary case.
   bagsClaimedHere = true,
+  legIndex,
+  legCount,
   // NULL BY DEFAULT, which is the same thing a landed flight gets: no interval
   // to state, so no line. See the prop's note.
   countdown = null,
@@ -3097,23 +3531,38 @@ export function FlightCard({
                     rgba(255,255,255,0.08) either side of the cutout, which is
                     about twenty levels of grey in exactly the place the island
                     is being compared against. Squaring them ends it. */}
-                {/* ── AND NO EDGE AT ALL ON A TRIP LEG ──
-                    NOT RENDERED, rather than drawn in a colour that paints
-                    nothing. The collapsed legs either side of this card carry
-                    SURFACE_EDGE, which lib/cards.ts has set to zero alpha
-                    because flat surfaces on this page separate by TONE -- so an
-                    outline here would be the open leg wearing a treatment its
-                    own neighbours do not, which is the same mismatch the flat
-                    fill above exists to remove, moved from the middle of the
-                    card to its rim.
+                {/* ── AND THE TRIP LEG HAS ONE AGAIN ──
+                    IT WAS SUPPRESSED, AND THE ARGUMENT FOR SUPPRESSING IT WAS
+                    CONSISTENCY. The collapsed legs either side carry
+                    SURFACE_EDGE, which lib/cards.ts holds at ZERO ALPHA because
+                    flat surfaces on this page separate by tone -- so an outline
+                    here made the open leg wear a treatment its own neighbours do
+                    not.
 
-                    THE OTHER TWO VARIANTS KEEP IT UNTOUCHED. Home and search
-                    render a glass card and glass keeps its own edge -- see the
-                    exception at SHEET_EDGE in lib/glass.tsx -- and mapVariant
-                    keeps the whole arrangement below, which exists to get the
-                    edge out of the Dynamic Island's band rather than off the
-                    card. */}
-                {!tripVariant && (
+                    THAT MISMATCH IS NOW THE POINT RATHER THAN THE FAULT. This is
+                    the FOCUS leg: the one card in a column of rows, the only one
+                    opened out, and the neighbours staying flat is what says so.
+                    A difference in treatment between the thing being read and the
+                    things around it is not an inconsistency, it is the hierarchy
+                    the whole screen is built on -- see currentLegIndex in
+                    app/flights.tsx for how hard that screen works to decide which
+                    single leg this is.
+
+                    AND SURFACE_EDGE IS UNTOUCHED, DELIBERATELY. Lifting it to
+                    0.08 would have given every flat surface in the app a hairline
+                    -- both cards, the collapsed legs, the add button, the import
+                    and past rows, home and search -- which is a reversal of a
+                    decision that file states and argues for. This is one card
+                    taking the edge the glass variants already draw, not the scale
+                    changing its mind.
+
+                    g.sheetEdge IS THAT EDGE, at SHEET_EDGE's rgba(255,255,255,
+                    0.08). The gate is simply gone: there is no trip branch here
+                    any more, and the card renders what home and search render.
+
+                    mapVariant KEEPS ITS OWN ARRANGEMENT BELOW, which exists to
+                    get the edge out of the Dynamic Island's band rather than off
+                    the card. */}
                 <View
                   style={[
                     g.sheetEdge, s.airportCardEdge,
@@ -3135,7 +3584,6 @@ export function FlightCard({
                   ]}
                   pointerEvents="none"
                 />
-                )}
                 {/* THE STATUS WORD, ALONE IN ITS ROW NOW.
                     THE "FLIGHT CARD" HEADING IS GONE. It labelled the surface
                     rather than saying anything about the flight -- a card that
@@ -3163,6 +3611,25 @@ export function FlightCard({
 
                     space-between ONLY ON A TRIP LEG. Every other variant has one
                     child in this row and keeps the centring it has. */}
+                {/* ── WHICH LEG OF HOW MANY, ABOVE EVERYTHING ──
+                    IT SITS ABOVE THE STATUS ROW because it is the only thing on
+                    the card that is not about the flight: every other line says
+                    what THIS aircraft is doing, and this says where the card is
+                    in a journey. A tag at the very top is read once on the way in
+                    and then ignored, which is exactly the attention it deserves.
+
+                    airportTitle's VOICE, which is this card's own label
+                    treatment -- 11pt Inter SemiBold at 0.4, tracked and
+                    uppercased. It is the style the "FLIGHT CARD" heading used
+                    before that heading was removed for labelling the surface
+                    rather than the flight. This labels neither: it locates.
+
+                    BOTH NUMBERS OR NOTHING, and > 1 is the other half of the
+                    gate. See the props. */}
+                {tripVariant && legIndex !== undefined && legCount !== undefined
+                  && legCount > 1 && (
+                  <Text style={s.tripLeg}>{`LEG ${legIndex + 1} OF ${legCount}`}</Text>
+                )}
                 <View style={[s.airportHeadRow, tripVariant && s.airportHeadRowTrip]}>
                   {/* THE WORD IN A CONTAINER, WHICH IT HAS NEVER HAD. It floated
                         on the card as loose text -- the only label in the app
@@ -3180,14 +3647,28 @@ export function FlightCard({
 
                         THE TWO FILLS ARE getStatusBg's OWN, restricted to two of
                       its five. No new colour enters the system. */}
-                  {flightRecord !== null && (
-                    <View style={[
-                      s.airportHeadPill,
-                      flight.statusColor === CD_GREEN && s.airportHeadPillLive,
-                    ]}>
-                      <StatusWord f={flightRecord} now={now} style={s.airportHeadStatus} />
-                    </View>
-                  )}
+                  {/* THE PILL AND ITS DOT, AS ONE GROUP RATHER THAN TWO CHILDREN
+                      OF THE ROW. airportHeadRowTrip is space-between, so a third
+                      child would push the dot into the middle of the card
+                      instead of leaving it beside the word it qualifies. Grouped,
+                      the row still has two children and still puts the countdown
+                      at the far edge. */}
+                  <View style={s.airportHeadLive}>
+                    {flightRecord !== null && (
+                      <View style={[
+                        s.airportHeadPill,
+                        flight.statusColor === CD_GREEN && s.airportHeadPillLive,
+                      ]}>
+                        <StatusWord f={flightRecord} now={now} style={s.airportHeadStatus} />
+                      </View>
+                    )}
+                    {/* PHASE TWO AND NOWHERE ELSE, AND tripVariant IS HALF THE
+                        GATE. tripPhase is computed for every variant -- it is not
+                        behind that flag -- so a home-screen card of an airborne
+                        flight would otherwise pulse too. This is the trip card's
+                        signal. */}
+                    {tripVariant && tripPhase === 'air' && <PulseDot />}
+                  </View>
                   {/* AND ONLY WHILE SOMETHING IS STILL COMING. countdown() already
                       returns null once a leg has landed; this also drops it on a
                       cancelled or diverted flight, where the interval to a
@@ -3225,16 +3706,21 @@ export function FlightCard({
                       </>
                     )}
 
-                    {/* THE BAR, IN THE AIR AND NOWHERE ELSE. Before departure it
-                        would draw an empty track under a flight that has not
-                        moved; after landing it is a full one under a flight that
-                        is over, and the arrival time says that better. */}
+                    {/* THE ARC, IN THE AIR AND NOWHERE ELSE. Before departure it
+                        would draw an empty curve under a flight that has not
+                        moved; after landing it is a completed one under a flight
+                        that is over, and the arrival time says that better.
+
+                        IT IS THE PROGRESS BAR, REPLACED RATHER THAN JOINED. See
+                        FlightArc: two elements drawing one fraction is the
+                        duplicate-countdown mistake this card already removed
+                        once.
+
+                        progressValue IS THE SAME NUMBER THE BAR TOOK, from
+                        computeProgress, which app/flights.tsx also reads for the
+                        collapsed rows. Nothing here computes a second one. */}
                     {tripPhase === 'air' && progressValue !== null && (
-                      <ProgressBar
-                        progress={progressValue}
-                        color={flight.statusColor}
-                        style={s.cardProgress}
-                      />
+                      <FlightArc progress={progressValue} />
                     )}
 
                     {/* ── PHASE ONE: BOTH ENDS, BECAUSE BOTH ARE STILL AHEAD ──
@@ -3259,11 +3745,23 @@ export function FlightCard({
                           when={whenLine(flight.depTimeIso, flight.dep)}
                           delay={flight.depDelay}
                           rows={[
-                            { label: 'Terminal', value: flight.terminal, always: true },
-                            { label: 'Gate', value: flight.gate, always: true },
-                            // NO `always`, AND IT IS THE ONLY ROW WITHOUT IT. See
-                            // TripColumn: a desk is absent rather than pending.
-                            { label: 'Desk', value: flight.checkinDesk },
+                            // THREE BADGES, AND THEY ARE THE THREE PLACES THIS
+                            // COLUMN SENDS SOMEBODY. See the `pill` flag on
+                            // TripColumn.
+                            { label: 'Terminal', value: flight.terminal, always: true, pill: true },
+                            { label: 'Gate', value: flight.gate, always: true, pill: true },
+                            // A BADGE LIKE THE OTHER TWO, AND STILL THE ONLY ROW
+                            // HERE WITHOUT `always`. The two flags are asking
+                            // different questions: a desk you have been given is
+                            // as much a destination as a gate you have been given,
+                            // so it takes the same shape -- but a desk that has
+                            // not been given is ABSENT rather than pending, and
+                            // plenty of airlines never publish one at all. So it
+                            // is a pill when there is a value and nothing
+                            // whatever when there is not; an empty "Desk" badge
+                            // would hold a slot open for something that is never
+                            // coming.
+                            { label: 'Desk', value: flight.checkinDesk, pill: true },
                           ]}
                         />
                         {/* ── THE RULE BETWEEN THEM ──
@@ -3289,8 +3787,8 @@ export function FlightCard({
                           when={whenLine(flight.arrTimeIso, flight.arr)}
                           delay={flight.arrDelay}
                           rows={[
-                            { label: 'Terminal', value: flight.arrTerminal, always: true },
-                            { label: 'Gate', value: flight.arrGate, always: true },
+                            { label: 'Terminal', value: flight.arrTerminal, always: true, pill: true },
+                            { label: 'Gate', value: flight.arrGate, always: true, pill: true },
                           ]}
                         />
                       </View>
@@ -3321,8 +3819,8 @@ export function FlightCard({
                           when={whenLine(flight.arrTimeIso, flight.arr)}
                           delay={flight.arrDelay}
                           rows={[
-                            { label: 'Terminal', value: flight.arrTerminal, always: true },
-                            { label: 'Gate', value: flight.arrGate, always: true },
+                            { label: 'Terminal', value: flight.arrTerminal, always: true, pill: true },
+                            { label: 'Gate', value: flight.arrGate, always: true, pill: true },
                           ]}
                         />
                         {hasTime(flight.depTimeValue) && (
@@ -3702,29 +4200,10 @@ const s = StyleSheet.create({
   // into, since the track itself is 3pt and the glyph is 20. The card's
   // CARD_PAD sits under it.
   routeProgress: { marginTop: 14, marginBottom: 0 },
-  // THE SAME BAR ON A CARD INTERIOR, AND ZERO IS NOT THE SAME AS NO STYLE.
-  //
-  // pg.wrap carries marginVertical 24 of its own, which is right when the bar is
-  // floating on black and far too much inside a card that is already padded.
-  // Something has to cancel it, exactly as routeProgress does; what differs is
-  // what replaces it.
-  //
-  // NOTHING REPLACES IT, BECAUSE airportCard ALREADY SPELLS THE GAP. That style
-  // carries gap: 14, so 14 is already standing between the movement lines and
-  // this. routeProgress has to spell its own 14 because the route card has no
-  // gap and stacks the bar directly under the row; adding that 14 on top of this
-  // card's would make 28 and open a hole in the middle of it.
-  //
-  // 14 IS THE FIGURE THAT MATTERS, and it is the same figure in both places.
-  // pg.plane sits at top: -11 with a 20pt glyph, so the plane riding the bar
-  // overhangs its wrapper upward by 11pt; 14 leaves it 3pt clear of the arrival
-  // time above, and anything under 11 would put a plane through it.
-  //
-  // marginBottom STAYS 0 for routeProgress's own reason: pg.track's 14 is not a
-  // gap but the height the wrapper needs for the glyph to descend into, since
-  // the track is 3pt and the plane is 20. The card's gap then sits between that
-  // and the rule.
-  cardProgress: { marginTop: 0, marginBottom: 0 },
+  // cardProgress WENT WITH THE BAR IT CANCELLED. It existed to zero pg.wrap's
+  // marginVertical inside a padded card, and the trip variant was its only
+  // reader -- the route card's bar takes routeProgress, which is untouched. See
+  // FlightArc, which has no wrapper margin to cancel because it never had one.
   // 8 ON TOP OF resultWrap's GAP OF 10, so this line sits 18 below the route
   // card. At the bare 10 it read as a third card that had lost its surface
   // rather than as a note under the pair of them.
@@ -4068,6 +4547,24 @@ const s = StyleSheet.create({
     paddingVertical: 3,
   },
   airportHeadPillLive: { backgroundColor: "#4ade8012" },
+  // THE PILL AND ITS DOT AS ONE OBJECT. See the call site: the trip row is
+  // space-between and a third child would put the dot in the middle of the card.
+  // 8 is the gap the swipe buttons leave around their own glyphs.
+  airportHeadLive: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // ── THE AIRBORNE DOT ──
+  //
+  // 6pt, WHICH IS AS SMALL AS A THING CAN BE AND STILL BE SEEN TO BREATHE. Bigger
+  // and it competes with the pill it stands beside; smaller and the opacity ramp
+  // has too few pixels to read as a change at all.
+  //
+  // CD_GREEN, THE APP'S ONE WORD FOR LIVE, and the same constant the status pill
+  // and the countdown already carry. The dot is green for exactly the reason
+  // those are, and no new colour enters the palette.
+  //
+  // NO STATIC OPACITY HERE. The animated style supplies it every frame -- 1 down
+  // to 0.25 and back -- and a value in this entry would be silently overridden on
+  // the first, which is a line that looks like it does something and does not.
+  tripPulse: { width: 6, height: 6, borderRadius: 3, backgroundColor: CD_GREEN },
   // ONLY ON A TRIP LEG, where the row has a second child. Every other variant
   // keeps one centred pill.
   airportHeadRowTrip: { justifyContent: "space-between" },
@@ -4075,15 +4572,61 @@ const s = StyleSheet.create({
   // route's 20: it is the liveliest fact here, not the largest one, and colour is
   // what carries that rather than size.
   tripCountdown: { fontSize: 15, fontFamily: MONO_BOLD, color: CD_GREEN },
+  // airportTitle's TREATMENT, RESTATED RATHER THAN COMPOSED, and the difference
+  // is one property: that style is shared with the sheet's own head through
+  // sheetHeadTitle, which overrides the size and the colour on top of it. Reading
+  // it here would tie this tag to a style that exists to be overridden. Every
+  // value below is airportTitle's; nothing new is introduced.
+  tripLeg: {
+    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
+    letterSpacing: 1, textTransform: "uppercase",
+  },
 
   // ── THE TRIP LEG'S OWN TYPE ──
-  // 20 WHITE MONO_BOLD, which is airportDate's treatment: the slot at the top of
-  // a card that says what this thing is. Here it is the route.
-  tripRoute: { fontSize: 20, color: "#ffffff", fontFamily: MONO_BOLD },
+  //
+  // 28, UP FROM 20, AND THE OLD SIZE WAS THE PROBLEM RATHER THAN THE COLOUR.
+  // tripColTime is also 20 white MONO_BOLD -- character for character the same
+  // treatment -- so the route and the two clocks under it were the same size, the
+  // same weight and the same white, and nothing led. A card is found in a column
+  // of legs by WHERE IT GOES long before it is found by when it leaves, and the
+  // type has to say that.
+  //
+  // THE SCALE NOW READS 28 / 20 / 13: the route, then the clocks, then the
+  // identity line in grey. Three steps that were two.
+  //
+  // 28 AND NOT THE ROUTE CARD'S 32. routeIATA takes 32 because it is the
+  // headline of a card that has the whole screen; this is one leg in a column of
+  // them, and 32 here would make the trip a stack of headlines.
+  //
+  // IT FITS WITH ROOM. At 28pt mono the advance is 16.8, so a four-letter code is
+  // 67.2 and the pair with the arrow and its padding is 167.2 against the 206 the
+  // row has once its own 24 of inset comes off the card's 230. Three-letter codes
+  // -- which is every code this app will actually see -- clear it by 72.
+  //
+  // letterSpacing -0.5 IS routeIATA'S, and it is a size rule rather than a style
+  // one: mono's fixed advance is generous at display sizes and a code set at 28
+  // reads loose without it. The same reason that style carries it at 32.
+  tripRoute: {
+    fontSize: 28, color: "#ffffff", letterSpacing: -0.5, fontFamily: MONO_BOLD,
+  },
   // THE ROW THAT SPREADS THEM. baseline rather than center, so a 20pt code and
   // the arrow between them sit on one line rather than being centred against
   // each other's boxes.
-  tripRouteRow: { flexDirection: "row", alignItems: "baseline" },
+  //
+  // paddingHorizontal 12 HOLDS THE CODES OFF THE CARD'S EDGE. Spread by flex
+  // alone they sat flush against the content box -- DXB hard left, BOM hard
+  // right -- which read as the route being pushed apart rather than laid across.
+  //
+  // ON THE ROW RATHER THAN ON EACH CODE, so the two insets stay equal by
+  // construction and the arrow stays at the midpoint: the padding shrinks the
+  // row's content box symmetrically and the halves divide what is left.
+  //
+  // 12 IS THE GUTTER BETWEEN THE COLUMNS BENEATH IT, so the route is inset by
+  // the same measure that separates the two columns it heads rather than by a
+  // number chosen for this line alone.
+  tripRouteRow: {
+    flexDirection: "row", alignItems: "baseline", paddingHorizontal: 12,
+  },
   // EQUAL HALVES. See TripRoute: this is what puts the arrow at the midpoint
   // whatever the codes are, and what makes the two insets equal without either
   // being written down.
@@ -4091,6 +4634,13 @@ const s = StyleSheet.create({
   tripRouteEnd: { flex: 1, textAlign: "right" },
   // DIMMER THAN THE CODES IT JOINS. The arrow is punctuation: it says these two
   // are one journey and is not itself one of the facts.
+  //
+  // AND IT STAYS AT 20 WHILE THE CODES GO TO 28, which is the same judgement said
+  // in size as well as in colour. Punctuation does not grow with what it
+  // separates -- an arrow scaled to match would be a third thing at the route's
+  // weight rather than the join between the first two. The row aligns on the
+  // BASELINE, so a 20 between two 28s sits on their line rather than floating in
+  // the middle of them.
   tripRouteArrow: {
     fontSize: 20, fontFamily: MONO, color: "rgba(226,226,226,0.4)",
     paddingHorizontal: 8,
@@ -4128,9 +4678,15 @@ const s = StyleSheet.create({
   // of this card -- which day, whose clock -- and they do not go smaller to fit.
   // If they cannot fit they wrap; see the note at the element.
   tripColWhen: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
-  // THE OFFSET, DIRECTLY UNDER THE TIME IT QUALIFIES. 12pt mono, which is
-  // tripColWhen's size: this and the date are both things you read AFTER the
-  // clock, and they should not compete with it or with each other.
+  // THE OFFSET, ON THE SAME LINE AS THE TIME IT QUALIFIES. 12pt mono against the
+  // clock's 20 -- tripColWhen's size, which is the card's one qualifier tier:
+  // this and the date are both things you read AFTER the clock, and neither
+  // should compete with it or with each other.
+  //
+  // NESTED, SO THE SIZE IS THE ONLY THING SEPARATING THEM ON THE LINE. It is
+  // rendered inside the clock's own Text; family, size and colour are all
+  // declared here because a nested run inherits everything it does not override,
+  // and every one of the three differs.
   //
   // GREY IS THE DEFAULT AND IT MEANS EARLY. Amber is the exception. Neither is
   // green, for the reason at delayText.
@@ -4141,6 +4697,86 @@ const s = StyleSheet.create({
   tripColRow: { flexDirection: "row", gap: 6, alignItems: "baseline" },
   tripColLabel: { fontSize: 11, fontFamily: SANS, color: "rgba(226,226,226,0.4)" },
   tripColValue: { fontSize: 13, color: "#ffffff", fontFamily: MONO_BOLD },
+  // ── NOT YET, IN THE LABEL'S OWN GREY ──
+  //
+  // COLOUR ONLY, SO THE DASH KEEPS THE VALUE'S BOX. Same size, same family, same
+  // baseline -- the slot does not move or resize when the real value lands, which
+  // is the whole argument for holding it open in the first place.
+  //
+  // 0.4 IS tripColLabel'S AND tripPillLabel'S EXACT GREY, and that is the point
+  // rather than a near miss: a dash sitting at the LABEL's weight says the pill
+  // is holding a name and nothing else yet. At the value's white it would be a
+  // placeholder claiming a reading's authority, which is what the "N/A" sentinel
+  // did and why this card removed it.
+  //
+  // ONE ENTRY, TWO READERS -- the pill's value and the plain row's -- so the
+  // belt and the gate cannot come to say "not yet" in two different voices.
+  tripSlotEmpty: { color: "rgba(226,226,226,0.4)" },
+  // ── THE BADGES ──
+  //
+  // A ROW THAT WRAPS, WHICH IS ONE DECLARATION SERVING BOTH PHASES. Side by side
+  // the pair needs about 150pt; a phase-one column is 102.5, so they stack, and
+  // phase two's arrival is the card's full 230, so they sit in a line. No phase
+  // test, and therefore nothing to keep in step with the phase machine.
+  //
+  // 6 BOTH WAYS, which is tripCol's own gap: a wrapped pill sits the same
+  // distance below its neighbour as the pill block sits below the clock.
+  tripPills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  // SURFACE_2, AND IT IS READ RATHER THAN SPELLED. lib/cards defines the level as
+  // "what sits on a SURFACE_1" and names this exact case -- a control inside a
+  // card. The card is SURFACE_1; this is one step up from it, so the pill is
+  // raised off the card rather than punched into it. Writing rgba(255,255,255,
+  // 0.08) here instead would be the tenth unnamed alpha the scale exists to stop.
+  //
+  // alignSelf flex-start SO A PILL IS ITS CONTENT'S WIDTH. A badge stretched
+  // across the column is a banner -- the same note airportHeadStatus makes about
+  // the status word -- and two full-width bars stacked would read as rows with a
+  // background rather than as badges.
+  //
+  // RADIUS 6 AND paddingHorizontal 8, WHICH ARE airportHeadPill'S. The card
+  // already has a pill at the top of it, and a second pill shape at a different
+  // corner would be two vocabularies for one object. Only the vertical padding
+  // differs -- 5 against that one's 3 -- because this holds two stacked lines
+  // where the status pill holds one.
+  //
+  // ── TWO ALIGNMENTS DOING DIFFERENT JOBS, AND THEY ARE EASY TO CONFUSE ──
+  //
+  // alignSelf flex-start IS THE PILL AGAINST THE COLUMN. It stops the badge
+  // stretching across the column, so it hugs its content -- a stretched pill is
+  // a banner, which is the note airportHeadStatus makes about the status word.
+  // Unchanged.
+  //
+  // alignItems center IS THE CONTENT AGAINST THE PILL, and it is the new one. The
+  // pill is a COLUMN, so this is its cross axis: the label and the value each
+  // size to their own text and centre on the badge's midline. It was flex-start
+  // by default, which left a two-character gate hard against the left edge under
+  // a much wider "Terminal" -- the badge looked padded on one side and cropped on
+  // the other.
+  //
+  // THE PILL'S WIDTH IS THE WIDER OF THE TWO and does not change: it is still
+  // whatever the label needs, because the label is always longer than a gate.
+  // What moves is the value, into the middle of the space the label already
+  // claimed.
+  tripPill: {
+    backgroundColor: SURFACE_2,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignSelf: "flex-start",
+    alignItems: "center",
+    gap: 2,
+  },
+  // THE LABEL ABOVE THE VALUE, AT THE CARD'S OWN LABEL TREATMENT -- 11pt Inter at
+  // 0.4, which is tripColLabel exactly. It is not restated as a fork of that
+  // style because the two now differ in nothing at all; they are separate entries
+  // only so that the pill's label can move without dragging the belt's with it.
+  tripPillLabel: { fontSize: 11, fontFamily: SANS, color: "rgba(226,226,226,0.4)" },
+  // 15 RATHER THAN THE PLAIN ROW'S 13, and the pill is what pays for it. A badge
+  // is read at a glance from further away than a line of text -- it is the thing
+  // somebody looks up from a phone to check against a departure board -- and the
+  // surface underneath gives it the contrast to carry the extra two points
+  // without competing with the 20pt clock above.
+  tripPillValue: { fontSize: 15, color: "#ffffff", fontFamily: MONO_BOLD },
   // ── THE DEPARTURE, ONCE IT IS BEHIND YOU ──
   //
   // 12pt MONO AT HALF INK, which is tripColWhen's treatment: this is the same
@@ -4149,6 +4785,36 @@ const s = StyleSheet.create({
   // "departed" rather than a label-and-value pair, because a pair would give it
   // the weight of a row in a column it is no longer part of.
   tripQuiet: { fontSize: 12, fontFamily: MONO, color: "rgba(226,226,226,0.5)" },
+  // ── THE ARC'S BOX ──
+  //
+  // A FIXED HEIGHT AND A RELATIVE POSITION, and that is the whole of it. The
+  // height is the curve's own -- see ARC_H -- and the marker is absolute against
+  // this, so the box has to establish the frame it is absolute against.
+  //
+  // NO MARGIN. airportCard carries gap: 14 between its children, which is what
+  // stood above the bar this replaces; the arc is a child of the same stack and
+  // takes the same 14 without spelling anything.
+  tripArc: { height: ARC_H, position: "relative" },
+  // PINNED AT THE ORIGIN. Every pixel of movement is a transform, which is what
+  // keeps the whole travel on the native driver -- left and top are layout and
+  // cannot go there. The box is a known size around a glyph of unknown advance;
+  // see ARC_MARK.
+  tripArcMark: {
+    position: "absolute", left: 0, top: 0,
+    width: ARC_MARK, height: ARC_MARK,
+    alignItems: "center", justifyContent: "center",
+  },
+  // CD_GREEN, AND PHASE TWO IS WHY IT IS ALLOWED. Green is this app's word for
+  // live and for nothing else; an aircraft that is in the air is the most literal
+  // thing that word can describe. It is the only green on the arc -- the track
+  // under it is the bar's own grey -- so the eye goes to the position rather than
+  // to the path.
+  //
+  // NO fontFamily, AND NOT BY OVERSIGHT, for the reason footerPlane gives at
+  // length: neither bundled face carries U+2708, so this glyph comes from the
+  // platform's fallback wherever it appears in this file. Naming a family would
+  // say something untrue about what renders.
+  tripArcPlane: { fontSize: 18, color: CD_GREEN },
   // tripDelay, tripDelayLate AND tripDelayEarly WENT WITH THE LINE THEY DRESSED.
   // See the note where it was computed: the figure was ambiguous about whether it
   // had happened, and the green clock and its label already carry both halves.
