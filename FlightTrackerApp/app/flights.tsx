@@ -157,19 +157,37 @@ const NOT_REACHABLE = () => {};
 // union rather than a string so a typo is a compile error.
 const FOLDER_STYLE: 'strip' | 'divider' | 'carousel' = 'strip';
 
-// 10, UP FROM 6, AND THE FOLDER ICON DECIDED IT. The strip header puts the icon
-// first with no left padding, so its centre is half of its own 20 points -- and
-// the thread has to drop from there or it does not read as coming out of the
-// folder at all. Six was the old bare-text header's guess.
+// ── THE LINE IS WHEREVER THE ICON IS, AND THE ICON IS INBOARD NOW ─────────
 //
-// THE CARDS ARE STILL CLEAR OF IT. RAIL_INSET is 22 and the line's right edge is
-// now 11, so the gutter is 11 points where it was 15. Tighter, and nothing is on
-// the line.
+// 14, AND IT IS DERIVED RATHER THAN CHOSEN: the strip header's left padding plus
+// half the icon's own 20 points. It was 6 when the header was bare text and a
+// guess, then 10 when the icon sat flush at the row's edge, and it is 14 now that
+// the icon has 4 points of padding in front of it. Change STRIP_PAD and this has
+// to move with it or the thread stops meeting the folder.
+//
+// FOUR POINTS OF PADDING AND NOT MORE, BECAUSE THE GUTTER PAYS FOR IT. RAIL_INSET
+// is 22 -- where the cards begin -- and the line's right edge is RAIL_X + 1, so
+// the dead space between the thread and the cards is 22 - (RAIL_X + 1):
+//
+//   pad 0  ->  RAIL_X 10  ->  gutter 11   the icon touches the edge
+//   pad 4  ->  RAIL_X 14  ->  gutter  7   this
+//   pad 8  ->  RAIL_X 18  ->  gutter  3   the line reads as touching the cards
+//
+// THE ALTERNATIVE WAS TO MOVE RAIL_INSET AND IT IS WORSE THAN IT LOOKS. Every
+// card on the screen begins at that inset, so widening it narrows the card
+// interior -- which is the 230 points every pill width, column width and label
+// measurement on the flight card was worked out against. Four points of header
+// padding is not worth re-measuring the card for.
+//
+// AND THE THIRD OPTION WAS TO GIVE UP THE ALIGNMENT, letting the line drop from
+// under the header block rather than from the icon. That is what it did before
+// the icon existed and it is perfectly defensible; it is not what was asked for.
 //
 // layoverTime IS UNAFFECTED: its PAGE_BG background starts at the row's own left
 // edge and runs to RAIL_INSET, so it still covers the thread wherever the thread
 // is inside that span. See its note for what that background is for.
-const RAIL_X = 10;
+const STRIP_PAD = 4;
+const RAIL_X = STRIP_PAD + 10;
 const RAIL_W = 1;
 const RAIL_INSET = 22;
 
@@ -1173,35 +1191,39 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
   // is this bug.
   const [settled, setSettled] = useState(true);
 
-  // ── A SHUT FOLDER RENDERS NOTHING, AND THAT IS THE OVERLAP FIX ────────────
+  // ── THE CHILDREN ARE ALWAYS MOUNTED, AND UNMOUNTING THEM WAS MY OWN BUG ───
   //
-  // THE LAST DIAGNOSIS WAS WRONG AND IS WORTH SAYING SO. It read the box as too
-  // SHORT and unpinned the height; settled and open, the container is now exactly
-  // its content, and the symptom survived that. So the open folder's box was never
-  // the problem.
+  // A `show` FLAG USED TO DROP THEM WHEN THE FOLDER SHUT. It was added to fix a
+  // suspected overflow: hidden leak on Android -- and a diagnostic background
+  // colour on this container later DISPROVED that: the box began exactly where
+  // the header ended and finished exactly where the cards did. The overlap was
+  // missing padding, nothing more. So the unmount was a fix for a bug that did
+  // not exist.
   //
-  // WHAT IS LEFT IS THE SHUT ONE. Its height is zero and overflow hidden was doing
-  // the clipping -- but its children were still mounted and still laid out at full
-  // height, waiting to be clipped. Android's overflow: hidden is not reliable when
-  // children are Animated or Reanimated views or carry elevation, and FlightCard's
-  // root IS a Reanimated.View inside a GestureDetector. When that clip fails, a
-  // closed folder's cards paint straight through at full height over whatever is
-  // beneath them -- which in a screenshot is indistinguishable from the folder
-  // ABOVE overflowing, because the cards you can see are covering the header they
-  // belong to.
+  // AND IT BROUGHT A REAL ONE. `h` is state and survives an unmount, so the next
+  // open animated toward a height measured from the PREVIOUS contents -- stale by
+  // however much the cards had changed since, and they change on every minute
+  // tick. Too small clipped the content for the whole travel and popped it in at
+  // the end; too large over-expanded and snapped back. Both of the symptoms.
   //
-  // SO THERE IS NOTHING TO CLIP. Children mount when the folder opens, stay
-  // through the closing animation so there is something to collapse, and go when
-  // it is shut. It is also cheaper: five trips no longer render four hidden trees
-  // of flight cards, each with its own minute tick and its own two Modals.
-  //
-  // IT IS A HYPOTHESIS AND THE NEXT STEP IF IT SURVIVES IS A DIAGNOSTIC, not
-  // another guess: put a background colour on folderBody and see whether the box
-  // ends where the cards end or short of them. That separates a short box from a
-  // failed clip in one screenshot.
-  const show = open || !settled;
+  // MOUNTED THROUGHOUT, onLayout RUNS CONTINUOUSLY and `h` is never stale. The
+  // cost is the one the unmount claimed as its benefit: hidden trips render their
+  // card trees. That cost was never justified, because the leak it was buying
+  // protection from was imaginary.
+  const firstRun = useRef(true);
 
+  // ── AND NOTHING ANIMATES ON MOUNT ─────────────────────────────────────────
+  //
+  // THE EFFECT RAN ON MOUNT AND ANIMATED A VALUE TO ITSELF. anim starts at the
+  // right end already, so the timing travelled zero distance -- but it still set
+  // `settled` false for its whole duration, which under the old `show` flag mounted
+  // every CLOSED folder's children for one animation and then dropped them again.
+  // A folder should settle into the state it was born in, not transition into it.
   useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
     setSettled(false);
     Animated.timing(anim, {
       toValue: open ? 1 : 0,
@@ -1237,12 +1259,40 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
           },
         ]}
       >
-        {show && (
-          <View onLayout={e => setH(e.nativeEvent.layout.height)}>
-            <View style={st.rail} pointerEvents="none" />
-            <View style={st.trip}>{children}</View>
-          </View>
-        )}
+        <View
+          style={st.folderInner}
+          // ── MEASURED AT REST AND NOWHERE ELSE ──
+          //
+          // onLayout FIRES DURING THE TRANSITION TOO, and setting `h` then rewrites
+          // the outputRange of the interpolation that is being read at that moment.
+          // The travel jumps partway. During a transition the height we started
+          // with is the height we want; a fresher one is the bug.
+          //
+          // AND A ZERO IS NEVER ACCEPTED. A folder always has at least one leg, so
+          // a measurement of nothing is not a real answer -- it would be Yoga
+          // reporting the clamped box rather than the content, which is the one
+          // thing about this arrangement I have not been able to verify without a
+          // device. Refusing it means the worst case is a stale height rather than
+          // a zero one, and a zero would make the next open jump rather than
+          // animate.
+          onLayout={e => {
+            const next = e.nativeEvent.layout.height;
+            if (settled && next > 0) setH(next);
+          }}
+        >
+            {/* THE THREAD STARTS AT THE HEADER AND STOPS AT THE LAST CARD. An
+                absolute child anchors to its parent's PADDING box, so top: 0 puts
+                the line's head up inside folderInner's top padding, touching the
+                underside of the lid -- which is the reading this whole
+                arrangement is for. Left alone it would also run the padding at
+                the BOTTOM and hang eight points below the final card, so the tail
+                is inset by exactly that. See railFolder.
+
+                THE OTHER TWO CALLERS TAKE st.rail BARE. The single-trip render
+                and the carousel body have no padding to correct for. */}
+          <View style={[st.rail, st.railFolder]} pointerEvents="none" />
+          <View style={st.trip}>{children}</View>
+        </View>
       </Animated.View>
     </View>
   );
@@ -2158,10 +2208,12 @@ const st = StyleSheet.create({
   // paddingVertical 12 MAKES THE TARGET. The row is 20 points of icon and 24 of
   // padding, so 44 -- which is the figure a primary control should have and the
   // first header on this screen to reach it.
-  // NO PADDING ON ANY SIDE, AND BOTH EDGES DEPEND ON THAT. The icon is flush left
-  // so its centre lands on RAIL_X; the date block is flush right so its accent
-  // border ends where the card does. overflow hidden makes both corners follow
-  // the radius instead of squaring it.
+  // STRIP_PAD ON THE LEFT AND NOTHING ON THE RIGHT, AND BOTH EDGES DEPEND ON IT.
+  // The icon sits STRIP_PAD in, so its centre is STRIP_PAD + 10 -- which is what
+  // RAIL_X is defined as, so the thread meets it by construction rather than by
+  // two numbers somebody has to keep equal. The date block stays flush right so
+  // its accent border ends where the card does. overflow hidden makes both
+  // corners follow the radius instead of squaring it.
   //
   // THE HEIGHT COMES FROM THE DATE BLOCK, which carries the only vertical padding
   // in the row -- two stacked lines and 8 either side, about 49 points. Well past
@@ -2170,6 +2222,7 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: CARD_FILL,
     borderRadius: CARD_RADIUS,
+    paddingLeft: STRIP_PAD,
     overflow: 'hidden',
   },
   // NO flex. The route sits against the icon rather than stretching, which is what
@@ -2264,6 +2317,22 @@ const st = StyleSheet.create({
   // overflow hidden IS THE CLIP AND IT IS ALWAYS ON. The height animates to zero
   // and the content inside keeps its full layout -- which is what lets onLayout
   // report a real height while the folder is shut.
+  // ── THE CLIP, AND NOTHING ELSE ──
+  //
+  // NO PADDING HERE ANY MORE, AND THAT IS THE SECOND HALF OF THE SPACING FIX. It
+  // was on this element and it widened the SHUT rows: a closed folder is
+  // height: 0, and sixteen points of padding on a zero-height box still took
+  // sixteen points of the list. Two shut headers ended up twenty-four apart where
+  // every other pair of cards in this app is eight.
+  //
+  // IT LIVES ON THE INNER VIEW NOW -- see folderInner -- which is rendered only
+  // while the folder is open or closing. A shut folder has no inner view at all,
+  // so there is nothing left to contribute a single point.
+  //
+  // AND THE MEASUREMENT IMPROVES WITH IT. `h` is onLayout on that same inner view,
+  // so the padding is now part of the height being animated rather than a constant
+  // added outside it; the collapse travels the distance it actually covers.
+  folderBody: { overflow: 'hidden' },
   // ── THE FOLDER'S OWN BREATHING ROOM, TOP AND BOTTOM ──
   //
   // IT WAS NEVER AN OVERLAP. A diagnostic background answered in one screenshot
@@ -2273,23 +2342,10 @@ const st = StyleSheet.create({
   // the underside of its own header, which reads as a card overlapping the chrome
   // above it.
   //
-  // SO BOTH EDGES GET ONE. paddingTop holds the first card off its own header;
-  // paddingBottom holds the last card off the next one.
-  //
-  // PADDING AND NOT MARGIN, WHICH IS THE PART THAT MATTERS. A margin sits OUTSIDE
-  // the box, so a SHUT folder -- height zero -- would still push its neighbours
-  // apart and the list would breathe unevenly depending on what was open. Padding
-  // is inside: part of the auto height when the folder is open, clipped to nothing
-  // when the height is clamped to zero.
-  //
-  // CARD_GAP BOTH WAYS, which is the gap between any two cards in this app. On top
-  // of the list's own CARD_GAP the last card clears the next header by sixteen
-  // points, and two shut headers stay eight apart.
-  folderBody: {
-    overflow: 'hidden',
-    paddingTop: CARD_GAP,
-    paddingBottom: CARD_GAP,
-  },
+  // CARD_GAP BOTH WAYS, which is the gap between any two cards in this app. With
+  // the list's own CARD_GAP as well, an open folder's last card clears the next
+  // header by sixteen points; two shut folders are eight apart, as they were.
+  folderInner: { paddingVertical: CARD_GAP },
   // THE THREAD. One pixel in the gutter, in DIM -- the same tone the duration
   // written on it takes, because the line and the label are one element. See
   // RAIL_X and RAIL_INSET for why the numbers are constants rather than literals.
@@ -2299,6 +2355,9 @@ const st = StyleSheet.create({
     width: RAIL_W,
     backgroundColor: DIM,
   },
+  // INSIDE A FOLDER THE TAIL IS PULLED UP BY THE PADDING IT WOULD OTHERWISE RUN.
+  // The head is left at 0 on purpose: that is what puts it against the header.
+  railFolder: { bottom: CARD_GAP },
   legSlot: { marginLeft: RAIL_INSET },
   // ── THE WAIT, WRITTEN ON THE THREAD ──
   //
