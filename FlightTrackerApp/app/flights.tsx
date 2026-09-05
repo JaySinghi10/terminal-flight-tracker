@@ -52,11 +52,6 @@ import {
 // code, and a second copy here would break that on the first read.
 import { useMapRoutes } from '../lib/maproutes';
 import { mapRouteFor } from '../lib/flightcard';
-// THE ORIGIN'S OWN WALL CLOCK, as text. clock24 rather than clockInZone or a
-// Date: the stored *_iso carries the departure airport's local digits already,
-// so this is a read rather than a conversion. See the note at the top of
-// lib/time.ts for why the two must never be confused.
-import { clock24 } from '../lib/time';
 // THE COUNTRY OF AN AIRPORT, which is the only thing this screen asks of the
 // dataset. airportByCode is the accessor; the rows are not exported and must
 // not be. See showsBelt.
@@ -82,17 +77,11 @@ import { EXPAND_HAPTIC } from '../components/swipe';
 // THE CARD ITSELF, one per leg, and the adapter that builds one from a stored
 // record. flightDataFromSaved is what the map's own card already uses -- see the
 // note there: every RULE it needs is exported and it is field mapping alone.
-// hasTime IS THE APP'S ONE READING OF "IS THIS A REAL VALUE": not null, not
-// blank, and not the "N/A" the backend writes for a field it has nothing for.
-// The near leg shows nothing where a field is absent, and this is what decides
-// absent. Imported rather than restated -- its own note calls itself the file's
-// only implementation, and a second one here would be the same rule twice.
-// movementTimeCell IS THE CARD'S OWN CHOICE OF WHICH TIME TO SHOW and what to
-// call it: actual, then estimate, then the schedule, labelled accordingly. The
-// next leg's row prints a departure and the card prints the same departure, so
-// they take the same function -- a second precedence here would be the row and
-// the card disagreeing about one flight on one screen.
-import { FlightCard, flightDataFromSaved, hasTime, movementTimeCell } from '../components/FlightCard';
+//
+// THREE NAMES CAME OFF THIS IMPORT AND lib/time's. hasTime, movementTimeCell and
+// clock24 served the collapsed leg's departure clock and nothing else here; the
+// row has gone and so have they. See CollapsedLeg.
+import { FlightCard, flightDataFromSaved } from '../components/FlightCard';
 
 // Declared here rather than imported from a screen or a component, exactly as
 // every module in lib/ declares its own. These are the family names _layout
@@ -672,17 +661,32 @@ function CollapsedLeg({ leg, state, belt, now, onPress }: {
   // somebody actually uses them in.
   const cd = landed ? null : countdown(leg, now);
 
-  // ONLY THE NEXT LEG PRINTS A CLOCK. Further out it would be a timetable entry
-  // quoted as though it were settled; the countdown says the same thing without
-  // claiming a precision the provider has not committed to. See NEXT_WINDOW_MS.
-  const depCell = state === 'next'
-    ? movementTimeCell(
-        clock24(leg.from.actualIso, leg.from.actual),
-        clock24(leg.from.estimatedIso, leg.from.estimated),
-        clock24(leg.from.scheduledIso, leg.from.scheduled),
-        true,
-      )
-    : null;
+  // ── NO COLLAPSED LEG PRINTS A CLOCK, AND 'next' NOW EARNS NOTHING VISIBLE ──
+  //
+  // THE NEXT LEG SHOWED ITS DEPARTURE AND NO OTHER LEG DID, which made exactly
+  // one row in the column about 48 points taller than its neighbours -- a label,
+  // a value, and legTimes' gap of 12. Scanning a trip, that reads as one row
+  // being wrong rather than as one row saying more.
+  //
+  // EVERY UNFLOWN LEG IS ONE HEIGHT NOW, at the shorter of the two. What is left
+  // in the right-hand column is the route and the countdown, and the countdown is
+  // the better half of what was there: it cannot go stale the way a quoted
+  // timetable can, and it is the question somebody actually has.
+  //
+  // 'next' IS NOT DEAD CODE, AND THIS NOTE EXISTS SO IT IS NOT READ AS SOME.
+  // nextLegIndex, nextIdx and the LegState member are all still computed and
+  // still passed, and legState still returns 'next' for exactly one leg. Nothing
+  // RENDERS differently for it today, and that is deliberate rather than an
+  // oversight: the rule about which leg is next was hard-won -- see nextLegIndex,
+  // which exists because an earlier version asked "does this leg depart within
+  // three days" of every leg and so called three legs of four next -- and
+  // throwing it away to save a computation nobody is paying for would mean
+  // deriving it again from scratch the moment this row wants a distinction back.
+  //
+  // WHAT WENT WITH THE ROW: movementTimeCell, clock24 and hasTime were imported
+  // for this and for nothing else in this file, so their import lines and the
+  // notes arguing for them went too. components/FlightCard still exports all
+  // three; this file simply has no reader for them.
 
   return (
     <TouchableOpacity style={st.compactLeg} activeOpacity={0.7} onPress={onPress} accessibilityRole="button">
@@ -715,12 +719,6 @@ function CollapsedLeg({ leg, state, belt, now, onPress }: {
                   countdown.value alone -- so greening the label here would be
                   colouring something that surface has no counterpart for. */}
               <Text style={[st.legTimeValue, st.legCountdown]}>{cd.value}</Text>
-            </View>
-          )}
-          {depCell !== null && hasTime(depCell.value) && (
-            <View style={st.legTimeRow}>
-              <Text style={st.legTimeLabel}>{depCell.label}</Text>
-              <Text style={st.legTimeValue}>{depCell.value}</Text>
             </View>
           )}
           {/* THE BELT, WHEN showsBelt ALLOWS ONE AND NOT OTHERWISE. That rule is

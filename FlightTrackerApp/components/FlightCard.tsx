@@ -1428,6 +1428,83 @@ function delayText(delay: number | null | undefined): string | null {
   return `${delay > 0 ? '\u25B4' : '\u25BE'}${Math.abs(delay)}m`;
 }
 
+// ── THE BADGES, TWO TO A ROW ──────────────────────────────────────────────
+//
+// PAIRED IN JAVASCRIPT RATHER THAN BY flexWrap, AND THAT IS NOT A PREFERENCE.
+// The pills have to FILL their row -- half the column each, or the whole of it
+// when one is left over -- and filling means flex: 1, which resolves flexBasis
+// to 0. A zero basis in a WRAPPING row means every pill has zero hypothetical
+// size, so the line-breaking pass fits all of them onto one line and nothing
+// ever wraps: three badges would land side by side at a third of the width each.
+//
+// THE NEAR MISS IS WORSE THAN THE MISS. flexGrow: 1 with flexBasis: '48%' looks
+// like it forces a break at two, and at a 102.5pt column 48% + 48% is 98.4 which
+// with the 6pt gap comes to 104.4 -- over, so it breaks at ONE per line instead.
+// Making that work means tuning a percentage against a pixel gap, and the next
+// person to change the gap breaks the layout with nothing to tell them they did.
+//
+// SO THE ROWS ARE EXPLICIT AND THE PAIRING IS ARITHMETIC. Two at a time, in
+// order, and a trailing odd one is a row of one -- which flex: 1 then stretches
+// to the full column without a special case being written for it.
+function inPairs<T>(items: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  return rows;
+}
+
+// ── THE COLUMN HEADING, ON ONE LINE, WITH THE MOVEMENT SHORTENED ─────────
+//
+// SOURCE WORD IN FULL, MOVEMENT ABBREVIATED: "SCHEDULED DEP", "ESTIMATED ARR".
+// Scheduled, Estimated and Actual are the whole reason this heading exists --
+// see movementTimeCell -- so they are never touched. The noun under them is
+// the half the column's POSITION already says, and it is the half that can
+// give.
+//
+// IT WRAPPED BY ACCIDENT BEFORE AND THE TWO COLUMNS CAME OUT UNEVEN. Measured
+// at 11pt Inter SemiBold, uppercased -- which is what this style renders --
+// the six full labels span 44.7 points, from ACTUAL ARRIVAL at 110.1 to
+// SCHEDULED DEPARTURE at 154.8. A phase-one column is 102.5 at a 320pt screen
+// and 137.5 at 390, so there is no phone width at which all six behave alike:
+// at 320 every one of them wrapped, at 390 the four short ones fit and the two
+// long departures did not, and around 420 the split fell between ESTIMATED and
+// SCHEDULED. One column two lines, the other one, and a card that looks broken.
+//
+// ABBREVIATED, THE LONGEST IS 105.1 -- a 32% cut, and still 2.6 points over the
+// 320pt column. THE TRACKING PAID THE DIFFERENCE: letterSpacing was 1, which
+// across thirteen characters is 13 points, an eighth of the whole label. At 0.5
+// the longest is 98.6 and clears by 3.9, and every one of the six fits at every
+// width this app runs at. See tripColHead.
+//
+// THE SIZE DID NOT MOVE. 10.5pt would also have fitted, by 1.6, and 11 is the
+// card's label tier -- the tracking is an aid to reading capitals and is still
+// doing that job at 0.5, where a size below the tier would have been a new
+// exception for one string.
+//
+// A TWO-LINE SPLIT WAS TRIED AND REVERTED. It fitted everywhere with 27 points
+// to spare and cost a line in every column, including phase two's, which is 230
+// wide and had no wrapping problem to solve.
+//
+// ONLY THE TRIP COLUMN ABBREVIATES, AND THAT IS THE POINT OF DOING IT HERE.
+// movementTimeCell's labels are also read by the sheet and by the home and
+// search cards, where a full-width row has room for the whole word; shortening
+// at the source would have abbreviated three surfaces to fix one.
+//
+// AN UNRECOGNISED MOVEMENT IS LEFT WHOLE. The map is exhaustive over what
+// movementTimeCell builds and what phase four writes; anything else is a caller
+// that does not exist yet, and truncating a word this does not know the short
+// form of would be worse than letting it run.
+const HEAD_SHORT: Record<string, string> = {
+  Departure: 'Dep',
+  Arrival: 'Arr',
+};
+
+function headLabel(head: string): string {
+  const cut = head.indexOf(' ');
+  if (cut < 0) return head;
+  const short = HEAD_SHORT[head.slice(cut + 1)];
+  return short === undefined ? head : head.slice(0, cut) + ' ' + short;
+}
+
 function TripColumn({ head, time, live, when, delay, rows }: {
   head: string;
   time: string;
@@ -1480,37 +1557,28 @@ function TripColumn({ head, time, live, when, delay, rows }: {
   // control inside a card. The card is SURFACE_1 on a #0a0a0a page; the pill is
   // one step above it. Nothing is invented and nothing is darker than the card.
   //
-  // ONE TO A ROW, EACH FILLING THE COLUMN, AND THE LABEL DECIDED THAT.
+  // TWO TO A ROW, EACH FILLING HALF THE COLUMN, AND A LONE ONE TAKING ALL OF IT.
+  // The departure column puts Terminal and Gate on the first row and Desk on the
+  // second; the arrival puts Terminal and Gate on the one row it has. See inPairs
+  // for why the rows are built in JavaScript rather than left to flexWrap.
   //
-  // IT WRAPPED AND PACKED BEFORE: content-sized pills in a wrapping row, so
-  // "Terminal" took a line at about 60 and "Gate" and "Desk" shared the next.
-  // Three badges cost two lines. It also left ragged right edges, which is what
-  // this change came from.
+  // THIS IS THE THIRD ARRANGEMENT AND THE OTHER TWO ARE WORTH RECORDING, because
+  // each was a fix for the one before it. Content-sized pills in a wrapping row
+  // packed Gate and Desk together and left a ragged right edge. One pill to a row
+  // at full width fixed the rag and cost about 51 points of card on the phase-one
+  // departure column. This keeps the even edge and gives the height back.
   //
-  // TWO TO A ROW DOES NOT FIT AT 320pt, AND THAT IS THE WHOLE ARGUMENT. A
+  // AND IT TRUNCATES "Terminal" AT 320pt, WHICH IS ACCEPTED RATHER THAN MISSED. A
   // phase-one column is 102.5, so a half is 48.25 and the content box is 32.25
-  // once the 16 of horizontal padding comes off. "Terminal" is eight characters
-  // of 11pt Inter, about 44. It ellipsises -- on the card whose job is telling
-  // somebody which terminal to walk to. At 375pt it clears by two points and at
-  // 390 by six, so this is the narrowest device failing and no other; that is
-  // still a device people have.
-  //
-  // SO EACH PILL TAKES THE WHOLE COLUMN and the content box is 86.5, which every
-  // label clears by a wide margin. It costs about 51 points on the phase-one
-  // departure column -- three rows where the wrap made two -- and that was
-  // accepted deliberately: a truncated terminal is worse than a taller card.
-  //
-  // NO flex AND NO WIDTH ANYWHERE. This is a COLUMN now, so its children stretch
-  // on the cross axis by default and each pill is exactly the column's width
-  // without being told. flex: 1 would have been the obvious spelling and is the
-  // wrong one -- it resolves flexBasis to 0, and in a wrapping row that means
-  // every pill has zero hypothetical size, so nothing ever wraps and all three
-  // land on one line at a third of the width each.
+  // once the 16 of horizontal padding comes off; the label is eight characters of
+  // 11pt Inter, about 44, and ellipsises. At 375pt it clears by two points and at
+  // 390 by six -- the narrowest device and no other. The VALUE is never at risk:
+  // "T3" is 18pt at 15pt mono against the same box.
   rows: { label: string; value: string | null; always?: boolean; pill?: boolean }[];
 }) {
   const shown = rows.filter(r => r.always === true || hasTime(r.value));
-  // SPLIT RATHER THAN BRANCHED INSIDE THE MAP, because the pills share a wrapping
-  // row and the plain rows do not. Order is preserved at every call site: the
+  // SPLIT RATHER THAN BRANCHED INSIDE THE MAP, because the badges are laid out in
+  // paired rows and the plain rows are not. Order is preserved at every call site: the
   // badges are the first rows given and the desk and the belt follow them.
   const badges = shown.filter(r => r.pill === true);
   const lines = shown.filter(r => r.pill !== true);
@@ -1519,7 +1587,12 @@ function TripColumn({ head, time, live, when, delay, rows }: {
   const late = typeof delay === 'number' && delay > 0;
   return (
     <View style={s.tripCol}>
-      <Text style={s.tripColHead}>{head}</Text>
+      {/* ONE LINE, AND numberOfLines SAYS SO RATHER THAN LEAVING IT TO LUCK. All
+          six labels fit at every width once the movement is abbreviated and the
+          tracking trimmed -- see headLabel -- so the cap is what makes a caller
+          passing something longer fail visibly here instead of silently
+          reflowing the column beside it. */}
+      <Text style={s.tripColHead} numberOfLines={1}>{headLabel(head)}</Text>
       <Text style={[s.tripColTime, live && s.tripColTimeLive]} numberOfLines={1}>
         {time}
         {/* NESTED, WHICH IS THIS FILE'S OWN WAY OF PUTTING A QUALIFIER ON A
@@ -1550,25 +1623,36 @@ function TripColumn({ head, time, live, when, delay, rows }: {
       {when !== null && (
         <Text style={s.tripColWhen} numberOfLines={2}>{when}</Text>
       )}
-      {/* THE BADGES, AS A ROW THAT WRAPS ITSELF. See the `pill` flag. */}
+      {/* THE BADGES, TWO TO A ROW AND FILLING IT. See inPairs for why the rows
+          are built here rather than left to flexWrap.
+
+          KEYED ON THE FIRST BADGE OF THE PAIR. Labels are unique within a column
+          -- Terminal, Gate, Desk -- so the leading one names its row, and it goes
+          on naming the same row whether or not a value has arrived: the pairing
+          is by POSITION and the positions are fixed by the call site, not by
+          which badges happen to have something in them. */}
       {badges.length > 0 && (
         <View style={s.tripPills}>
-          {badges.map(r => (
-            <View key={r.label} style={s.tripPill}>
-              <Text style={s.tripPillLabel} numberOfLines={1}>{r.label}</Text>
-              {/* THE DASH IS INSIDE THE PILL, which is the whole reason the pill
-                  can exist at all: a badge is a filled shape, and a filled shape
-                  with an empty half is a box with a hole in it rather than a
-                  fact that has not arrived. It takes the LABEL's grey, so the
-                  pill reads as holding a name and nothing else yet -- a dash at
-                  the value's white would be a placeholder claiming a value's
-                  weight, which is what "N/A" did and why it was removed. */}
-              <Text
-                style={[s.tripPillValue, !hasTime(r.value) && s.tripSlotEmpty]}
-                numberOfLines={1}
-              >
-                {hasTime(r.value) ? r.value : DASH}
-              </Text>
+          {inPairs(badges).map(pair => (
+            <View key={pair[0].label} style={s.tripPillRow}>
+              {pair.map(r => (
+                <View key={r.label} style={s.tripPill}>
+                  <Text style={s.tripPillLabel} numberOfLines={1}>{r.label}</Text>
+                  {/* THE DASH IS INSIDE THE PILL, which is the whole reason the pill
+                      can exist at all: a badge is a filled shape, and a filled shape
+                      with an empty half is a box with a hole in it rather than a
+                      fact that has not arrived. It takes the LABEL's grey, so the
+                      pill reads as holding a name and nothing else yet -- a dash at
+                      the value's white would be a placeholder claiming a value's
+                      weight, which is what "N/A" did and why it was removed. */}
+                  <Text
+                    style={[s.tripPillValue, !hasTime(r.value) && s.tripSlotEmpty]}
+                    numberOfLines={1}
+                  >
+                    {hasTime(r.value) ? r.value : DASH}
+                  </Text>
+                </View>
+              ))}
             </View>
           ))}
         </View>
@@ -4843,9 +4927,31 @@ const s = StyleSheet.create({
   tripCol: { flex: 1, gap: 6 },
   // THE SHEET'S HEADING TREATMENT, which is what this is: a word naming the group
   // under it. Inter semibold at 11, tracked and uppercased.
+  // THE SHEET'S HEADING TREATMENT, which is what this is: a word naming the group
+  // under it. Inter semibold at 11, tracked and uppercased.
+  //
+  // letterSpacing 0.5, DOWN FROM 1, AND IT IS WHAT MAKES THE LABEL FIT. Across
+  // the thirteen characters of "SCHEDULED ARR" a point of tracking is 13 points
+  // -- an eighth of the whole string -- so halving it returns 6.5 and takes the
+  // longest label from 105.1 against a 102.5 column to 98.6. Every one of the six
+  // then clears at every width this app runs at. See headLabel for the rest of
+  // the arithmetic.
+  //
+  // IT IS STILL TRACKED, WHICH IS THE POINT OF HALVING RATHER THAN REMOVING.
+  // Tracking on small uppercase text is a reading aid rather than a flourish --
+  // capitals have no ascenders or descenders to tell them apart by -- and 0.5
+  // keeps that while 0 would have given back twice as much width as was needed.
+  //
+  // 11pt AND NOT 10.5, which would also have fitted, by 1.6 points. 11 is this
+  // card's label tier and the tracking is the cheaper thing to spend.
+  //
+  // textTransform IS WHY THE MEASUREMENTS ARE OF CAPITALS. It renders SCHEDULED
+  // DEP, not Scheduled Dep, and the difference is around 19 points on a full
+  // label -- enough that measuring the lowercase form would have said it fits
+  // when it does not.
   tripColHead: {
     fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
-    letterSpacing: 1, textTransform: "uppercase",
+    letterSpacing: 0.5, textTransform: "uppercase",
   },
   // THE CLOCK, AND THE LARGEST THING IN THE COLUMN. White is the timetable and
   // green is a time that has moved or happened -- see the call site for why an
@@ -4901,32 +5007,35 @@ const s = StyleSheet.create({
   tripSlotEmpty: { color: "rgba(226,226,226,0.4)" },
   // ── THE BADGES ──
   //
-  // A ROW THAT WRAPS, WHICH IS ONE DECLARATION SERVING BOTH PHASES. Side by side
-  // the pair needs about 150pt; a phase-one column is 102.5, so they stack, and
-  // phase two's arrival is the card's full 230, so they sit in a line. No phase
-  // test, and therefore nothing to keep in step with the phase machine.
-  //
-  // 6 BOTH WAYS, which is tripCol's own gap: a wrapped pill sits the same
-  // distance below its neighbour as the pill block sits below the clock.
+  // THE STACK OF BADGE ROWS, 6 apart, which is tripCol's own gap -- a badge row
+  // sits the same distance below its neighbour as the block sits below the clock.
+  // inPairs decides what goes on each row; this only stacks them.
   tripPills: { gap: 6 },
+  // ONE ROW OF BADGES, AND IT MUST NOT WRAP. inPairs has already decided what
+  // goes on it, so wrapping could only undo that decision -- and it is the
+  // absence of flexWrap that makes flex: 1 on the pills mean "divide this row"
+  // rather than "put everything on one line". The 6 is tripPills' own gap turned
+  // ninety degrees, so the grid is square.
+  tripPillRow: { flexDirection: "row", gap: 6 },
   // SURFACE_2, AND IT IS READ RATHER THAN SPELLED. lib/cards defines the level as
   // "what sits on a SURFACE_1" and names this exact case -- a control inside a
   // card. The card is SURFACE_1; this is one step up from it, so the pill is
   // raised off the card rather than punched into it. Writing rgba(255,255,255,
   // 0.08) here instead would be the tenth unnamed alpha the scale exists to stop.
   //
-  // alignSelf IS GONE, AND THAT REVERSES WHAT THIS NOTE USED TO SAY. It was
-  // flex-start so a pill hugged its content, on the argument that a badge
-  // stretched across its container is a banner -- airportHeadStatus makes the
-  // same point about the status word.
+  // flex: 1 IS THE WHOLE OF THE SIZING, AND IT IS ONLY SAFE BECAUSE tripPillRow
+  // DOES NOT WRAP. Two badges divide the row less its gap; one takes all of it.
+  // No branch for the odd one out and no width written anywhere.
   //
-  // THE ARGUMENT WAS RIGHT ABOUT A PILL AND WRONG ABOUT A COLUMN OF THEM. One
-  // stretched badge does read as a banner; three stacked and aligned read as a
-  // TABLE, which is what they are -- three facts of one kind, each a label over a
-  // value. What made the hugging version look wrong was not the width but the
-  // RAG: three different widths down the left of a column with nothing lining up.
+  // IT REPLACED alignSelf: flex-start, which had the pill hug its content on the
+  // argument that a badge stretched across its container is a banner -- the point
+  // airportHeadStatus makes about the status word. True of ONE stretched badge
+  // and false of a grid of them: two beside each other with a third beneath read
+  // as a table, which is what they are. What made the hugging version look wrong
+  // was never the width, it was the RAG.
   //
-  // Removing it lets the column's default stretch do the sizing. See tripPills.
+  // THE SAME flex: 1 IN A WRAPPING CONTAINER WOULD BE A BUG rather than a
+  // simplification, and the reason is at inPairs.
   //
   // RADIUS 6 AND paddingHorizontal 8, WHICH ARE airportHeadPill'S. The card
   // already has a pill at the top of it, and a second pill shape at a different
@@ -4942,8 +5051,9 @@ const s = StyleSheet.create({
   //
   // IT MATTERS MORE NOW THAN IT DID. While the pill hugged its content the badge
   // was only ever as wide as its label, so centring moved the value by a few
-  // points. Full width, the box is 86.5 and a gate of "A12" would otherwise sit
-  // at the far left of it with sixty points of empty fill to its right.
+  // points. Filling half a column it is 48.25 wide, and a lone trailing badge --
+  // the Desk -- takes the whole 102.5, where a value of "A12" would otherwise sit
+  // at the far left with eighty points of empty fill to its right.
   //
   // alignSelf WAS THE OTHER HALF OF THIS NOTE and has gone -- see above.
   tripPill: {
@@ -4951,6 +5061,7 @@ const s = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 5,
+    flex: 1,
     alignItems: "center",
     gap: 2,
   },
