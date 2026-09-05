@@ -283,19 +283,26 @@ export function movementTimeCell(
   if (hasTime(estimated)) {
     return { label: `Estimated ${noun}`, value: estimated };
   }
-  // NOTHING HAS BEEN REPORTED, so the schedule is the best estimate there is.
-  // Until an airline says otherwise, a flight is expected at the time it was
-  // sold at — that is what a timetable IS — and "Estimated Departure 09:40" says
-  // so. It replaces "Not departed yet", which answered a question nobody asked:
-  // the tile is headed by when the flight is expected, not by whether it has
-  // gone, and the row above it already carries the scheduled time for anyone
-  // comparing the two.
+  // NOTHING HAS BEEN REPORTED, SO THIS IS THE TIMETABLE AND IT SAYS SO.
+  //
+  // IT READ "Estimated Departure" AND THAT WAS THE WRONG WORD. The argument for
+  // it was that until an airline says otherwise a flight is expected at the time
+  // it was sold at, which is true -- and it is an argument for showing the
+  // scheduled time, which this does, not for CALLING it an estimate. The card
+  // carries a badge reading SCHEDULED directly above these labels, so the two
+  // contradicted each other on the commonest card in the app: a flight nobody
+  // has said anything about yet.
+  //
+  // AND THE READER COULD NOT TELL THE THREE APART. "Estimated" covered both the
+  // branch above -- where an airline HAS revised the time -- and this one, where
+  // nothing has been reported at all. Those are different facts and a traveller
+  // acts on them differently. Three sources, three words.
   //
   // NO DELAY FOLLOWS IT. The server derives its delay from an actual or
   // estimated time, so a movement with neither carries a null delay and
   // movementTile leaves the value white and unqualified. The schedule is never
   // shown as running to time on the strength of being the schedule.
-  return { label: `Estimated ${noun}`, value: scheduled };
+  return { label: `Scheduled ${noun}`, value: scheduled };
 }
 
 // A not-yet-departed flight already running late reads better as "delayed" than
@@ -2065,22 +2072,35 @@ export function FlightCard({
                     sheet
                   />
 
-                  {/* THE SCHEDULE, which the card deliberately does not carry:
-                      the two big times up there are the LIVE ones, and printing
-                      the scheduled pair beside them was the old spec table
-                      repeating the headline in a smaller font. Here there is
-                      nothing to repeat.
+                  {/* TWO TILES, NOT FOUR, AND THE PAIR THAT WENT WAS THE PAIR
+                      THAT REPEATED ITSELF.
+                      IT HELD AN EXPLICIT 'Scheduled Departure' AND 'Scheduled
+                      Arrival' ABOVE THESE. That worked while the movements below
+                      were always labelled "Actual" or "Estimated": the group read
+                      as what was meant to happen over what did. It stops working
+                      the moment an unreported movement is labelled honestly --
+                      movementTimeCell now returns "Scheduled Departure" for a
+                      flight nobody has said anything about, which is the
+                      commonest card in the app, and the group would have carried
+                      the same label AND the same clock twice.
+
+                      IT WAS ALSO A DUPLICATE REACT KEY, not merely a repetition:
+                      SheetGroup keys its tiles on the label, so two tiles called
+                      "Scheduled Departure" are two children with one key.
+
+                      NOTHING IS LOST. When nothing has been reported these tiles
+                      ARE the schedule and say so. When an actual or an estimate
+                      exists, that is the time somebody opened the sheet to read,
+                      and the schedule it replaced is the less useful of the two.
 
                       NO HEADING. It carried the date for a while, and then the
                       date moved to the header block at the top of the sheet
                       where it heads everything rather than one group. A "TIMES"
-                      label in its place would name a category the four labels
-                      below it already name four times over. */}
+                      label in its place would name a category the labels below
+                      it already name. */}
                   <SheetGroup
                     items={[
-                      { label: 'Scheduled Departure', value: clock24(flight.depIso, flight.dep) },
-                      { label: 'Scheduled Arrival', value: clock24(flight.arrIso, flight.arr) },
-                      // WHAT ACTUALLY HAPPENED, beside what was meant to. The
+                      // WHAT ACTUALLY HAPPENED, OR WHAT IS MEANT TO. The
                       // label comes from movementTimeCell rather than being
                       // written here, because only that function knows whether
                       // the provider sent an actual time or an estimate — it
@@ -2730,23 +2750,24 @@ export function FlightCard({
                   pointerEvents="none"
                 />
                 )}
-                {/* THE WORD SITS IN THE HEADING'S ROW, centred on the CARD
-                    rather than on the space beside the heading — which is what
-                    the absolute positioning is for. left 0 and right 0 span the
-                    full width and textAlign centres within that, so no mirror
-                    spacer is needed on the right and the heading's own width
-                    never enters into it.
+                {/* THE STATUS WORD, ALONE IN ITS ROW NOW.
+                    THE "FLIGHT CARD" HEADING IS GONE. It labelled the surface
+                    rather than saying anything about the flight -- a card that
+                    has to introduce itself as a card -- and on My Flights it was
+                    the first line of every leg.
 
-                    IT CANNOT COLLIDE WITH THE HEADING. "FLIGHT CARD" ends at
-                    84.4pt; the widest word this can hold is "scheduled" or
-                    "cancelled" at 59.4, which spans 96.3 to 155.7 on the card's
-                    252. Every other word in the vocabulary is shorter.
+                    AND ITS REMOVAL IS WHY THE WORD IS NO LONGER ABSOLUTE. This
+                    row had exactly two children and only one of them had height:
+                    the status word spanned the row with left 0 / right 0 so it
+                    could centre on the CARD rather than on the space beside the
+                    heading, and Yoga skips absolutely positioned children when
+                    it measures a row. The heading was the whole of this row's
+                    height. Taking it out with the word still absolute would have
+                    left a zero-height row and dropped the word onto the line
+                    below it.
 
-                    ABSOLUTE ALSO MEANS IT ADDS NO HEIGHT: Yoga skips absolutely
-                    positioned children when it measures the row, so the row is
-                    exactly as tall as the 11pt heading was on its own. */}
+                    SO THE WORD SIZES THE ROW ITSELF. See airportHeadStatus. */}
                 <View style={s.airportHeadRow}>
-                  <Text style={s.airportTitle}>{'Flight card'}</Text>
                   {flightRecord !== null && (
                     <StatusWord f={flightRecord} now={now} style={s.airportHeadStatus} />
                   )}
@@ -3591,14 +3612,37 @@ const s = StyleSheet.create({
   // reused as they are — identical values, and duplicating three style objects
   // to get sheet-scoped names would be worse than the names being slightly off.
   airportPlaces: { gap: 6 },
-  // The heading and the status word share a row. No justifyContent: the word is
-  // absolute and takes no part in the layout, so the heading sits where it
-  // always did, at the left.
+  // ONE CHILD NOW, AND IT IS THE STATUS WORD. This held the heading and the word
+  // side by side; with the heading gone the row exists to give the word a line of
+  // its own and the vertical centring that goes with it.
+  //
+  // NO justifyContent, WHICH NOW MEANS THE WORD SITS LEFT. It read as centred
+  // before because it spanned the row absolutely, not because the row placed it
+  // there -- so this is the one visible consequence of item 1 beyond the heading
+  // disappearing, and it is left as the flow puts it rather than being re-centred
+  // with a property the row never had.
   airportHeadRow: { flexDirection: "row", alignItems: "center" },
-  // SPANS THE ROW AND CENTRES IN IT. left 0 / right 0 rather than a width, so
-  // the centre is the card's centre whatever the word turns out to be.
+  // IN THE FLOW, WHICH IT WAS NOT. It used to span the row absolutely -- left 0,
+  // right 0 -- so that it centred on the CARD rather than on the space left
+  // beside the "FLIGHT CARD" heading it shared the row with.
+  //
+  // THE HEADING HAS GONE AND THAT ARRANGEMENT CANNOT SURVIVE IT. An absolutely
+  // positioned child is skipped when Yoga measures a row, so this word
+  // contributed no height and the heading was the only thing holding the row
+  // open. Alone and still absolute, it would have sat on top of the row beneath.
+  //
+  // textAlign IS KEPT AND NOW DOES NOTHING VISIBLE, deliberately: the element is
+  // content-sized, so there is no box to centre within. It is left in place
+  // because the moment anything gives this row a width -- a second child, a flex
+  // -- it is what decides where the word sits, and re-deriving that later is how
+  // a layout comes back wrong.
   airportHeadStatus: {
-    position: "absolute", left: 0, right: 0,
+    // flex: 1 SO IT STILL SPANS THE ROW. Absolute positioning was what gave the
+    // word the card's full width to centre in; in the flow it would be
+    // content-sized and sit at the left, which would MOVE a word that has always
+    // read as centred. This restores the span without restoring the side effect
+    // -- a flex child is measured, so the row keeps its height.
+    flex: 1,
     textAlign: "center", fontFamily: MONO, fontSize: 11,
   },
   // TWO COLUMNS UNDER THE DATE: identity on the left, movements on the right.
