@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "Every source, and what a healthy run of it looks like.",
+    "",
+    "THE GUARDRAILS ARE MEASURED, NOT GUESSED. Each number below is what the",
+    "source actually returned on the run that produced the committed data. They",
+    "are the tripwire for the failure this whole pipeline is built around: a",
+    "parser that silently starts returning nothing, or a source that quietly",
+    "stops publishing the one field the feature depends on.",
+    "",
+    "min_ratio is applied to the PREVIOUS GOOD RUN as well as to min_records, so",
+    "the floor rises as an airport grows and a sudden shrink is always refused.",
+    "",
+    "security_basis pins what a source is allowed to claim. HKG publishes a",
+    "per-outlet boolean, so 'explicit' is required: if they ever stop, the run",
+    "is refused rather than silently degrading to guesswork."
+  ],
+  "airports": [
+    {
+      "code": "HKG",
+      "adapter": "hkg",
+      "kind": "json",
+      "url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
+      "page_url": "https://www.hongkongairport.com/en/shop-dine/dining/",
+      "cache": "hkg_shops.json",
+      "notes": "The dining page is a JS shell. This static JSON is what it loads; found via shopping_categories.js -> hkia.js config.",
+      "guardrails": {
+        "min_records": 60,
+        "min_ratio": 0.75,
+        "security_basis": "explicit",
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "level": 1.0,
+          "hours_raw": 1.0,
+          "security_raw": 1.0,
+          "category": 1.0
+        }
+      }
+    }
+  ]
+}
