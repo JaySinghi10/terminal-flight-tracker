@@ -153,7 +153,10 @@ const REFRESH_MAX_PAST_MS = 36 * 60 * 60 * 1000;
 
 // Relevance order: in the air, then upcoming, then finished. Unparseable times
 // sink to the end of their own group rather than the end of the list.
-const SAVED_RANK: Record<string, number> = { active: 0, scheduled: 1, delayed: 1 };
+// 'stale' RANKS WITH THE LIVE ONES. It is still today's flight and it is the
+// record most in need of a look; sinking it under every landed leg would bury
+// exactly the thing that wants attention.
+const SAVED_RANK: Record<string, number> = { active: 0, stale: 0, scheduled: 1, delayed: 1 };
 const RANK_LAST = 2;
 export const NO_TIME = Number.MAX_SAFE_INTEGER;
 
@@ -382,6 +385,20 @@ export function effectiveStatus(f: SavedFlight, now: number): string {
     const ts = zonedIsoToTs(
       f.from.actualIso ?? f.from.estimatedIso ?? f.from.scheduledIso, f.from.timezone);
     if (ts !== null && ts > now) return 'scheduled';
+    // ── AND THE OTHER END OF THE SAME QUESTION ──
+    //
+    // THE MIRROR OF THE 'landed' RULE ABOVE. That one refuses a landing which
+    // has not happened yet; this refuses a flight still "in the air" long after
+    // it should have been down. One principle: a status the clock contradicts is
+    // not a status.
+    //
+    // to.actualIso ABSENT IS THE SECOND HALF AND IT IS NOT OPTIONAL. If the
+    // provider ever does report an actual arrival then the flight landed and the
+    // ordinary path has it. This fires only where the arrival never came at all.
+    const arr = arrivalTs(f);
+    if (arr !== null && f.to.actualIso == null && now - arr > STALE_AFTER_ARRIVAL_MS) {
+      return 'stale';
+    }
   }
   return s;
 }
@@ -426,7 +443,13 @@ function refreshable(f: SavedFlight, now: number): boolean {
 // about at all. Every other branch returns a duration.
 function refreshIntervalFor(f: SavedFlight, now: number): number | null {
   if (!refreshable(f, now)) return null;
-  if (effectiveStatus(f, now) === 'active') return 30 * 60 * 1000;
+  const eff = effectiveStatus(f, now);
+  // A FLIGHT THE PROVIDER HAS LOST IS STILL WORTH ASKING ABOUT, BUT NOT EVERY
+  // HALF HOUR. They do catch up -- an arrival often lands in their data hours
+  // late -- so it stays on the list; at the active tier it would spend about
+  // forty-eight units across a day on a record nothing is changing.
+  if (eff === 'stale') return 60 * 60 * 1000;
+  if (eff === 'active') return 30 * 60 * 1000;
   const arr = arrivalTs(f);
   if (arr !== null && now > arr) return 60 * 60 * 1000;
   const dep = departureTs(f);
@@ -471,7 +494,11 @@ function refreshIntervalFor(f: SavedFlight, now: number): number | null {
 const REFRESH_SOON_MS = 6 * 60 * 60 * 1000;
 
 function refreshRank(f: SavedFlight, now: number): number {
-  if (effectiveStatus(f, now) === 'active') return 0;
+  const eff = effectiveStatus(f, now);
+  // A LOST FLIGHT IS THE ONE A PULL MOST WANTS TO REPAIR, so it queues with the
+  // airborne rather than in the tail -- its own tier already keeps the automatic
+  // polling down; this is about which records a hand-pulled refresh reaches.
+  if (eff === 'active' || eff === 'stale') return 0;
   const dep = departureTs(f);
   // NO READABLE DEPARTURE IS NOT URGENT, only repairable. It goes to the tail
   // with the distant ones, where staleness will bring it round soon enough.
@@ -538,6 +565,28 @@ export function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFli
 // meaning "the bags are still worth showing" is worth more than two that agree
 // today and will not later.
 export const BAG_WINDOW_MS = 45 * 60 * 1000;
+
+// ── WHEN A FLIGHT STOPS BEING LIVE AND STARTS BEING LOST ────────────────────
+//
+// SIXTY MINUTES PAST ITS OWN ARRIVAL ESTIMATE, WITH NO ARRIVAL REPORTED. AN
+// ESTIMATE, NOT A MEASUREMENT -- tune it once real journeys have been watched.
+//
+// WHAT IT IS FOR: 6E5071 BOM-BLR was fetched FRESH -- data_age_seconds 0 -- and
+// the PROVIDER said "Approaching", live_feed true, arrival estimated 17:13, no
+// actual. It was 20:43. The card pulsed green and said LANDING for a flight that
+// had come down three and a half hours earlier. Nothing about our copy was old;
+// the CLAIM was.
+//
+// A FLIGHT PAST ITS ARRIVAL WITH NO ARRIVAL REPORTED IS ONE WE HAVE LOST TRACK
+// OF, NOT ONE THAT LANDED. Mapping it to 'landed' would invent an arrival time,
+// print it as a fact, and start a bag window for a flight nobody has confirmed
+// is down. 'stale' says the true thing: we do not know.
+//
+// AN HOUR IS DELIBERATELY GENEROUS. A flight really can run past its estimate --
+// a hold, a diversion, a long taxi -- and this must not fire on one that is
+// genuinely still in the air. What it catches is an estimate that expired and
+// then never moved.
+export const STALE_AFTER_ARRIVAL_MS = 60 * 60 * 1000;
 
 // ── OWNERSHIP ───────────────────────────────────────────────────────────────
 //

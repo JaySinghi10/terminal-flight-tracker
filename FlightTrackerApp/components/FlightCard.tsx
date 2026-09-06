@@ -319,9 +319,23 @@ const BADGE_LABEL: Record<string, string> = {
 // display status, which is character-for-character what this badge rendered
 // before the map existed — so a record saved before v10, and any word the
 // provider adds tomorrow, renders exactly as it does today rather than blank.
+// WHERE THE EFFECTIVE STATUS HAS ITS OWN WORDS. The map above is keyed on the
+// PROVIDER's vocabulary; this is keyed on ours, and it is consulted only when
+// the provider's word has been withdrawn -- which is exactly what happens when
+// effectiveStatus demotes a record and trustedRaw goes null.
+//
+// "NO UPDATE" RATHER THAN "LOST CONTACT". The second reads as an incident with
+// the aircraft; this is a gap in a data feed, and a card must not frighten
+// somebody on behalf of a provider that simply stopped writing things down.
+const STATUS_WORD: Record<string, string> = {
+  stale: 'NO UPDATE',
+};
+
 export function badgeLabel(rawStatus: string | null | undefined, fallback: string): string {
   const key = String(rawStatus ?? '').trim().toLowerCase();
-  return BADGE_LABEL[key] ?? fallback.toUpperCase();
+  return BADGE_LABEL[key]
+    ?? STATUS_WORD[fallback.trim().toLowerCase()]
+    ?? fallback.toUpperCase();
 }
 
 // The backend uses "N/A" for a time that does not exist yet, and saved records
@@ -2812,8 +2826,12 @@ export function FlightCard({
   const tripEffective = flightRecord !== null
     ? effectiveStatus(flightRecord, now)
     : 'scheduled';
-  const tripPhase: 'before' | 'air' | 'landed' | 'off' =
+  // 'stale' IS ITS OWN PHASE AND MUST NEVER BE 'air'. 'air' is what draws the
+  // pulse dot and the green; 'before' would be worse than wrong -- it would draw
+  // a flight that has already gone as one still to come.
+  const tripPhase: 'before' | 'air' | 'landed' | 'off' | 'stale' =
     tripEffective === 'active' ? 'air'
+      : tripEffective === 'stale' ? 'stale'
       : tripEffective === 'landed' ? 'landed'
       : (tripEffective === 'cancelled' || tripEffective === 'diverted') ? 'off'
       : 'before';
@@ -4144,6 +4162,23 @@ export function FlightCard({
                   )}
                 </View>
 
+                {/* ── WHEN THE PROVIDER LOST THE FLIGHT ──
+                    THE CARD SAYS SO IN WORDS, WITH THE TIME THAT WENT STALE. The
+                    hour printed is the last thing the PROVIDER asserted -- the
+                    arrival it was still predicting -- and not when we fetched:
+                    6E5071 was fetched fresh, data_age_seconds 0, while the claim
+                    on it was three and a half hours past. Printing our fetch time
+                    would have said the record was seconds old, which was true and
+                    entirely beside the point.
+                    IT DOES NOT SAY THE FLIGHT LANDED. We do not know that. It
+                    says only what is true: nobody has told us. */}
+                {tripVariant && tripPhase === 'stale' && (
+                  <Text style={s.tripStaleNote}>
+                    {`No update since ${flight.arrTimeValue}. `
+                      + 'The airline has not reported this flight’s arrival.'}
+                  </Text>
+                )}
+
                 {/* ── A TRIP LEG IS LAID OUT ON ITS OWN NOW ──
                     THE OTHER VARIANTS ARE UNTOUCHED and take the branch below,
                     which is the identity column beside two movement lines and
@@ -5212,6 +5247,15 @@ const s = StyleSheet.create({
   // THE COUNTDOWN, AND IT IS THE ONE GREEN THING ON THE CARD. 15 rather than the
   // route's 20: it is the liveliest fact here, not the largest one, and colour is
   // what carries that rather than size.
+  // Amber, and the same 11pt the other secondary lines on this card use. It is a
+  // sentence rather than a label, so Inter rather than the mono.
+  tripStaleNote: {
+    fontFamily: SANS,
+    fontSize: 11,
+    lineHeight: 16,
+    color: CD_LATE,
+    marginTop: 8,
+  },
   tripCountdown: { fontSize: 15, fontFamily: MONO_BOLD, color: CD_GREEN },
   // airportTitle's TREATMENT, RESTATED RATHER THAN COMPOSED, and the difference
   // is one property: that style is shared with the sheet's own head through

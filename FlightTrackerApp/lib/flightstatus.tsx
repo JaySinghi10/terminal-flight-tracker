@@ -43,6 +43,10 @@ const COUNTDOWN_MAX_AGE_MS = 3 * 60 * 60 * 1000; // how fresh data must be to sh
 export function getStatusColor(status: string) {
   switch (status) {
     case "landed": return "#8e8e93";
+    // AMBER, NOT GREEN AND NOT RED. Green is live and this is the opposite of
+    // live; red would read as an incident with the aircraft when it is a gap in
+    // somebody's data feed.
+    case "stale": return "#fbbf24";
     case "active": return "#4ade80";
     case "scheduled": return "#aeaeb2";
     case "delayed": return "#fbbf24";
@@ -191,7 +195,9 @@ function flightLineSegments(f: SavedFlight, now: number, hideAbsolute?: boolean)
   // arrival time would otherwise take the landed branch below, read the arrival
   // endpoint, and print a grey "landed" on a flight still sitting at the gate.
   const s = effectiveStatus(f, now);
-  const statusSeg: LineSeg = { text: s, color: getStatusColor(s) };
+  // THE WORD ON THE ROW IS THE WORD A PERSON WOULD USE. 'stale' is the internal
+  // name for the state; "no update" is what it means to somebody scanning a list.
+  const statusSeg: LineSeg = { text: s === 'stale' ? 'no update' : s, color: getStatusColor(s) };
   const fresh = now - f.updatedAt < COUNTDOWN_MAX_AGE_MS;
 
   let ep: SavedFlightEndpoint | null = null;
