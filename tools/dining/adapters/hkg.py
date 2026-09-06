@@ -153,6 +153,7 @@ def parse(raw, scraped_at):
                 security_raw=(restricted_label if restricted else open_label)
                              if isinstance(restricted, bool) else "",
                 security_basis="explicit" if isinstance(restricted, bool) else "unknown",
+                flight_scope="",   # this source does not distinguish
                 category_raw="|".join(cats),
                 category="|".join(cat_norm),
                 hours_raw=_hours(shop),

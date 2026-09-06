@@ -290,6 +290,10 @@ def emit_ts(all_records, per_airport_meta):
 //
 // SO READ isAirside WITH securityBasis, ALWAYS:
 //
+// flightScope IS BRAND-LEVEL WHERE IT IS SET AT ALL (only BOM today): it says
+// what the BRAND serves, not what this counter does, because Mumbai's filter
+// narrows brands rather than addresses. Empty means the source did not say.
+//
 // AND READ zone WHEN isAirside IS null. "arrivals" is not a missing answer: it
 // is baggage reclaim or the arrivals concourse, which a CONNECTING passenger
 // cannot reach and a landside visitor cannot either. "You can eat here after you
@@ -319,6 +323,7 @@ def emit_ts(all_records, per_airport_meta):
         "gate_hint": "string", "is_airside": "boolean | null",
         "zone": "'departures_airside' | 'departures_landside' | 'arrivals' | 'unknown'",
         "security_raw": "string", "security_basis": "'explicit' | 'inferred' | 'unknown'",
+        "flight_scope": "'' | 'domestic' | 'international' | 'both'",
         "category_raw": "string", "category": "string", "hours_raw": "string",
         "hours": "HoursWindow[]",
         "is_24h": "boolean", "lat": "number | null", "lon": "number | null",

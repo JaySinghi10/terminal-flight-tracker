@@ -90,7 +90,7 @@ def rec(**kw):
     base = dict(airport="HKG", name="X", source_id="ABC123",
                 terminal_raw="T1", terminal="T1", level="L6",
                 area="Terminal 1", gate_hint="", is_airside=True,
-                zone="departures_airside",
+                zone="departures_airside", flight_scope="",
                 security_raw="Restricted Area", security_basis="explicit",
                 category_raw="fastf", category="fast_food", hours_raw="07:00 - 23:00",
                 hours=[{"start_day": 0, "end_day": 6, "open": "07:00", "close": "23:00"}],
@@ -122,6 +122,8 @@ check("an unknown zone cannot be explicit",
       rec(zone="unknown", is_airside=None).check() != [])
 check("a zone outside the vocabulary is rejected",
       rec(zone="beyond_passport_control", is_airside=None).check() != [])
+check("a bad flight_scope is rejected", rec(flight_scope="transit").check() != [])
+check("flight_scope 'both' is allowed", rec(flight_scope="both").check() == [])
 check("a category outside the vocabulary is rejected",
       rec(category="sushi").check() != [])
 check("half a coordinate is rejected", rec(lon=None).check() != [])

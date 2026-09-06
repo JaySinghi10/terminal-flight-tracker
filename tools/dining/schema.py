@@ -108,6 +108,21 @@ class Dining:
     security_raw: str
     security_basis: str
 
+    # ── WHOSE FLIGHT CAN REACH IT ─────────────────────────────────────────
+    #
+    # "", "domestic", "international" or "both". Mumbai is the first source to
+    # publish this, and it matters for the same reason the domestic/international
+    # split matters to a connection: an outlet in the international departures
+    # pier is not an option if you are flying domestic, however airside it is.
+    #
+    # IT IS BRAND-LEVEL, NOT ADDRESS-LEVEL, AND THAT IS A REAL LIMIT. BOM's Area
+    # filter narrows which BRANDS come back, not which of a brand's addresses --
+    # Baker Street returns all four of its counters under both Domestic
+    # Departures and International Departures. So this says "this brand serves
+    # domestic and international", not "this counter does". Empty where a source
+    # does not say.
+    flight_scope: str
+
     # ── what it is ────────────────────────────────────────────────────────
     category_raw: str               # source vocabulary, "|"-joined
     category: str                   # CATEGORIES members, "|"-joined
@@ -195,6 +210,9 @@ class Dining:
             for t in (w["open"], w["close"]):
                 if not isinstance(t, str) or not TIME_RE.match(t):
                     bad.append("hours window time is not HH:MM: %r" % (t,))
+        if self.flight_scope not in ("", "domestic", "international", "both"):
+            bad.append("flight_scope %r is not one of ''/domestic/international/both"
+                       % self.flight_scope)
         if not self.source_url.startswith("http"):
             bad.append("source_url is not a url")
         return bad

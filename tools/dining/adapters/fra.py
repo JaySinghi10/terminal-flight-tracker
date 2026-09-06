@@ -157,6 +157,7 @@ def parse(raw, scraped_at):
                  if explicit else "unknown",
             security_raw=str(zone.get("label") or "") if explicit else "",
             security_basis="explicit" if explicit else "unknown",
+            flight_scope="",   # this source does not distinguish
             category_raw="|".join(cats_raw),
             category="|".join(cats),
             hours_raw=_hours_raw(e),

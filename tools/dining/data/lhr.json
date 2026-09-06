@@ -1,6 +1,6 @@
 {
  "airport": "LHR",
- "scraped_at": "2026-09-06T12:14:03Z",
+ "scraped_at": "2026-09-06T12:33:13Z",
  "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
  "records": [
   {
@@ -16,6 +16,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Dine in style",
    "category": "bar|western",
    "hours_raw": "",
@@ -24,7 +25,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -40,6 +41,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Casual dining|Takeout",
    "category": "western|fast_food",
    "hours_raw": "",
@@ -48,7 +50,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -64,6 +66,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -72,7 +75,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -88,6 +91,7 @@
    "zone": "arrivals",
    "security_raw": "Arrivals",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -96,7 +100,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -112,6 +116,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -120,7 +125,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -136,6 +141,7 @@
    "zone": "arrivals",
    "security_raw": "Arrivals",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -144,7 +150,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -160,6 +166,7 @@
    "zone": "arrivals",
    "security_raw": "Arrivals",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -168,7 +175,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -184,6 +191,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -192,7 +200,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -208,6 +216,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -216,7 +225,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -232,6 +241,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -240,7 +250,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -256,6 +266,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Casual dining",
    "category": "bar|western",
    "hours_raw": "",
@@ -264,7 +275,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -280,6 +291,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -288,7 +300,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -304,6 +316,7 @@
    "zone": "arrivals",
    "security_raw": "Arrivals",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -312,7 +325,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -328,6 +341,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Takeout|Casual dining",
    "category": "western|fast_food",
    "hours_raw": "",
@@ -336,7 +350,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -352,6 +366,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "In-flight picnic|Dine in style",
    "category": "fast_food|western",
    "hours_raw": "",
@@ -360,7 +375,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -376,6 +391,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Casual dining",
    "category": "western",
    "hours_raw": "",
@@ -384,7 +400,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -400,6 +416,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Casual dining",
    "category": "western",
    "hours_raw": "",
@@ -408,7 +425,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -424,6 +441,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|In-flight picnic|Dine in style",
    "category": "western|fast_food",
    "hours_raw": "",
@@ -432,7 +450,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -448,6 +466,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -456,7 +475,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -472,6 +491,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|International cuisine|Casual dining",
    "category": "western|asian",
    "hours_raw": "",
@@ -480,7 +500,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -496,6 +516,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Casual dining|Family favourites|Coffeehouse and Café",
    "category": "western|cafe",
    "hours_raw": "",
@@ -504,7 +525,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -520,6 +541,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Dine in style",
    "category": "western",
    "hours_raw": "",
@@ -528,7 +550,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -544,6 +566,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|In-flight picnic|Casual dining",
    "category": "fast_food|western",
    "hours_raw": "",
@@ -552,7 +575,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -568,6 +591,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Casual dining",
    "category": "bar|western",
    "hours_raw": "",
@@ -576,7 +600,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -592,6 +616,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Dine in style",
    "category": "western",
    "hours_raw": "",
@@ -600,7 +625,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -616,6 +641,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -624,7 +650,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -640,6 +666,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -648,7 +675,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -664,6 +691,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -672,7 +700,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -688,6 +716,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -696,7 +725,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -712,6 +741,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -720,7 +750,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -736,6 +766,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -744,7 +775,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -760,6 +791,7 @@
    "zone": "arrivals",
    "security_raw": "Arrivals",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -768,7 +800,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -784,6 +816,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "International cuisine|Dine in style",
    "category": "asian|western",
    "hours_raw": "",
@@ -792,7 +825,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -808,6 +841,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Takeout|Casual dining",
    "category": "western|fast_food",
    "hours_raw": "",
@@ -816,7 +850,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -832,6 +866,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Casual dining",
    "category": "bar|western",
    "hours_raw": "",
@@ -840,7 +875,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -856,6 +891,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -864,7 +900,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -880,6 +916,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Takeout|Coffeehouse and Café",
    "category": "fast_food|cafe",
    "hours_raw": "",
@@ -888,7 +925,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -904,6 +941,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Casual dining",
    "category": "bar|western",
    "hours_raw": "",
@@ -912,7 +950,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -928,6 +966,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Pubs and bars",
    "category": "western|bar",
    "hours_raw": "",
@@ -936,7 +975,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -952,6 +991,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Pubs and bars|Casual dining",
    "category": "western|bar",
    "hours_raw": "",
@@ -960,7 +1000,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -976,6 +1016,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Pubs and bars",
    "category": "western|bar",
    "hours_raw": "",
@@ -984,7 +1025,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1000,6 +1041,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Casual dining",
    "category": "bar|western",
    "hours_raw": "",
@@ -1008,7 +1050,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1024,6 +1066,7 @@
    "zone": "departures_landside",
    "security_raw": "Before Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Pubs and bars",
    "category": "western|bar",
    "hours_raw": "",
@@ -1032,7 +1075,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1048,6 +1091,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Casual dining|Pubs and bars",
    "category": "western|bar",
    "hours_raw": "",
@@ -1056,7 +1100,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1072,6 +1116,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Pubs and bars|Casual dining",
    "category": "bar|western",
    "hours_raw": "",
@@ -1080,7 +1125,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1096,6 +1141,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Takeout|Coffeehouse and Café",
    "category": "western|fast_food|cafe",
    "hours_raw": "",
@@ -1104,7 +1150,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1120,6 +1166,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "International cuisine|Casual dining",
    "category": "asian|western",
    "hours_raw": "",
@@ -1128,7 +1175,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1144,6 +1191,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|Pubs and bars|Casual dining",
    "category": "western|bar",
    "hours_raw": "",
@@ -1152,7 +1200,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1168,6 +1216,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|International cuisine|Casual dining",
    "category": "western|asian",
    "hours_raw": "",
@@ -1176,7 +1225,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1192,6 +1241,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|International cuisine|Casual dining",
    "category": "western|asian",
    "hours_raw": "",
@@ -1200,7 +1250,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   },
   {
@@ -1216,6 +1266,7 @@
    "zone": "departures_airside",
    "security_raw": "After Security",
    "security_basis": "explicit",
+   "flight_scope": "",
    "category_raw": "Family favourites|International cuisine|Casual dining",
    "category": "western|asian",
    "hours_raw": "",
@@ -1224,7 +1275,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
-   "scraped_at": "2026-09-06T12:14:03Z",
+   "scraped_at": "2026-09-06T12:33:13Z",
    "source_updated_at": ""
   }
  ]

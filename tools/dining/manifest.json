@@ -124,6 +124,38 @@
           "security_raw": 1.0
         }
       }
+    },
+    {
+      "code": "BOM",
+      "adapter": "bom",
+      "kind": "custom",
+      "url": "https://csmia-mumbai.adaniairports.com/api/sitecore/Dining/Search",
+      "page_url": "https://csmia-mumbai.adaniairports.com/en/shop-and-dine/dining",
+      "cache": "bom_dining.json",
+      "notes": "Hostname is csmia-mumbai.adaniairports.com; csmia.adaniairports.com and csmia.aero DO NOT RESOLVE. The listing is not in the page: a Sitecore controller found by reading Dining-Search.js. A card is a BRAND with one <li class=address> per counter, exploded into a row each. The zone is in the address string ('Post Security Hold Area', 'Check-in Area', 'Landside', 'Arrival Forecourt'). flight_scope is BRAND-level: the Area filter narrows brands, not addresses.",
+      "guardrails": {
+        "min_records": 70,
+        "min_ratio": 0.75,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "T1",
+          "T2"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "security_raw": 1.0,
+          "area": 1.0
+        }
+      }
+    }
+  ],
+  "parked": [
+    {
+      "code": "SIN",
+      "page_url": "https://www.changiairport.com/en/dine-and-shop/dining-directory.html",
+      "reason": "PARKED -- do not re-attempt from scratch. Two blockers, both measured. (1) NO SECURITY ZONE AT RECORD LEVEL: a card carries only data-analytics-details=\"Location | Level | Category\" (e.g. \"Jewel | L1 | Cafe\"). The 'transit'/'public' words on the page are furniture and JS config, not per-outlet -- checked in context. The 'Airport Area' filter exists but is a custom widget, not a <select>, so the JFK trick of asking once per zone is unconfirmed. (2) JEWEL CONTAMINATION: 7 of the first 15 cards are Jewel, the LANDSIDE MALL, which is not a terminal and must be excluded -- an earlier homepage crawl followed Changi's own navigation straight to jewelchangiairport.com and produced a clean, parseable list of mall restaurants that every guardrail would have passed. TO REVISIT: crack the Airport Area widget and confirm it yields per-zone result sets; only then is SIN worth an adapter."
     }
   ]
 }

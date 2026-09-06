@@ -222,6 +222,7 @@ def parse(raw, scraped_at):
                 # security_raw carries the filter label the airport answered to.
                 security_raw=label,
                 security_basis="explicit",
+                flight_scope="",   # this source does not distinguish
                 category_raw="|".join(cats_raw),
                 category="|".join(cats),
                 hours_raw="",

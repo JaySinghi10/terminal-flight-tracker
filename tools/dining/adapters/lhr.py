@@ -159,6 +159,7 @@ def parse(raw, scraped_at):
                 zone=zone,
                 security_raw=zone_words if explicit else "",
                 security_basis="explicit" if explicit else "unknown",
+                flight_scope="",   # this source does not distinguish
                 category_raw="|".join(cats_raw),
                 category="|".join(cats),
                 hours_raw="",       # not on this endpoint; the detail page has it
