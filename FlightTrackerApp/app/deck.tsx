@@ -25,6 +25,11 @@ import {
 // for one thing.
 import { SavedFlight } from '../lib/storage';
 import { airportByCode, findAirports, Airport } from '../lib/airports';
+// THE SCHEMATIC. Terminal geometry is a separate dataset from dining for the
+// same reason airports.ts is separate from both: it is a different source with a
+// different licence, and it is absent for most airports.
+import { terminalOf, Gate } from '../lib/terminals';
+import TerminalMap, { placeDining, Placed } from '../components/TerminalMap';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
@@ -355,6 +360,39 @@ export default function Deck() {
     return t === '' ? null : ('T' + t).toUpperCase();
   }, [following, where]);
 
+  // ── THE MAP, WHEN THERE IS ONE ────────────────────────────────────────────
+  //
+  // ONE TERMINAL, HERS -- and only when we have both a terminal to draw and a
+  // terminal to draw for. NO POLYGON, NO MAP: an empty frame is worse than the
+  // list, which is the same answer the no-data state gives for a whole airport.
+  const mapFor = useMemo(() => {
+    if (airport === null || hereTerminal === null) return null;
+    return terminalOf(airport, hereTerminal);
+  }, [airport, hereTerminal]);
+
+  // THE TWO GATES THAT MATTER, matched by ref against the geometry. A record's
+  // gate is the provider's string and the geometry's is OpenStreetMap's, so the
+  // match can miss -- and a miss draws no mark rather than a mark in the wrong
+  // place.
+  const gates = useMemo(() => {
+    if (mapFor === null) return { arrival: null as Gate | null, departure: null as Gate | null };
+    const find = (ref: string | null | undefined) => {
+      const r = (ref || '').trim().toUpperCase();
+      return r === '' ? null : (mapFor.gates.find(g => g.ref === r) ?? null);
+    };
+    return {
+      arrival: find(where.arrived?.to.gate),
+      departure: find(where.next?.from.gate),
+    };
+  }, [mapFor, where]);
+
+  const onMap = useMemo(() => {
+    if (mapFor === null) return { placed: [] as Placed[], unplaced: [] as Dining[] };
+    // ONLY THE OUTLETS IN THIS TERMINAL. A pin from another building would sit
+    // on a shape it does not belong to.
+    return placeDining(rows.filter(d => d.terminal.toUpperCase() === mapFor.key), mapFor);
+  }, [rows, mapFor]);
+
   const grouped = useMemo(() => {
     const by = new Map<Dining['zone'], Dining[]>();
     for (const z of ZONE_ORDER) by.set(z, []);
@@ -498,6 +536,16 @@ export default function Deck() {
               </Text>
             )}
           </View>
+        )}
+
+        {/* ── THE SCHEMATIC, WHEN WE HAVE THE SHAPE AND SHE IS IN IT ── */}
+        {mapFor !== null && (
+          <TerminalMap
+            terminal={mapFor}
+            placed={onMap.placed}
+            arrival={gates.arrival}
+            departure={gates.departure}
+          />
         )}
 
         {/* ── THE LIST, OR THE HONEST ABSENCE OF ONE ── */}

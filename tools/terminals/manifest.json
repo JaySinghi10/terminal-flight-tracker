@@ -1,0 +1,31 @@
+{
+  "_comment": [
+    "Terminal geometry, per airport, from OpenStreetMap via Overpass.",
+    "",
+    "aliases FIX WHAT OSM GETS WRONG, and they are not tidiness. JFK carries a",
+    "polygon named 'Terminl 8' -- a misspelling of Terminal 8 with its own",
+    "outline and seventeen of that terminal's gates. Without the alias, Terminal 8",
+    "draws twice and its gates halve.",
+    "",
+    "exclude DROPS BUILDINGS THAT ARE NOT A TERMINAL YOU CAN STAND IN. 'New",
+    "Terminal 1' at JFK is under construction, has no gates, and overlaps the",
+    "existing Terminal 1 -- drawn, it is a ghost building on top of a real one.",
+    "",
+    "expect_terminals IS THE SAME TRIPWIRE tools/dining USES. If OSM is edited and",
+    "a terminal disappears, the run is refused and the previous map is kept."
+  ],
+  "airports": [
+    {
+      "code": "JFK",
+      "lat": 40.6394,
+      "lon": -73.7793,
+      "radius_m": 6000,
+      "aliases": { "Terminl 8": "T8" },
+      "exclude": ["New Terminal 1"],
+      "guardrails": {
+        "expect_terminals": ["T1", "T4", "T5", "T8"],
+        "min_gates": 90
+      }
+    }
+  ]
+}
