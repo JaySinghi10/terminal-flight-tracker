@@ -13,7 +13,9 @@
 // in store.py, which is where the caps live too. This file's job is to send a
 // well-formed request and forget about it.
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 // Its own key, not part of the saved-flight store. The device id outlives every
@@ -49,19 +51,65 @@ async function deviceId(): Promise<string> {
   return made;
 }
 
-// NULL, ON PURPOSE, AND THIS IS THE ONLY FUNCTION THAT CHANGES LATER.
+// ── THE DEVICE'S PUSH ADDRESS ────────────────────────────────────────────────
 //
-// Remote push is not available in Expo Go on SDK 54 — the client was removed
-// from it — and app.json carries no EAS project id, which is what an Expo push
-// token has to be scoped to. There is nothing to return yet and pretending
-// otherwise would put a fabricated value in the store.
+// THIS RETURNED A HARDCODED null AND IT NO LONGER HAS TO. The old note gave two
+// reasons: Expo Go cannot issue a remote token, and app.json carried no EAS
+// project id. THE SECOND IS NOW FALSE — app.json has extra.eas.projectId — and
+// the first was never a reason to have no implementation, only a reason for
+// this to return null AT RUNTIME in Expo Go, which it still does.
 //
-// REGISTRATION STILL HAPPENS WITH A NULL TOKEN, deliberately. A null token
-// exercises the entire server path and populates the watch store; the token
-// fills in when the dev build exists, and nothing on the server changes when it
-// does, because a row's token is refreshed by the next registration anyway.
+// A TOKEN IS SCOPED TO A PROJECT ID, so it is read from the manifest rather than
+// written here. expoConfig is what a running app sees; easConfig is the older
+// shape and costs one `??` to keep working. No project id means no token, and
+// that is a configuration fault worth failing quietly on rather than guessing.
+const PROJECT_ID: string | undefined =
+  (Constants.expoConfig as any)?.extra?.eas?.projectId
+  ?? (Constants as any)?.easConfig?.projectId;
+
+// ONE FETCH PER LAUNCH. getExpoPushTokenAsync is a network round trip to Expo's
+// servers, and registerWatch runs on every save — without this, saving four
+// flights in a row would make four identical calls. The value is stable for the
+// life of an install, so memory is the right lifetime: a cold start re-reads it,
+// which is also how a token that Expo has rotated gets picked up.
+let tokenCache: string | null = null;
+
+// PERMISSION IS READ, NEVER REQUESTED, and that is a deliberate limit on this
+// file rather than an oversight.
+//
+// Everything else here is invisible by contract — see the top of the file — and
+// a permission dialog is the single most visible thing an app can do. Saving a
+// flight is a local operation; it must not summon a system prompt. So the token
+// exists for a device that has ALREADY granted notifications, which today means
+// one that has turned on a reminder (lib/reminders.ts asks, at the moment the
+// user asks for a reminder, which is when the question makes sense).
+//
+// THE CONSEQUENCE, STATED PLAINLY: a user who never sets a reminder has no push
+// token and will not receive flight alerts. The alternative is one line — call
+// requestPermissionsAsync here — and it buys reach at the cost of prompting
+// somebody who has only just saved a flight. That is a product decision and it
+// is not this file's to make quietly.
 export async function pushToken(): Promise<string | null> {
-  return null;
+  if (tokenCache !== null) return tokenCache;
+  if (PROJECT_ID === undefined) return null;
+  try {
+    // ALREADY GRANTED, OR NOTHING. On iOS a token cannot be issued without APNs
+    // registration, which permission gates, so this check is also what stops
+    // getExpoPushTokenAsync throwing on the common path.
+    const perms = await Notifications.getPermissionsAsync();
+    if (!perms.granted) return null;
+    // THROWS IN EXPO GO AND ON A SIMULATOR, both of which are ordinary states
+    // rather than errors. The catch below is the whole handling: no token, no
+    // registration change, nothing said.
+    const issued = await Notifications.getExpoPushTokenAsync({ projectId: PROJECT_ID });
+    const value = issued?.data ?? null;
+    if (typeof value !== 'string' || value === '') return null;
+    tokenCache = value;
+    return value;
+  } catch {
+    // Expo Go, a simulator, no network, no credentials. See the note at the top.
+    return null;
+  }
 }
 
 function platformName(): 'ios' | 'android' | 'unknown' {

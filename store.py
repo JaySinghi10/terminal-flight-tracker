@@ -28,6 +28,28 @@ from google.cloud import storage
 
 ALERTS_BUCKET = (os.getenv("ALERTS_BUCKET") or "").strip()
 
+# ── THE ONE VALUE THAT MUST NEVER REACH THE BUCKET ──────────────────────────
+#
+# THE ALERT PAYLOAD ECHOES OUR OWN CALLBACK URL BACK AT US, secret and all.
+# subscription.subscriber.id is the full webhook address the provider was given:
+#
+#   {"subscription": {"subscriber": {"type": "WebHook", "id": ".../alerts/<SECRET>"}}}
+#
+# So a body stored verbatim puts ALERT_WEBHOOK_SECRET in Cloud Storage, and
+# GET /alerts/{ALERT_READ_SECRET}/deliveries/{id} hands it to anyone holding the
+# READ secret. Two secrets exist precisely so that one cannot be used to obtain
+# the other, and storing the body raw quietly collapsed them into one.
+#
+# READ HERE RATHER THAN PASSED IN, and this is the one env var this module reads
+# that it does not otherwise use. A redaction that depends on a caller
+# remembering to pass the secret is a redaction that stops happening the first
+# time somebody adds a second call site.
+#
+# UNSET IS SAFE: the structural rule below removes the whole URL regardless, and
+# an empty secret would otherwise match everywhere.
+_WEBHOOK_SECRET = (os.getenv("ALERT_WEBHOOK_SECRET") or "").strip()
+REDACTED = "[redacted]"
+
 # ──────────────────────────────────────────────
 # SHAPE AND LIMITS
 # ──────────────────────────────────────────────
@@ -479,6 +501,55 @@ def _attempt(parsed):
     return (_number(attempt.get("costCredits")), _number(attempt.get("seqNo")))
 
 
+def _redact(raw_body: str, parsed):
+    """(text to store, whether anything was removed).
+
+    TWO RULES, AND EACH COVERS WHAT THE OTHER CANNOT.
+
+    A. THE CALLBACK URL, STRUCTURALLY. Found through the parsed object so the
+       exact string is known, then cut out of the RAW TEXT rather than by
+       re-serialising the parse. The body is the record of truth and every other
+       byte of it stays exactly as it arrived -- key order, spacing, unicode
+       escapes and all.
+
+       THREE SPELLINGS OF ONE URL ARE TRIED, because a parsed string does not
+       tell you how it was written down. json.dumps gives the quote and unicode
+       escaping but DELIBERATELY LEAVES SLASHES ALONE, so it is not the same
+       string as a serialiser that writes a slash-escaped URL -- and that form is
+       common enough to be worth its own attempt rather than being left to rule
+       B. The plain form is last and is what the provider actually sends.
+
+       THE WHOLE URL GOES, not just the secret inside it: the address of our own
+       webhook is not something a delivery listing needs.
+
+    B. THE SECRET ITSELF, TEXTUALLY, afterwards. This is what still works when
+       the body did not parse -- a truncated or malformed payload is exactly the
+       case where the structural rule finds nothing -- and it catches any other
+       field that quotes the URL. It runs second because A has usually already
+       taken the only copy.
+
+    NEITHER RULE TOUCHES `parsed`, so item_count, the balance and the attempt are
+    all derived from the body as it actually arrived.
+    """
+    text = raw_body
+    removed = False
+
+    subscription = parsed.get("subscription") if isinstance(parsed, dict) else None
+    subscriber = subscription.get("subscriber") if isinstance(subscription, dict) else None
+    url = subscriber.get("id") if isinstance(subscriber, dict) else None
+    if isinstance(url, str) and url != "":
+        for form in (json.dumps(url)[1:-1], url.replace("/", "\\/"), url):
+            if form in text:
+                text = text.replace(form, REDACTED)
+                removed = True
+
+    if _WEBHOOK_SECRET and _WEBHOOK_SECRET in text:
+        text = text.replace(_WEBHOOK_SECRET, REDACTED)
+        removed = True
+
+    return text, removed
+
+
 def build_delivery(raw_body_bytes, headers_subset) -> dict:
     """The delivery record, derived and nothing more. PURE: no I/O, no bucket.
 
@@ -504,6 +575,12 @@ def build_delivery(raw_body_bytes, headers_subset) -> dict:
         # this endpoint exists to find out about, and it is stored verbatim.
         pass
 
+    # AFTER THE PARSE, NEVER BEFORE. The derivations below read `parsed`, which
+    # is built from the body as it arrived; only the text that gets STORED is
+    # rewritten. body_bytes stays the received length, because that is a fact
+    # about the delivery rather than about the record.
+    raw_body, redacted = _redact(raw_body, parsed)
+
     headers = headers_subset or {}
     raw_length = headers.get("content-length")
     try:
@@ -515,7 +592,9 @@ def build_delivery(raw_body_bytes, headers_subset) -> dict:
         "delivery_id": str(uuid.uuid4()),
         "received_at": _iso(_now()),
         # ONLY these three headers. Never the full set, never any part of the
-        # URL path: the path carries the webhook secret.
+        # URL path: the path carries the webhook secret. The BODY carries it
+        # too, which is what _redact is for -- this comment was true and
+        # insufficient, and the payload was quoting the address back at us.
         "content_type": headers.get("content-type"),
         "user_agent": headers.get("user-agent"),
         "content_length": content_length,
@@ -538,8 +617,14 @@ def build_delivery(raw_body_bytes, headers_subset) -> dict:
         "credits_remaining": _credits_remaining(parsed) if parsed_json else None,
         "cost_credits": _attempt(parsed)[0] if parsed_json else None,
         "seq_no": _attempt(parsed)[1] if parsed_json else None,
-        # The record of truth. Everything above it is a convenience derived from
-        # this, and every one of those derivations is allowed to be wrong.
+        # WHETHER A SECRET WAS TAKEN OUT OF THE BODY BELOW. Recorded rather than
+        # silent: a reader comparing raw_body against body_bytes deserves to know
+        # why they disagree, and a delivery that reports false is one whose body
+        # never contained the callback URL at all -- which would itself be news.
+        "redacted": redacted,
+        # The record of truth, MINUS the callback URL. Everything above it is a
+        # convenience derived from this, and every one of those derivations is
+        # allowed to be wrong. See _redact for what is removed and why.
         "raw_body": raw_body,
     }
 
@@ -596,6 +681,9 @@ def _summary(delivery: dict) -> dict:
         "truncated": delivery.get("truncated"),
         "parsed_json": delivery.get("parsed_json"),
         "item_count": delivery.get("item_count"),
+        # A LISTING SHOULD SAY WHETHER A RECORD WAS REWRITTEN, without anybody
+        # having to fetch the body to find out.
+        "redacted": delivery.get("redacted"),
         "credits_remaining": delivery.get("credits_remaining"),
         # WHAT IT COST AND WHICH ATTEMPT IT WAS. Both belong in the SUMMARY
         # rather than only in the raw body: the two questions a listing is opened

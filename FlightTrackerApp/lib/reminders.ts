@@ -1,9 +1,17 @@
-// Local reminders, and the only place in the app that touches expo-notifications.
+// Local reminders, and the only place in the app that SCHEDULES a notification.
 //
 // index.tsx must not import expo-notifications directly. Everything the feature
 // needs — permission, the Android channel, the arithmetic, the copy, the
 // scheduling and the reconciliation — is behind this module, so there is one
 // place to look when a reminder does not arrive.
+//
+// ONE OTHER FILE IMPORTS expo-notifications NOW, and the distinction is worth
+// keeping straight: lib/watch.ts reads the device's REMOTE push token, which is
+// an address rather than a notification. It schedules nothing and asks for
+// nothing — it reads the permission THIS module requests, and returns null when
+// it has not been granted. So the sentence above is still true of everything it
+// was written about, and a reminder that does not arrive is still explained
+// entirely from here.
 //
 // NOTHING HERE IS LIVE DATA. Every notification fires on a time that was stored
 // when it was scheduled, and the copy says "Scheduled" for exactly that reason.
