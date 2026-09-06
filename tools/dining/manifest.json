@@ -35,6 +35,93 @@
           "hours_raw": 1.0,
           "security_raw": 1.0,
           "category": 1.0
+        },
+        "require_terminal": true,
+        "expect_terminals": [
+          "T1",
+          "T2",
+          "SB"
+        ]
+      }
+    },
+    {
+      "code": "FRA",
+      "adapter": "fra",
+      "kind": "json",
+      "url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
+      "page_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink.html",
+      "cache": "fra_locations.json",
+      "notes": "AEM component model behind the eat-drink page. The date stamp the browser sends in the path is ignored -- tested: stamp-free, '1' and a 2020 stamp all return byte-identical responses, so the stable URL is used. zone.landside is INVERTED relative to is_airside. The Squaire is dropped: not a terminal.",
+      "guardrails": {
+        "min_records": 65,
+        "min_ratio": 0.75,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "T1",
+          "T3"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "level": 1.0,
+          "hours_raw": 1.0,
+          "security_raw": 1.0,
+          "category": 1.0
+        }
+      }
+    },
+    {
+      "code": "LHR",
+      "adapter": "lhr",
+      "kind": "browser_json",
+      "url": "https://api-dp-prod.dp.heathrow.com/enterprisesearch/prod/combined?query=*&page=1&limit=300&type=restaurant",
+      "page_url": "https://www.heathrow.com/at-the-airport/restaurants-a-z?type=restaurant",
+      "cache": "lhr_restaurants.json",
+      "notes": "A record is a BRAND, not an outlet: one Caffe Nero row lists seven terminal/zone pairs. terminalArea is exploded into one row each. Arrivals is a third zone, not a synonym -- the same brand lists both 3/After Security and 3/Arrivals. The API 403s without a browser Origin, so it is fetched from inside their own page. KNOWN INCOMPLETE: the endpoint returns 34 brands for limit=300 and sends no pagination block, yet Heathrow plainly has more dining than the 51 locations these explode to. Treat LHR as a PARTIAL list until a fuller source is found -- this is a known limitation, not a bug to rediscover. min_records is set below the current count for that reason.",
+      "guardrails": {
+        "min_records": 40,
+        "min_ratio": 0.7,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "T2",
+          "T3",
+          "T4",
+          "T5"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "security_raw": 1.0
+        },
+        "known_partial": true
+      }
+    },
+    {
+      "code": "JFK",
+      "adapter": "jfk",
+      "kind": "custom",
+      "url": "https://www.jfkairport.com/api/graphql",
+      "page_url": "https://www.jfkairport.com/dine-shop-relax/food",
+      "cache": "jfk_dine.json",
+      "notes": "The zone is a QUERY FILTER, not a POI field: availableTerminalAreas is ['After Security','Before Security'] and the adapter asks both, labelling each answer by the question. That keeps the basis explicit and needs no inference. availableLocations also includes Jamaica Station (AirTrain), Federal Circle Station and TWA Hotel -- excluded, they are not terminals.",
+      "guardrails": {
+        "min_records": 40,
+        "min_ratio": 0.7,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "T1",
+          "T4",
+          "T5",
+          "T7",
+          "T8"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "security_raw": 1.0
         }
       }
     }

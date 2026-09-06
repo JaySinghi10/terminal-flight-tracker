@@ -28,6 +28,7 @@ Normalisation is a lossy guess about somebody else's vocabulary. Keeping the
 original beside it costs a few bytes and is the only way to audit a mapping
 after the fact -- or to fix one without re-scraping ten sites.
 """
+import re
 from dataclasses import dataclass, asdict, fields
 from typing import Optional
 
@@ -38,10 +39,48 @@ from typing import Optional
 CATEGORIES = (
     "fast_food", "cafe", "bakery", "dessert", "bar",
     "asian", "chinese", "indian", "western", "middle_eastern",
-    "vegetarian", "halal", "food_court", "lounge", "other",
+    "vegetarian", "halal", "food_court", "lounge", "vending", "other",
 )
 
+# "vending" IS ITS OWN CATEGORY AND NOT "other", because the app has to be able
+# to say so. A vending machine is a real option on a tight connection and for
+# somebody who cannot afford a sit-down meal -- so it belongs in the dataset --
+# but presenting it as a restaurant would be a lie of omission. Folding it into
+# "other" alongside outlets whose cuisine simply was not published would make
+# the two indistinguishable, which is the same failure in a smaller place.
+
 SECURITY_BASIS = ("explicit", "inferred", "unknown")
+
+# ── WHERE AN OUTLET SITS IN A PASSENGER'S JOURNEY ───────────────────────────
+#
+# A BOOLEAN COULD NOT CARRY ARRIVALS, and Heathrow proved it: one Caffe Nero
+# record lists "3/After Security" AND "3/Arrivals" -- the same terminal, twice,
+# under zones the airport itself treats as different places. An arrivals outlet
+# sits in baggage reclaim or the arrivals concourse. A CONNECTING PASSENGER
+# CANNOT REACH IT (getting there means leaving the departures flow) and neither
+# can somebody landside. It is a third place, not a shade of the other two.
+#
+# AND IT RECURS: BOM's own filters are Domestic/International x Arrivals/
+# Departures, so this is not a Heathrow quirk to special-case.
+#
+# WHAT IT IS FOR: the difference between "you can eat here on your layover" and
+# "you can eat here after you land" is a real difference to a traveller, and the
+# dataset has to be able to say which.
+ZONES = ("departures_airside", "departures_landside", "arrivals", "unknown")
+
+# is_airside stays the boolean for the common case, and is None where no boolean
+# is honest. These two fields must never disagree.
+ZONE_AIRSIDE = {
+    "departures_airside": True,
+    "departures_landside": False,
+    "arrivals": None,
+    "unknown": None,
+}
+
+# 24:00 is allowed: a source may spell "closes at midnight" that way rather than
+# as 00:00 of the following day, and rewriting it here would move the closing
+# time back by a whole day.
+TIME_RE = re.compile(r"^(?:[01]\d|2[0-4]):[0-5]\d$")
 
 
 @dataclass
@@ -65,6 +104,7 @@ class Dining:
 
     # ── the fact that decides everything ──────────────────────────────────
     is_airside: Optional[bool]
+    zone: str                       # one of ZONES; see the note above
     security_raw: str
     security_basis: str
 
@@ -73,8 +113,20 @@ class Dining:
     category: str                   # CATEGORIES members, "|"-joined
 
     # ── when ──────────────────────────────────────────────────────────────
-    hours_raw: str                  # verbatim. Never parsed into times here:
-                                    # see the note in run.py on why.
+    #
+    # TWO FIELDS, BECAUSE THE SOURCES ARE NOT EQUALLY GOOD AND FLATTENING TO THE
+    # WORST ONE THROWS AWAY THE BEST. HKG publishes freeform strings mixing a
+    # hyphen with an en dash and appending "(Last order: 20:30)"; FRA publishes
+    # day ranges with open and close times already separated. Parsing HKG's
+    # dialect into FRA's shape would be a guess, and squashing FRA's into HKG's
+    # would discard structure somebody already did correctly.
+    #
+    # hours_raw is ALWAYS populated -- something a human can read.
+    # hours is populated ONLY where the source is already structured, and is
+    # empty otherwise. A consumer uses `hours` when it is there and falls back
+    # to showing `hours_raw` when it is not.
+    hours_raw: str
+    hours: list                     # [{start_day, end_day, open, close}], 0=Mon
     is_24h: bool
 
     # ── position, when the source gives it ────────────────────────────────
@@ -100,15 +152,26 @@ class Dining:
             bad.append("name is empty")
         if self.security_basis not in SECURITY_BASIS:
             bad.append("security_basis %r not in %s" % (self.security_basis, SECURITY_BASIS))
+        if self.zone not in ZONES:
+            bad.append("zone %r not in %s" % (self.zone, ZONES))
+        # THE TWO MUST AGREE. is_airside is a convenience derived from the zone,
+        # so a record where they disagree is one where a consumer reading either
+        # one gets a different answer -- which is worse than having neither.
+        elif self.is_airside is not ZONE_AIRSIDE[self.zone]:
+            bad.append("zone %r implies is_airside %r, got %r"
+                       % (self.zone, ZONE_AIRSIDE[self.zone], self.is_airside))
         # THE RULE THAT MATTERS. "explicit" is a claim that the SOURCE said so,
-        # so it must be backed by the source's own words and an actual answer.
+        # so it must be backed by the source's own words and a real zone. Note it
+        # does NOT require a boolean: "arrivals" is an explicit answer that
+        # happens to have no true/false, and refusing it would push a fact the
+        # airport stated into "unknown".
         if self.security_basis == "explicit":
-            if self.is_airside is None:
-                bad.append("explicit basis with no is_airside")
+            if self.zone == "unknown":
+                bad.append("explicit basis with an unknown zone")
             if not self.security_raw.strip():
                 bad.append("explicit basis with empty security_raw")
-        if self.security_basis == "unknown" and self.is_airside is not None:
-            bad.append("unknown basis must not carry an is_airside")
+        if self.security_basis == "unknown" and self.zone != "unknown":
+            bad.append("unknown basis must not carry a zone")
         for c in filter(None, self.category.split("|")):
             if c not in CATEGORIES:
                 bad.append("category %r not in the vocabulary" % c)
@@ -119,6 +182,19 @@ class Dining:
             bad.append("half a coordinate")
         elif self.lat is not None and not (-90 <= self.lat <= 90 and -180 <= self.lon <= 180):
             bad.append("coordinate out of range: %s,%s" % (self.lat, self.lon))
+        for w in self.hours:
+            if not isinstance(w, dict):
+                bad.append("hours window is not an object: %r" % (w,))
+                continue
+            missing = [k for k in ("start_day", "end_day", "open", "close") if k not in w]
+            if missing:
+                bad.append("hours window missing %s" % missing)
+                continue
+            if not (0 <= w["start_day"] <= 6 and 0 <= w["end_day"] <= 6):
+                bad.append("hours window day out of range: %r" % (w,))
+            for t in (w["open"], w["close"]):
+                if not isinstance(t, str) or not TIME_RE.match(t):
+                    bad.append("hours window time is not HH:MM: %r" % (t,))
         if not self.source_url.startswith("http"):
             bad.append("source_url is not a url")
         return bad

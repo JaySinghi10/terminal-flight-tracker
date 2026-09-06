@@ -90,8 +90,10 @@ def rec(**kw):
     base = dict(airport="HKG", name="X", source_id="ABC123",
                 terminal_raw="T1", terminal="T1", level="L6",
                 area="Terminal 1", gate_hint="", is_airside=True,
+                zone="departures_airside",
                 security_raw="Restricted Area", security_basis="explicit",
                 category_raw="fastf", category="fast_food", hours_raw="07:00 - 23:00",
+                hours=[{"start_day": 0, "end_day": 6, "open": "07:00", "close": "23:00"}],
                 is_24h=False, lat=22.3, lon=113.9,
                 source_url="https://x/y.json", scraped_at="2026-01-01T00:00:00Z",
                 source_updated_at="")
@@ -103,13 +105,53 @@ check("explicit basis without an answer is rejected",
       rec(is_airside=None).check() != [])
 check("explicit basis without the source's words is rejected",
       rec(security_raw="").check() != [])
-check("unknown basis carrying an answer is rejected",
+check("unknown basis carrying a zone is rejected",
       rec(security_basis="unknown", security_raw="").check() != [])
+
+# ── the zone field: arrivals is a third place, not a missing boolean ────────
+check("arrivals with is_airside None is sound",
+      rec(zone="arrivals", is_airside=None, security_raw="Arrivals").check() == [],
+      rec(zone="arrivals", is_airside=None, security_raw="Arrivals").check())
+check("arrivals claiming to be airside is rejected",
+      rec(zone="arrivals", is_airside=True).check() != [])
+check("airside zone with a False boolean is rejected",
+      rec(zone="departures_airside", is_airside=False).check() != [])
+check("landside zone with a True boolean is rejected",
+      rec(zone="departures_landside", is_airside=True).check() != [])
+check("an unknown zone cannot be explicit",
+      rec(zone="unknown", is_airside=None).check() != [])
+check("a zone outside the vocabulary is rejected",
+      rec(zone="beyond_passport_control", is_airside=None).check() != [])
 check("a category outside the vocabulary is rejected",
       rec(category="sushi").check() != [])
 check("half a coordinate is rejected", rec(lon=None).check() != [])
 check("a nonsense coordinate is rejected", rec(lat=999.0).check() != [])
 check("an empty name is rejected", rec(name="  ").check() != [])
+check("a malformed hours time is rejected",
+      rec(hours=[{"start_day": 0, "end_day": 6, "open": "7am", "close": "23:00"}]).check() != [])
+check("an out-of-range hours day is rejected",
+      rec(hours=[{"start_day": 0, "end_day": 9, "open": "07:00", "close": "23:00"}]).check() != [])
+check("an incomplete hours window is rejected",
+      rec(hours=[{"start_day": 0, "open": "07:00"}]).check() != [])
+check("24:00 as a closing time is allowed",
+      rec(hours=[{"start_day": 0, "end_day": 6, "open": "00:00", "close": "24:00"}]).check() == [])
+check("no structured hours at all is allowed (HKG has none)",
+      rec(hours=[]).check() == [])
+
+# ── the coverage check: did we scrape the terminals, or an adjacent mall? ───
+# THE JEWEL NEAR-MISS. A crawl of Changi followed the site's own nav to
+# jewelchangiairport.com and returned a clean list of landside mall restaurants.
+# Every other guardrail would have passed it.
+COVER = {"require_terminal": True, "expect_terminals": ["T1", "T2", "SB"]}
+check("records with no terminal are refused",
+      any("no terminal" in f for f in R.check_guardrails(
+          "HKG", [dict(r, terminal="") for r in good], COVER, None)))
+check("a terminal the manifest does not know is refused",
+      any("not in the manifest" in f for f in R.check_guardrails(
+          "HKG", [dict(r, terminal="JEWEL") for r in good], COVER, None)))
+check("the real HKG terminals pass the coverage check",
+      R.check_guardrails("HKG", good, COVER, None) == [],
+      R.check_guardrails("HKG", good, COVER, None))
 
 # ── 6. the adapter, against a mutated source ───────────────────────────────
 # THE SOURCE STOPS PUBLISHING `restricted`. Every record should fall to

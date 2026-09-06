@@ -1,0 +1,2847 @@
+{
+ "After Security": [
+  {
+   "id": "4005552",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f867569b-41b0-4227-b190-e58ac249e6d7"
+   ],
+   "name": "Alidoro",
+   "description": "An Italian specialty sandwich shop originally founded in 1986 in the heart of New York City's SoHo, now with locations across NYC. We offer over 40 different sandwiches that we make fresh daily from only the finest Italian ingredients.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 39 and 41",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005552",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002464",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71e59a93-4b5b-41fa-a9d5-2d82667542c2"
+   ],
+   "name": "Apartment 7B Deli & Market",
+   "description": "Inspired by the feel of a classic New York apartment, Apt 7B is built for quick bites and busy days in the city. Offering fresh sandwiches, grab-and-go favorites, and everyday comfort food, it brings fast-paced NYC flavor with convenience to match",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002464",
+   "__typename": "POICard"
+  },
+  {
+   "id": "171",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bda3b06f-ca2c-40c6-813e-7e494ff2d22b"
+   ],
+   "name": "Aunt Butchie's Bakery Café - CEGM",
+   "description": "This Brooklyn style Bakery and Cafe brings New York's Favorite Chocolate Mousse Cake to T5, along with its line of gourmet coffee and bakery items.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 512",
+   "mapUrl": "http://maps.jfkairport.com?poiId=171",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005800",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/da7bff36-84db-4961-bb7f-84e5ded9f197"
+   ],
+   "name": "Bagel Boss",
+   "description": "Enjoy classic New York-style bagels, flagels, Black & White cookies, deli items, coffee, and more, providing a taste of authentic NYC.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005800",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005233",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d4690950-4c19-4e4c-99cf-1ea78893ce7f"
+   ],
+   "name": "Beacon Bar & Kitchen",
+   "description": "Restaurant & Bar concept serving American cuisine",
+   "category": "eat.bar",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Gate A11",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005233",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1154",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/35a0893f-08a7-4441-a75c-7ba8b84ecd05.jpg"
+   ],
+   "name": "Bento Sushi",
+   "description": "Bento features grab & go sushi and donburi rice bowls.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B25",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1154",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005321",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7d727dcf-4033-4da0-a2b8-927b0aa03b42"
+   ],
+   "name": "Bento Sushi",
+   "description": "Japanese-style grab-and-go sushi and fresh rolls, prepared daily and perfect for travelers who want a quick, clean, delicious meal before takeoff. Bento brings the craft of fresh and high-quality sushi from the counter to your tray.",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005321",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005797",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/62976cc2-0607-4c95-9c89-007936dc0587"
+   ],
+   "name": "BKLYN Blend",
+   "description": "This Brooklyn-based Black-owned juice bar provides healthy smoothies, shakes, nutritious foods, and fresh juices.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 12",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005797",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005525",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/80630f2f-42ef-4029-9fed-bef0c5db152b"
+   ],
+   "name": "BKLYN Shopping Duty Free",
+   "description": "This duty free shop specializes in fragrances, skincare products, gourmet confections, wines and spirits.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 42",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005525",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005802",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1051008f-6007-4588-8285-0e78a26770d6"
+   ],
+   "name": "Black Star Bakery & Cafe",
+   "description": "A popular New York coffee & pastry spot recently opened in the new Boroughs Foodhall at Terminal 8, offering quality coffee, bagels, baked goods, and light meals",
+   "category": "eat.coffee",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005802",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005452",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9e8c4046-5e5a-484f-bb28-92a1bda92c30"
+   ],
+   "name": "Boulton & Watt",
+   "description": "Sophisticated restaurant atmosphere serving American classics such as mac-n-cheese, burgers, and salads.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates A3 & A5",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005452",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005127",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/77f10b24-4a60-4c33-ad9e-5bfc42464f90"
+   ],
+   "name": "Brindle Room",
+   "description": "Born in the East Village's Alphabet City in New York, Brindle Room is known for its burgers and honest approach to quality food. Their award-winning \"Sebastian Burger\" was featured on Diners Drive ins and Dives. What started as a neighborhood staple remains rooted in the same mission: simple ingredients, done right.",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005127",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005514",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/78caad31-e827-46d1-81c4-b2ebe386a61d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9d6760cb-6efc-4fb8-b510-5e2b0c74b8cb",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bf3f9ba0-57c2-447e-8718-eb1ae8f3ecd9"
+   ],
+   "name": "Brooklyn Deli",
+   "description": "Hot sandwiches & comfort food with a laid-back ambiance",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B34",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005514",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002466",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/290628f3-48c3-468c-a0a8-d0eb7f929870"
+   ],
+   "name": "Brooklyn Rebel",
+   "description": "Brooklyn Rebel serves up authentic New York-style pizza meant to be folded, not fussed over. With big slices, crispy crusts, and bold flavor, every bite brings the unmistakable attitude of NYC.",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002466",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005888",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d2f30e9a-50bd-47df-82ac-51c8956bb64a"
+   ],
+   "name": "Brooklyn Tea & Market",
+   "description": "Brooklyn Tea is a locally owned café offering a curated selection of premium loose-leaf teas, refreshing beverages, and light bites inspired by Brooklyn's vibrant culture. The concept provides travelers with a relaxing stop to enjoy handcrafted drinks and a moment of calm before their journey.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B28",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005888",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005451",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e7f216e6-9d5f-43aa-a2ea-b033dce2ea19"
+   ],
+   "name": "Bryant Park Market",
+   "description": "A retail space inspired by Manhattan's iconic Bryant Park, offering travelers a mix of local brands, travel essentials, and distinctive gifts.  Enjoy a Build-A-Bear station to purchase toys before your flights. The location also provides convenient grab‑and‑go options, including Kosher and vegetarian.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 521",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005451",
+   "__typename": "POICard"
+  },
+  {
+   "id": "847",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2bb5fbf8-319d-4ef9-8b6f-59226f2e57f8.jpg",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_0603jfk.jpg"
+   ],
+   "name": "Buffalo Wild Wings",
+   "description": "Buffalo Wild Wings features hand spun wings with a range of sauces and seasonings.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B26",
+   "mapUrl": "http://maps.jfkairport.com?poiId=847",
+   "__typename": "POICard"
+  },
+  {
+   "id": "798",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c46ebf1a-063c-4b2f-b23c-00ac1e413839.jpg",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_1634jfk.jpg"
+   ],
+   "name": "Chocolate & More",
+   "description": "Shop for a variety of sweets at Chocolate & More.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=798",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006040",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4cbeac98-9afe-49ef-9e35-66db0ce63a46"
+   ],
+   "name": "CHOPT",
+   "description": "Chopt brings together thoughtfully sourced ingredients and proteins, original recipes, and genuine care to serve healthy food that fits your day. From signature salads and grilled wraps to warm bowls and craft-made dressings, every meal is made to order, easy to customize, and satisfying from takeoff to touchdown.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006040",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005801",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/304f3eac-62c3-48ef-a497-d0c91361acdf"
+   ],
+   "name": "Cobblestones Biergarten & Bar",
+   "description": "",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005801",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006006",
+   "images": [],
+   "name": "Cobblestones Biergarten & Bar",
+   "description": "",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006006",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005776",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/63d958fd-497a-43c5-9793-9ee5d7538a33"
+   ],
+   "name": "Connoisseur Collection",
+   "description": "Iconic French brand celebrated for elegant leather handbags, travel essentials, and timeless Parisian design.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "The Great Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005776",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005931",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/76a1d4ca-ba3b-4130-b9f4-812f9a852a8a"
+   ],
+   "name": "Dear NYC, by Hudson",
+   "description": "Dear NYC is a large shop selling a variety of gifts and souvenirs to remember your time in NYC.  Packaged snacks and drinks are also available.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005931",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006039",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5c6ae3a7-394a-4200-a187-de50ff2caba5"
+   ],
+   "name": "Dos Toros",
+   "description": "Fueled by an obsession with flavor and craftsmanship, Dos Toros reimagines the taqueria with premium ingredients, relentless standards, and zero shortcuts. From Mission-style burritos and bowls to tacos and quesadillas, every item is built to deliver bold, crave-worthy flavor.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006039",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005524",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a923d7f4-d596-47c1-9839-d9c36dd3a556"
+   ],
+   "name": "Dos Toros Taqueria",
+   "description": "Dos Toros is a taqueria chain that offers fresh, flavorful and melty burritos, tacos, quesadillas, bowls, salads and nachos.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 35",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005524",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005850",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b9121444-aaec-4210-bddb-02626d1dce8a"
+   ],
+   "name": "Dos Toros Tequila Bar",
+   "description": "Tequila bar featuring specialty cocktails and a sophisticated tequila collection in a welcoming setting, providing an authentic Bay Area taste.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 33",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005850",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1418",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/JFK_T1_DowntownMarket.jpg"
+   ],
+   "name": "Downtown Market",
+   "description": "Choose from a large selection of snacks, bites, drinks, and sandwiches before you board your flight. Offers a variety of kosher (including drinks) and vegan options.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 1 and 2",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1418",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002493",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b0006a98-661b-4fee-8708-9c23fbb009b0"
+   ],
+   "name": "Dunkin'",
+   "description": "Fuel your journey with freshly brewed coffee, iconic donuts, and grab-and-go favorites made for life on the move. Whether you're starting your day or taking a break between flights, Dunkin' keeps you running.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 9",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002493",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005472",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/14e4ee9b-d0e6-4a8e-86f1-9382a0152181"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' keeps you running with freshly brewed coffee, handcrafted espresso drinks, and a wide variety of donuts, breakfast sandwiches, and baked goods served fast and fresh all day.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "The Great Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005472",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005837",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5060a387-23e9-4fd3-a55a-553875cf69d7"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' keeps you running with freshly brewed coffee, handcrafted espresso drinks, and a wide variety of donuts, breakfast sandwiches, and baked goods served fast and fresh all day.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 39",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005837",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006026",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/405fc0f4-d187-42db-b048-153748cec7fe",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/676fef2b-8336-4cb4-93a4-1d563ba99ed6",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d75a9b85-9f99-478a-b2a6-9b34e4c0c80d"
+   ],
+   "name": "Dunkin'",
+   "description": "Quick casual concept serving donuts, coffee, and breakfast sandwiches.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Marketplace",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006026",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006038",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/16b01822-e82e-4aad-9f99-03bcbd023437"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' is an American favorite, featuring bakery, deli, and breakfast items.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B34",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006038",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005193",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/14ba934d-deba-4844-adc8-8691fba71a04"
+   ],
+   "name": "Dunkin' Express",
+   "description": "Dunkin' Express offers coffee and bakery items.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 6",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005193",
+   "__typename": "POICard"
+  },
+  {
+   "id": "366",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0366-jfk-7-dutyfreeamericas2.jpg"
+   ],
+   "name": "Duty Free Americas",
+   "description": "Enhance your journey with duty-free shopping at JFK Terminal 7. Explore a selection of premium brands and travel-exclusive products, including luxury fragrances, cosmetics, fine wines, spirits, and gourmet gifts-all available tax-free for international travelers. \n\nConveniently located within the terminal, Duty-Free at T7 offers a seamless shopping experience whether you're picking up a last-minute gift, treating yourself, or choosing something special to remember New York before you depart. Discover global favorites, exclusive savings, and the perfect finishing touch to your trip.",
+   "category": "shop",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Departures",
+   "mapUrl": "http://maps.jfkairport.com?poiId=366",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005463",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e0eb6ee1-8112-40a4-b334-7659e4f496b4",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/34a845c7-5daa-436c-a0a5-5986309e3035"
+   ],
+   "name": "Eastward",
+   "description": "Eastward is known for their seafood menu featuring shrimp tacos, clam chowder, and fish.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Gate B46",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005463",
+   "__typename": "POICard"
+  },
+  {
+   "id": "283",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d883550d-0073-49b8-b45f-98de2f03e1a4"
+   ],
+   "name": "Eat & Go Istanbul",
+   "description": "Eat & Go Istanbul is a deli dishing out halal food, panini, baklava, and pizza, fresh chicken gozleme, shawarma, chicken gyro, cheese borek, greek salad, and variety of tea and coffee.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 5",
+   "mapUrl": "http://maps.jfkairport.com?poiId=283",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005771",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/88d98f7e-6570-44e1-accc-9aed83c62db8"
+   ],
+   "name": "Eataly",
+   "description": "Eataly offers a true Italian coffee bar experience with expertly crafted espresso, pastries, and light bites served in a warm, fast-paced, and welcoming atmosphere.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 43",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005771",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005804",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3ef54d4f-e347-489f-95a0-8749e53a95d7"
+   ],
+   "name": "Eataly",
+   "description": "Eataly offers a true Italian coffee bar experience with expertly crafted espresso, pastries, and light bites served in a warm, fast-paced, and welcoming atmosphere.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 45",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005804",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005899",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/aaf5e7f5-8128-4b56-b533-7b4d986001d1",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/50dd8577-c7d8-4ec0-bd13-5b42ef008b67",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f8550398-3f46-4ded-ad7c-6822f5210205"
+   ],
+   "name": "Eataly",
+   "description": "A vibrant Italian dining destination featuring a sit-down restaurant and wine bar, fresh brick-oven pizza and bread, Grab & Go options, and a curated selection of Eataly products to enjoy on the go or take home.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B32",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005899",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006035",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/65dcdc37-7754-40e8-8b50-bcd93e8f0d2d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e4074ea1-9f86-4c49-9e06-9d59e2d6f630",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0da30735-cd98-4c2c-980d-26e423c2601a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5fc19203-c82f-4b95-bd2d-f6f8f5a3643d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9012f3a9-2de3-4a8f-b6c9-dce7064742e9"
+   ],
+   "name": "Eataly Market",
+   "description": "Eataly is a well-known Italian marketplace featuring a restaurant, bar, and grab-and-go options, providing an authentic culinary experience.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 519",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006035",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006034",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9587c649-3c37-40b1-aad4-a9b8aa9eecb5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/12e2671f-0c33-4d3e-8c18-f1aa33f1ecb0",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4b4647f6-311b-481b-802b-b8b32ee549f7",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b7233cec-53e1-4f11-a669-058b9ad757b1"
+   ],
+   "name": "Eataly Restaurant",
+   "description": "Eataly is a well-known Italian marketplace featuring a restaurant, bar, and grab-and-go options, providing an authentic culinary experience.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 509",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006034",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006036",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4c3f8a2f-cd1d-4b5d-903b-7d9454d8830d"
+   ],
+   "name": "Eataly Wine Bar",
+   "description": "Eataly is a well-known Italian marketplace featuring a restaurant, bar, and grab-and-go options, providing an authentic culinary experience.",
+   "category": "eat.bar",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 519",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006036",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005228",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/103f0ff0-f9f0-4bad-a70e-2d20274efc96"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005228",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005917",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/52126535-77f7-4761-8470-fb18d8595215"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 507",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005917",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006047",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f6c3b48e-60e3-4b79-996f-f4b61b7a7b6e"
+   ],
+   "name": "Field Trip",
+   "description": "Chef-inspired comfort food serving signature rice bowls, braised meats, fresh sides, and handcrafted beverages with globally inspired flavors.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006047",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005955",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9f0f3c7e-2a3f-48c9-92e6-cb3815e74c50",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f7ec23d9-53d6-4615-a40c-e4a9346ca636"
+   ],
+   "name": "Five Borough Food Hall",
+   "description": "The Five Borough Food Hall is a food court concept with high-quality to-go items. 6 locations are available: \n\n- For Five Coffee\n- Deli\n- Dromos\n- 5BFH Pizza \n- Mango Taco \n- Apothecary bar\n\nOrder at the counter, Pay, Enjoy",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "West Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005955",
+   "__typename": "POICard"
+  },
+  {
+   "id": "782",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71bea3c0-e207-4a37-a0c7-008792b07c36.jpg"
+   ],
+   "name": "Flatiron Coffee Roasters",
+   "description": "Flatiron Coffee Roasters features specialty coffee, bakery items, and freshly made sandwiches.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=782",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005796",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/47e214d9-0b07-4fa6-aa69-7a5f22f09dbc"
+   ],
+   "name": "Food Hall",
+   "description": "The Boroughs Food Hall delivers a curated experience spanning local specialties, street food, upscale dining, health conscious options, and comfort food-offering unparalleled convenience and choice.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005796",
+   "__typename": "POICard"
+  },
+  {
+   "id": "18",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/38524d79-b1f1-4c71-a337-d36fa01b8859"
+   ],
+   "name": "GameWay",
+   "description": "Gameway Lounges transform everyday waiting into a premium gaming experience. Built for travelers, explorers, and anyone on the move, Gameway offers immersive, high quality gaming environments in convenient, high traffic locations, turning downtime into something you actually look forward to.",
+   "category": "eat.bar",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 507",
+   "mapUrl": "http://maps.jfkairport.com?poiId=18",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000799",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/05fa6e0b-d7b7-48c0-9290-af4b64e7a503"
+   ],
+   "name": "Gameway",
+   "description": "Level up your layover with 31 premium gaming stations featuring PS5, Xbox, PC, and retro consoles. Each gaming station is equipped with the newest technology, high speed internet, luggage storage, as well as food and drinks.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 8",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4000799",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005906",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fd723981-e4d5-4904-a7fc-6d27d6a0827e"
+   ],
+   "name": "Gotham Speakeasy",
+   "description": "Restaurant & Bar concept serving American cuisine",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B36",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005906",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005844",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d18ed6e8-344f-4745-87c1-f986bead6201"
+   ],
+   "name": "Guy Fieri's Flavortown",
+   "description": "Celebrity chef Guy Fieri brings his real-deal flavors and indulgent creations to this eatery, from his signature bourbon brown sugar BBQ wings to his award-winning Mac N' Cheeseburger.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005844",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_20160121_012347.jpg"
+   ],
+   "name": "Horizon Bakery - CEGM",
+   "description": "This French-inspired bakery with delicious pastries to jumpstart your morning and a full bar to help you unwind in the evening.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 501",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1",
+   "__typename": "POICard"
+  },
+  {
+   "id": "498",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a88531be-ecaf-4376-a282-e6053e50fcb3"
+   ],
+   "name": "Hudson",
+   "description": "From snacks and travel essentials to bestselling books and tech accessories, Hudson has everything you need for your journey-all in one convenient stop.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 12",
+   "mapUrl": "http://maps.jfkairport.com?poiId=498",
+   "__typename": "POICard"
+  },
+  {
+   "id": "531",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/69a9afab-a492-46e1-aba9-0805f19606bd"
+   ],
+   "name": "Hudson",
+   "description": "From snacks and travel essentials to bestselling books and tech accessories, Hudson has everything you need for your journey-all in one convenient stop.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 3",
+   "mapUrl": "http://maps.jfkairport.com?poiId=531",
+   "__typename": "POICard"
+  },
+  {
+   "id": "774",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e35694e8-de53-412d-9177-eaa748956792.jpg"
+   ],
+   "name": "Hudson",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=774",
+   "__typename": "POICard"
+  },
+  {
+   "id": "867",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ee4c0f39-7f2a-4468-8298-31a423b8caf0"
+   ],
+   "name": "Hudson",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B31",
+   "mapUrl": "http://maps.jfkairport.com?poiId=867",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1137",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4b56ea43-c5ef-40c2-ba58-5fcf4b713522.jpg"
+   ],
+   "name": "Hudson",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate A4",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1137",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005195",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/535b96c0-2a6b-4228-baec-c590d47f9079"
+   ],
+   "name": "Hudson",
+   "description": "Store offering a wide selection of the essentials from water to medicine.",
+   "category": "shop",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 3",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005195",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005232",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e20f691a-cd23-4d3c-a2eb-3c58355e6d42"
+   ],
+   "name": "Hudson",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005232",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005483",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c4fb9fd8-b991-4193-9738-fd2e9ad18aef"
+   ],
+   "name": "Hudson",
+   "description": "From snacks and travel essentials to bestselling books and tech accessories, Hudson has everything you need for your journey-all in one convenient stop.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 10",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005483",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005513",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/afbe0985-c7c5-4457-879c-816d0ba51121"
+   ],
+   "name": "Hudson",
+   "description": "With more than 700 magazine titles, and an extensive selection of newspapers and light reads, Hudson News is the place to stay on top of the political climate, or the latest celebrity news. Snacks, bottled beverages, candy, regional souvenirs, and a multitude of convenience store items are also on hand for a last minute sweep.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 39",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005513",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005182",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e20ed0fb-d54e-4de9-8537-2ab79dfdfe43"
+   ],
+   "name": "Hudson Automated Retail",
+   "description": "Shop at Hudson for last minute travel essentials.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Main Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005182",
+   "__typename": "POICard"
+  },
+  {
+   "id": "267",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2651925a-0ce9-4a9e-9ec7-6822fb0c7433"
+   ],
+   "name": "Hudson News",
+   "description": "Hudson News features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 4",
+   "mapUrl": "http://maps.jfkairport.com?poiId=267",
+   "__typename": "POICard"
+  },
+  {
+   "id": "334",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0334-jfk-7-hudsonnews2.jpg"
+   ],
+   "name": "Hudson News",
+   "description": "As North America's largest travel essentials and convenience brand designed with a seamless customer experience at its core, Hudson News offers snacks and beverages, travel and convenience necessities, local souvenirs, electronics, books, magazines, and more.",
+   "category": "shop",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 6",
+   "mapUrl": "http://maps.jfkairport.com?poiId=334",
+   "__typename": "POICard"
+  },
+  {
+   "id": "365",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0365-jfk-7-hudsonnewss.jpg"
+   ],
+   "name": "Hudson News",
+   "description": "As North America's largest travel essentials and convenience brand designed with a seamless customer experience at its core, Hudson News offers snacks and beverages, travel and convenience necessities, local souvenirs, electronics, books, magazines, and more.",
+   "category": "shop",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 8",
+   "mapUrl": "http://maps.jfkairport.com?poiId=365",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005462",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ac1ac9cb-d8ee-41ce-ae79-e79b3f6845d4"
+   ],
+   "name": "Hudson Nonstop",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Gate B47",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005462",
+   "__typename": "POICard"
+  },
+  {
+   "id": "879",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4d0b4e49-5fce-4041-8dbe-6f0e2bcf1cc0"
+   ],
+   "name": "Hudson: 149th & Grand",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B39",
+   "mapUrl": "http://maps.jfkairport.com?poiId=879",
+   "__typename": "POICard"
+  },
+  {
+   "id": "848",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6cca8fc2-346b-450a-b8f5-12016034fc64"
+   ],
+   "name": "Hudson: East River Market",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B25",
+   "mapUrl": "http://maps.jfkairport.com?poiId=848",
+   "__typename": "POICard"
+  },
+  {
+   "id": "756",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/26a8e118-d6e1-4251-80d0-4a923ca67c4f"
+   ],
+   "name": "Hudson: Manhattan Mercantile",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate A2",
+   "mapUrl": "http://maps.jfkairport.com?poiId=756",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005461",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/33393d68-c006-4642-b337-5e626255f071"
+   ],
+   "name": "Hudson: Queens Beat",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate A8",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005461",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005563",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bb898ee0-d777-4560-bf15-dd10f43b207d"
+   ],
+   "name": "I Love NY",
+   "description": "The official store for authentic I LOVE NY merchandise, souvenirs, and New York gifts.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 38",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005563",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1444",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6a1d849a-4527-4bd3-b7cc-b3e5cab48dbf"
+   ],
+   "name": "Irving Farm Coffee Roasters",
+   "description": "Founded in 1996 in New York City, Irving Farm helped lead the specialty-coffee movement by sourcing and roasting high-quality beans. Today, their coffee is still thoughtfully roasted in New York and served with care and intention. At Terminal 7, enjoy fresh-brewed coffee and pastries - the kind New Yorkers proudly travel with.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1444",
+   "__typename": "POICard"
+  },
+  {
+   "id": "35",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/29cfc5c2-be8f-4d5c-af80-27174a525bf8"
+   ],
+   "name": "Jacob's Pickles",
+   "description": "\"Jacob's Pickles is not just a restaurant; it is a community.\"\n\nLaunched in 2011, Jacob's Pickles has quickly become a New York staple for those in search of a good meal. Warm and inviting, friends travel daily to its doors on the Upper West Side for a taste of home, something more than just another trending hotspot.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 508",
+   "mapUrl": "http://maps.jfkairport.com?poiId=35",
+   "__typename": "POICard"
+  },
+  {
+   "id": "852",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dec79bd9-a91b-4d99-90d9-89c02a17d81d.jpg"
+   ],
+   "name": "Jamba Juice",
+   "description": "Whether you're craving a classic smoothie, an energy-boosting shot, or a light snack, Jamba Juice has something for every traveler. Stop by and treat yourself to a tasty, healthy pick-me-up before your flight!",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B27",
+   "mapUrl": "http://maps.jfkairport.com?poiId=852",
+   "__typename": "POICard"
+  },
+  {
+   "id": "39",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d56c00b8-a15f-4786-8959-f12525ab7a13"
+   ],
+   "name": "Jamba Juice/CIBO Express",
+   "description": "Sun-kissed, fruit-filled smoothies and other healthy snack options.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Marketplace",
+   "mapUrl": "http://maps.jfkairport.com?poiId=39",
+   "__typename": "POICard"
+  },
+  {
+   "id": "64",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6304463a-d3a7-46ef-9953-abc66e898a1d"
+   ],
+   "name": "JFK Life Market T5",
+   "description": "",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 510",
+   "mapUrl": "http://maps.jfkairport.com?poiId=64",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002472",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/637b2139-3fe8-47f4-8419-4d7acf2cce20"
+   ],
+   "name": "Le Grand Comptoir",
+   "description": "An upscale wine-bar experience in the heart of the terminal. Offering curated wines and small plates for a refined, relaxed moment before departure. Perfect for unwinding, celebrating, or simply savoring a moment between travels.",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 6",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002472",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005521",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/30fa19ba-4980-41e4-baad-a29877d1860a"
+   ],
+   "name": "Leon's Bagels",
+   "description": "Leon's Bagels is a proudly independent, NYC-born bagel shop founded by Chris Taha in 2021. Built on a \"nothing fancy\" ethos, Leon's focuses on what truly matters - quality ingredients, soft and glutinous bagels, and bold, satisfying flavor combinations.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 505",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005521",
+   "__typename": "POICard"
+  },
+  {
+   "id": "769",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4603a53e-fe3f-4394-8721-1aacf89f4295.jpg"
+   ],
+   "name": "McDonald's",
+   "description": "McDonald's is known around the globe for their fast food.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=769",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000913",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bb9b54ba-9921-4abf-a539-a86df83838e8"
+   ],
+   "name": "Melt Shop",
+   "description": "Melt Shop is a casual dining restaurant specializing in gourmet grilled cheese sandwiches and comfort food. With a focus on high-quality ingredients, the menu features classic favorites and unique creations made to order. From melty sandwiches to crispy tater tots and decadent milkshakes, Melt Shop elevates the grilled cheese experience in a warm, inviting atmosphere. It's a go-to spot for cheese lovers and comfort food enthusiasts alike.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 525",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4000913",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005453",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71e3ad28-50bd-4d2c-b955-f69116c8029a"
+   ],
+   "name": "Melt Shop",
+   "description": "Find great melty sandwiches here.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005453",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1486",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/12654238-977d-486d-8610-b3d163c361f7"
+   ],
+   "name": "Mi Casa",
+   "description": "Offering Mexican inspired food in a casual bar atmosphere.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B22",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1486",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005876",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fc3320ba-cfb6-4986-8a83-2567414923df"
+   ],
+   "name": "Midtown Bistro",
+   "description": "Sit-down restaurant offering convenient food from salads to sandwiches.",
+   "category": "eat.bar",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 4",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005876",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006005",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0fc2dc39-2d4a-4872-bee4-093d0a448c74"
+   ],
+   "name": "Mito",
+   "description": "This New York Asian hot spot offers freshly made and high quality modern Japanese dishes including sushi, dim sum, and more.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006005",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006051",
+   "images": [],
+   "name": "MozzLab",
+   "description": "",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 506",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006051",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005847",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/28000b65-a50e-49aa-b210-e2ebe37d436c"
+   ],
+   "name": "Naya",
+   "description": "NAYA brings the vibrant flavors of the Middle East to life with build-your-own bowls, wraps, and plates made from fresh, authentic ingredients.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005847",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005769",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/52f9c480-6ec8-43d1-95ba-ab415c95f253"
+   ],
+   "name": "Neir's Tavern",
+   "description": "Neir's Tavern features drinks and traditional pub food.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 32",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005769",
+   "__typename": "POICard"
+  },
+  {
+   "id": "14",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/60f725f2-5109-4486-a36e-5f3075162093"
+   ],
+   "name": "New Stand",
+   "description": "The New Stand blends innovation and convenience with a fun, modern retail experience for travelers. Offering unique gifts, travel essentials and travel-friendly accessories, the New Stand brings a fresh twist to airport shopping guaranteed to brighten your journey.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 506",
+   "mapUrl": "http://maps.jfkairport.com?poiId=14",
+   "__typename": "POICard"
+  },
+  {
+   "id": "278",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0278-jfk-1-newyorkgifts.jpg"
+   ],
+   "name": "New York Gifts",
+   "description": "New York Gifts offers a variety of electronics, NY souvenirs, snacks, juice, water, and travel accessories.",
+   "category": "shop",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 4",
+   "mapUrl": "http://maps.jfkairport.com?poiId=278",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005885",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/63caa463-cf9c-4e88-b9e2-f4fffbc72cef",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d34c0bf3-330d-4c20-904d-ed2ac5f92809"
+   ],
+   "name": "Nolita Wine Bar",
+   "description": "Wine bar featuring sandwiches, charcuterie plates, wines by the glass and cocktails.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005885",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005956",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c42a72f7-96f7-4304-a6dd-2609cb473627",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b9d1c402-8645-442a-ac5f-dd9f1bc89224",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/114eb114-93c3-4c74-9209-c7539f777431"
+   ],
+   "name": "Nom Wah Bar",
+   "description": "",
+   "category": "eat.bar",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 525",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005956",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005292",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4754cf4c-5f0b-4638-b18f-8acfba6d8659",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c2312d8e-5337-424a-b097-a11327bf820f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/33fd1ff5-6935-4247-a4c2-ebb22da14cf6",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cecc0b91-8ca1-4619-8c75-5d3d08fc13d9"
+   ],
+   "name": "Nom Wah Restaurant",
+   "description": "Known for its handmade dumplings and classic dim sum dishes, the brand brings more than a century of culinary tradition to travelers passing through Terminal 5.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 525",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005292",
+   "__typename": "POICard"
+  },
+  {
+   "id": "117",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9fa69668-7817-440b-adea-9821a646ee83"
+   ],
+   "name": "NY Minute",
+   "description": "Snacks and beverages, including many sourced from New York state, as well as apparel, gifts and souvenirs that capture the city's essence.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 528",
+   "mapUrl": "http://maps.jfkairport.com?poiId=117",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005301",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/88b4e518-e648-46a5-a329-b55adbc26d35"
+   ],
+   "name": "Park Ave Emporium",
+   "description": "A Manhattan inspired travel convenience store.  It offers passengers local artisan products, souvenirs, gifts, snacks, and travel essentials, featuring self-checkout technology for convenience.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 529",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005301",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005777",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/16ca11ca-aaaa-4605-ac15-1886e8f831e4",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ace4832e-1654-4396-9344-0dfb6fbcd5bf"
+   ],
+   "name": "Peach Palace by Momofuku",
+   "description": "This debut concept by global celebrity chef David Change serves up Asian-American cuisine and drinks amid a lively, fun, and high-energy vibe.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "stairs up to lounges",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005777",
+   "__typename": "POICard"
+  },
+  {
+   "id": "846",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0cbddfbb-46c5-4544-9ab4-b79732086d50.jpg"
+   ],
+   "name": "Peet's Coffee & Tea",
+   "description": "Peet's Coffee & Tea is known for their fresh beans, dark roast, and bakery items.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B24",
+   "mapUrl": "http://maps.jfkairport.com?poiId=846",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005898",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/60eb6a2e-21c0-4895-8b70-be0ff76afc1a"
+   ],
+   "name": "Petit Gourmet",
+   "description": "",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005898",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005192",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4e4c5db3-d725-485a-bd33-d1e68847e4eb",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4e4c5db3-d725-485a-bd33-d1e68847e4eb"
+   ],
+   "name": "Pizza Pub",
+   "description": "Pizza pub offers a wide selection of pizza and sandwich flavors.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 6",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005192",
+   "__typename": "POICard"
+  },
+  {
+   "id": "855",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/18158289-d254-4b66-88f6-227a209982d1.jpg"
+   ],
+   "name": "Pizza Vino",
+   "description": "Pizza Vino offers Italian small plates, individual pizzas, flatbreads, and more.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B29",
+   "mapUrl": "http://maps.jfkairport.com?poiId=855",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1156",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e9ee0e8e-eb10-44fa-a8a7-2f75f31889b5.jpg"
+   ],
+   "name": "Pizza Vino Bar",
+   "description": "Enjoy a slice of pie and a beer at the Pizza Vino Bar.",
+   "category": "eat.bar",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B29",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1156",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005765",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ca97bb55-e17a-4b85-9697-76360b09628a"
+   ],
+   "name": "Pret a Manger",
+   "description": "Pret A Manger offers freshly prepared sandwiches, salads, and organic coffee made daily in-shop, delivering wholesome, on-the-go meals with a commitment to natural ingredients and sustainability.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 4",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005765",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005772",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8d8cef8b-bccc-498e-84c4-f7f55e30ed4e"
+   ],
+   "name": "Pret a Manger",
+   "description": "Pret A Manger offers freshly prepared sandwiches, salads, and organic coffee made daily in-shop, delivering wholesome, on-the-go meals with a commitment to natural ingredients and sustainability.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 44",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005772",
+   "__typename": "POICard"
+  },
+  {
+   "id": "828",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/144c3211-1682-4e87-b0e5-39ffd19849a9.jpg"
+   ],
+   "name": "Queens Market 1964",
+   "description": "",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B20",
+   "mapUrl": "http://maps.jfkairport.com?poiId=828",
+   "__typename": "POICard"
+  },
+  {
+   "id": "15",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8edb5498-138d-4546-b92f-e88c710af929"
+   ],
+   "name": "Re:Vive Bar",
+   "description": "Located down each concourse, stop in at these \"sidewalk\" bars conveniently located on the way to your gate.",
+   "category": "eat.bar",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 506",
+   "mapUrl": "http://maps.jfkairport.com?poiId=15",
+   "__typename": "POICard"
+  },
+  {
+   "id": "77",
+   "images": [],
+   "name": "Re:Vive Bar",
+   "description": "Located down each concourse, stop in at these \"sidewalk\" bars conveniently located on the way to your gate.",
+   "category": "eat.bar",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 15",
+   "mapUrl": "http://maps.jfkairport.com?poiId=77",
+   "__typename": "POICard"
+  },
+  {
+   "id": "72",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0072-jfk-5-revolucion2.jpg"
+   ],
+   "name": "Revolucion",
+   "description": "Revolucion is a celebration of Mexico's authentic flavors, showcasing regional dishes that reflect the spirit of Mexican cooking.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 512",
+   "mapUrl": "http://maps.jfkairport.com?poiId=72",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000804",
+   "images": [],
+   "name": "Revolucion Market",
+   "description": "",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 512",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4000804",
+   "__typename": "POICard"
+  },
+  {
+   "id": "829",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1aae4e55-6e7c-450d-944b-feb7a56bf52c.jpg"
+   ],
+   "name": "Shake Shack",
+   "description": "Shake Shack grills up 100% all-natural Angus beef and crinkle cut fries.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B22",
+   "mapUrl": "http://maps.jfkairport.com?poiId=829",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005569",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0336e7da-e21c-4f0f-8b0c-e37b979a9c22"
+   ],
+   "name": "Shake Shack",
+   "description": "A NYC original turned global sensation, serving burgers, shakes, crinkle-cut fries, and more.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 12",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005569",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006029",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1e4caffa-988a-43b8-aa06-9d9f62c2fb65",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/837d4940-3484-4cc4-9f42-532e020ab3fe"
+   ],
+   "name": "Shake Shack",
+   "description": "Shake Shack is a popular burger chain renowned for its shakes and fries, as well as offering breakfast options.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Marketplace",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006029",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1142",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/152e6659-0a1e-4539-990c-32db3317f2fb.jpg"
+   ],
+   "name": "So Chocolate",
+   "description": "Shop for a variety of sweets.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1142",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1459",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f4bc2939-3d2a-4d05-8802-e39e42e08588"
+   ],
+   "name": "Soy & Sake",
+   "description": "Sit back, relax, and wind down with a quick snack and drink as you prepare to board your flight.",
+   "category": "eat.bar",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 6",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1459",
+   "__typename": "POICard"
+  },
+  {
+   "id": "46",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d30f978f-14f7-4f96-b929-28fc2c25fd29"
+   ],
+   "name": "Starbucks",
+   "description": "Start your morning, or your trip, off right by enjoying your favorite Starbucks drink here at T5.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 522",
+   "mapUrl": "http://maps.jfkairport.com?poiId=46",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1013",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/JFK_Starbucks_T1_Gate3.jpg"
+   ],
+   "name": "Starbucks",
+   "description": "Starbucks is an iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 3",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1013",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005468",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b11c1e77-c155-4157-9ac3-2066d65cdb09"
+   ],
+   "name": "Starbucks",
+   "description": "Starbucks offers a wide selection of handcrafted coffee and espresso beverages, teas, refreshers, and other specialty drinks. Food offerings include breakfast sandwiches, bakery items, snacks, and grab-and-go options for travelers on the move.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B26",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005468",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005469",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b6c286f3-05f4-400b-ac71-820d5e82389d"
+   ],
+   "name": "Starbucks",
+   "description": "Starbucks offers a wide selection of handcrafted coffee and espresso beverages, teas, refreshers, and other specialty drinks. Food offerings include breakfast sandwiches, bakery items, snacks, and grab-and-go options for travelers on the move.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate A2",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005469",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005509",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f46a243e-907a-4169-a7e7-43a6e2564fab"
+   ],
+   "name": "Starbucks",
+   "description": "Grab your favorite coffee or tea, plus a full menu of breakfast, lunch, and snack options to keep you fueled on the go.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 46",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005509",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005754",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9a126377-40c0-4849-b757-696befa36430"
+   ],
+   "name": "Starbucks",
+   "description": "Grab your favorite coffee or tea, plus a full menu of breakfast, lunch, and snack options to keep you fueled on the go.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 10",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005754",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006054",
+   "images": [],
+   "name": "Starbucks",
+   "description": "Start your morning, or your trip, off right by enjoying your favorite Starbucks drink here at T5.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006054",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005299",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/36e42845-bb4c-4c43-aa7b-004cd6595b52"
+   ],
+   "name": "Supply Five Co.",
+   "description": "Supply Five Co. highlights the creativity and spirit of New York through products crafted by local artisans. Travelers can explore a curated assortment of unique accessories, gifts and essentials inspired by the character and culture of the city's five boroughs.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 511",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005299",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002479",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71f3af93-61b6-48ee-986e-c1b33cd5278e"
+   ],
+   "name": "Taste of NY",
+   "description": "Taste of NY offers a full sit-down service for those wishing to relax before the journey.",
+   "category": "eat.bar",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 4",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002479",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005767",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7bc3f656-8ee2-4b28-8f59-cd7676cd3c66",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8e0d96fd-925e-45a7-9f02-0b17ff454ebd"
+   ],
+   "name": "Tender Crush",
+   "description": "Tender Crush features chicken dishes and sandwiches.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 40",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005767",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005770",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a48ed29c-4be3-46b4-af60-a593e01929b0"
+   ],
+   "name": "The Bar by Black Tap",
+   "description": "Serving cocktails and brews.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 36",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005770",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005886",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8b664559-6535-450d-9d19-5a5437ebcde2"
+   ],
+   "name": "The Blinded Tiger",
+   "description": "T8's very own speakeasy bar is a nod to New York's best hidden bars of the Roaring Twenties, and a first for JFK.",
+   "category": "eat.bar",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005886",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005809",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bac0b42f-2a47-4d48-a469-a25abb3c6064"
+   ],
+   "name": "The Brooklyn Counter",
+   "description": "Fast casual service, including bagels, paninis, and grab and go items.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate A2",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005809",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1410",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/JFK_T1_TheLocal.jpg"
+   ],
+   "name": "The Local @ JFK",
+   "description": "Traditional American cuisine for passengers who are in a rush or prefer to dine in.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 5",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1410",
+   "__typename": "POICard"
+  },
+  {
+   "id": "821",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9a955f1a-3b3f-4193-9773-7b8a9a7ccdbe.jpg"
+   ],
+   "name": "The Palm Bar & Grille",
+   "description": "The Palm Bar & Grille grills up high-quality steaks and offers a variety of seafood dishes.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=821",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005764",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4198d373-834f-4869-9aec-5f5d2ad1f05b"
+   ],
+   "name": "The Park Duty Free",
+   "description": "This duty free store offers a sophisticated lineup of fragrances, skincare products, confections, and premium wines and spirits.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 2",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005764",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005129",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b4b57178-168e-444f-9d85-22625fdb4a6e"
+   ],
+   "name": "True Burger",
+   "description": "True Burger Company is built on sustainable sourcing and locally inspired ingredients, bringing quality and conscience together in every bite. Their identity reflects a sense of honesty and pioneering spirit, delivering burgers that are bold, simple, and made the right way.",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005129",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005300",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/91255bcd-01d5-490b-b3da-f515e168bf76"
+   ],
+   "name": "Univison Travel Shop",
+   "description": "Univision offers travelers a vibrant selection of grab-and-go snacks, drinks, and travel essential items. This store blends convenience with the spirit of the Univision brand, featuring dedicated Univision programming throughout the day.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 524",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005300",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1460",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f776c0b5-2fbb-4096-ad57-fa9db66967af"
+   ],
+   "name": "Uptown Bar",
+   "description": "Bar offering a variety of drinks.",
+   "category": "eat.bar",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 7",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1460",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1409",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/54318a45-6f81-4225-8553-f99f3a7d267e"
+   ],
+   "name": "Uptown Market",
+   "description": "Choose from a large selection of snacks, bites, drinks, and sandwiches before you board your flight. Offers a variety of kosher (including drinks), vegan, and halal options.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 7",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1409",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005561",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7df448b4-55eb-4b89-aa7e-17f8142c6492",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8d2f3e9a-612a-4bbb-8776-63dd6495681b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0ea95c4c-0a78-4411-83fe-266a64770369",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3626c3ea-7101-4b21-81e3-7ebde14c69ae",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7f802968-4671-47e0-8486-d87cd83a1c02"
+   ],
+   "name": "Van Wyck Bar & Grill",
+   "description": "Sit down lounge & grill style restaurant, serving breakfast, lunch, dinner, and drinks.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B38",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005561",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4003413",
+   "images": [],
+   "name": "Vending Machine",
+   "description": "",
+   "category": "eat.vending",
+   "structureName": "Terminal 5",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4003413",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005887",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dba99e7d-14b5-4f14-8ece-3a65415149a6",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2b574c3c-7db8-4cef-bb08-c0345b172082"
+   ],
+   "name": "Villa Russo",
+   "description": "Villa Russo offers a taste of authentic Italian cuisine, featuring handcrafted pizzas, freshly prepared sandwiches, and classic Italian specialties made with high-quality ingredients and time-honored family recipes. Rooted in generations of culinary tradition, the concept delivers comforting, flavorful meals that combine the warmth of a neighborhood Italian kitchen with the convenience of a modern airport dining",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "B24",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005887",
+   "__typename": "POICard"
+  },
+  {
+   "id": "42",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c3746548-c818-4f60-98b1-918404c4eecf"
+   ],
+   "name": "Where Traveler Books + More",
+   "description": "A convenience shop offering books, magazines, and snacks for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Marketplace",
+   "mapUrl": "http://maps.jfkairport.com?poiId=42",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005836",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/89fd1b6c-311a-4b53-b0d5-4dfb432f349a"
+   ],
+   "name": "Zaro's Family Bakery",
+   "description": "Zaro's is a fourth-generation bakery, handmade in the Bronx from our family to yours since 1927. Travelers will have an exquisite selection of quality baked goods such as bagels and pastries, deli sandwiches, and Zaro's very own house blend coffee.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 35",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005836",
+   "__typename": "POICard"
+  }
+ ],
+ "Before Security": [
+  {
+   "id": "4004714",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/39f771b9-da93-468e-91b6-4b8c3ca9e037",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3d2a7caa-e209-4d8e-a4ed-2fefce8a6f09"
+   ],
+   "name": "Air Bar",
+   "description": "The Air Bar at Jamaica Station is a conveniently located, casual spot upstairs between the LIRR and AirTrain to JFK, known for quick drinks, TVs, sports, cocktails, beer, and sometimes karaoke.",
+   "category": "eat",
+   "structureName": "Jamaica Station (AirTrain)",
+   "floorName": "Level 2",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4004714",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1425",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/JFK_T1_ArrivalsEatery.jpg"
+   ],
+   "name": "Arrivals Eatery",
+   "description": "Arrivals Eatery features various eateries such as Dunkin', Camden Food Company, and other cafes for travelers after clearing customs, offering quick bites and drinks before exiting the airport.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1425",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006048",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/20125d0a-4089-410a-b73b-bdbbdf521b18",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/438e770c-46af-4da3-b911-ec9024f14dae"
+   ],
+   "name": "Bessou",
+   "description": "Modern Japanese comfort food featuring crispy chicken sandwiches, ramen, udon noodles, rice bowls, and flavorful sides in a fast-casual setting",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Retail Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006048",
+   "__typename": "POICard"
+  },
+  {
+   "id": "145",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2016-03-09 09.21.51.jpg"
+   ],
+   "name": "Blue Sky Traders",
+   "description": "Blue Sky Traders brings a curated selection of globally inspired gifts and on-the-go conveniences. With travel essentials, unique finds and thoughtful souvenirs, Blue Sky Trader serves as a one-stop-shop for everything you need to elevate your travel day.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=145",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002398",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/83c6a82e-6b53-4176-9011-475451b685b9"
+   ],
+   "name": "CIBO",
+   "description": "CIBO Express is the ultimate grab & go offering sweet and savory snacks as well as an array of healthy options.",
+   "category": "shop",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Check-In",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002398",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002786",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71a4ff61-107c-42cd-b01e-66e9eadf0a44"
+   ],
+   "name": "Coca Cola Vending Machine",
+   "description": "The TWA Hotel features period-authentic Coca-Cola vending machines, often alongside retro snacks in its minibars (like Tab soda).",
+   "category": "eat.vending",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002786",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002705",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c692808d-65b6-409b-b11d-204bb4449116"
+   ],
+   "name": "Connie Cocktail Lounge",
+   "description": "Leave the jet lag behind and dine 60's Luxury Class style in the the TWA Connie Cocktail Lounge! You'll feel up in the air as you enjoy refreshing beverages and conversations with your friends and family!",
+   "category": "eat.bar",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Curbside",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002705",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002781",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/268d99aa-9b58-4c08-8cdc-cb0c98cf7156"
+   ],
+   "name": "Crêpes Your Way",
+   "description": "Discover the taste of French flavors at Crêpes Your Way. Choose from an assortment of house favorites or customize your own. Either way,  \"It doesn't get batter than this!\"",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002781",
+   "__typename": "POICard"
+  },
+  {
+   "id": "131",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dunkindonuts-t5landside-jfk-6-15.jpg"
+   ],
+   "name": "Dunkin'",
+   "description": "Great hot and iced coffee choices, donuts, bagels and more from the largest coffee and baked goods chain in the world.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Check-In",
+   "mapUrl": "http://maps.jfkairport.com?poiId=131",
+   "__typename": "POICard"
+  },
+  {
+   "id": "148",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2016-03-09 09.21.14.jpg"
+   ],
+   "name": "Dunkin'",
+   "description": "Great hot and iced coffee choices, donuts, bagels and more from the largest coffee and baked goods chain in the world.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=148",
+   "__typename": "POICard"
+  },
+  {
+   "id": "197",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_20160121_150931.jpg"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' is an American favorite, serving signature breakfast items and a variety of coffee drinks.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=197",
+   "__typename": "POICard"
+  },
+  {
+   "id": "601",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/287b3458-5af0-4f88-a171-7d4ba69e9cf2"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' keeps you running with freshly brewed coffee, handcrafted espresso drinks, and a wide variety of donuts, breakfast sandwiches, and baked goods served fast and fresh all day.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=601",
+   "__typename": "POICard"
+  },
+  {
+   "id": "917",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/24eaefda-0c42-4603-a356-6030a51428ad"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' is an American favorite, featuring bakery, deli, and breakfast items.",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrival Lounge",
+   "mapUrl": "http://maps.jfkairport.com?poiId=917",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1376",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6cef2e1a-a61c-43c3-9caa-bed94b3e4f0d"
+   ],
+   "name": "Dunkin'",
+   "description": "Fuel your journey with freshly brewed coffee, iconic donuts, and grab-and-go favorites made for life on the move. Whether you're starting your day or taking a break between flights, Dunkin' keeps you running.",
+   "category": "eat",
+   "structureName": "Terminal 7",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1376",
+   "__typename": "POICard"
+  },
+  {
+   "id": "297",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dunkindonutsexpress-jfk-6-15.jpg"
+   ],
+   "name": "Dunkin' Express",
+   "description": "Dunkin' Express offers coffee and bakery items.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=297",
+   "__typename": "POICard"
+  },
+  {
+   "id": "300",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a48afc44-9e8a-4d87-81d3-6a795eb95ced"
+   ],
+   "name": "Euro Cafe",
+   "description": "Euro Cafe features bakery items and speciality coffee drinks.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=300",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005178",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5fc919df-157a-4723-9a85-3a77727a0601"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005178",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005229",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/829db562-7633-4a3b-9bce-43dc55cb6b47"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005229",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005312",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/48f67ef3-6aac-4ab6-a208-31a7ce23ae75"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 5",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005312",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005516",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/549fa52e-0e2e-4a2d-8aaa-aaa50c49bb0d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cee95dd1-1dd5-44e8-85bf-eaa34bbbe5cc"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 7",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 2",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005516",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005517",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bf8e951f-e350-48e3-800e-c0e9a7821b0f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ef726703-c8e8-4959-a1ef-2d6273b3e8ed"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 7",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Near escalators",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005517",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005869",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8d14cb23-585d-4a5e-8626-b0171e2a6b9e"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005869",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005874",
+   "images": [],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "gate 3",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005874",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005980",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/426e3d27-72bd-4611-9e08-23f64a834742"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005980",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005985",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/346badbc-f803-47d7-b393-da1ee993c3b5"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005985",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005987",
+   "images": [],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005987",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006002",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c3dcf938-f7ee-4ba7-be82-56c4a35d09a0"
+   ],
+   "name": "Farmer's Fridge",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal 8",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006002",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002779",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a8aac791-a07f-4ae6-8a90-6f14d81d540f"
+   ],
+   "name": "Feltman's of Coney Island",
+   "description": "Since 1867, Feltman's of Coney Island has been a localfavorite. Choose from their many styles of exclusive hots dogs and see what locals have been enjoying for years!",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002779",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005838",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d2ec4d7e-b7af-4637-a3de-620a81d78f5d"
+   ],
+   "name": "Fly-By Bagels",
+   "description": "Fly-By Bagels is the hot spot to start your day off right! Choose from a wide range of bagel sandwiches, omelets, and hot or cold beverages.",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005838",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1373",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e8ed3710-c932-4b7d-9470-6c2b4dc09f85"
+   ],
+   "name": "Flying Tacos",
+   "description": "Wide selection of tacos and taco bowls.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1373",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002783",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3c1b60c2-ca15-48aa-b541-a9644e97b210"
+   ],
+   "name": "Food Hall",
+   "description": "Locally-made, quick meals are dished up in the historic Food Hall at the TWA Hotel®, where Trans World Airlines travelers once checked in for flights. There are plenty of tables in case you want to stay a while!",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002783",
+   "__typename": "POICard"
+  },
+  {
+   "id": "423",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/29508c45-cabb-43d7-9656-b82c992c26af"
+   ],
+   "name": "Hudson",
+   "description": "Hudson News features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 7",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=423",
+   "__typename": "POICard"
+  },
+  {
+   "id": "918",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_20160121_144542.jpg"
+   ],
+   "name": "Hudson",
+   "description": "Hudson features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrival Lounge",
+   "mapUrl": "http://maps.jfkairport.com?poiId=918",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005480",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/abc1317b-25b5-4a0d-bdd0-1b1541986f94"
+   ],
+   "name": "Hudson",
+   "description": "From snacks and travel essentials to bestselling books and tech accessories, Hudson has everything you need for your journey-all in one convenient stop.",
+   "category": "shop",
+   "structureName": "Terminal 8",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005480",
+   "__typename": "POICard"
+  },
+  {
+   "id": "232",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/19a7d00f-2687-4ad9-b036-5706b46d0781"
+   ],
+   "name": "Hudson News",
+   "description": "Hudson News features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Check-In",
+   "mapUrl": "http://maps.jfkairport.com?poiId=232",
+   "__typename": "POICard"
+  },
+  {
+   "id": "238",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0238-jfk-1-ticketing-hudsonnews.jpg"
+   ],
+   "name": "Hudson News",
+   "description": "Hudson News features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Check-In",
+   "mapUrl": "http://maps.jfkairport.com?poiId=238",
+   "__typename": "POICard"
+  },
+  {
+   "id": "301",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0301-jfk-1-baggage-hudsonnewseurocafe2.jpg"
+   ],
+   "name": "Hudson News",
+   "description": "Hudson News features a wide array of last minute items for travelers.",
+   "category": "shop",
+   "structureName": "Terminal 1",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.jfkairport.com?poiId=301",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006037",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e921b626-1b90-4c60-928e-5d73445551b1",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/099b8e40-a9ff-43ec-9d64-666c912ab002"
+   ],
+   "name": "Hunt & Fish club",
+   "description": "Upscale New York-style steakhouse offering premium steaks, fresh seafood, and handcrafted cocktails in an elegant setting",
+   "category": "eat",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate B34",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006037",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005835",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d89a8014-8d43-4589-9e3f-324153fc83bb"
+   ],
+   "name": "Jimmy John's",
+   "description": "Fresh, fast, and freaky good-Jimmy John's serves up made-to-order sandwiches with fresh-baked bread and quality ingredients at lightning speed.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005835",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002597",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2198ac7e-03e9-48a5-a11d-f994acf6f0fc"
+   ],
+   "name": "Joe Coffee",
+   "description": "Joe Coffee is now brewing from a midcentury modern-inspired coffeebar located near the hotel check-in area at the front entrance of the lobby.",
+   "category": "eat.coffee",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Hotel Check-In",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002597",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005986",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e7e47ed0-bdcf-4849-a86f-ac7bdce7b903"
+   ],
+   "name": "Licorice",
+   "description": "Vending machine offering high-end taffy, licorice, and caramels.",
+   "category": "eat.vending",
+   "structureName": "Terminal 8",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005986",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005219",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3680e7d3-6b89-42dc-9768-29310b8a96ed"
+   ],
+   "name": "Madhuban Modern Indian",
+   "description": "Chicken & Beer offers a variety of dishes that include fried chicken.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005219",
+   "__typename": "POICard"
+  },
+  {
+   "id": "194",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/mcdonalds-jfk-6-15.jpg"
+   ],
+   "name": "McDonald's",
+   "description": "McDonald's is known around the globe for their fast food.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=194",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002782",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/15918942-e364-45bd-b6e9-414a65f60d7c"
+   ],
+   "name": "Mister Softee",
+   "description": "Ever since 1956, Mister Softee has brought smiles to kids everywhere! It's never too late to revisit those days and treat yourself to some soft-serve ice cream.",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002782",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004715",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5d67f308-52e3-4cb3-aabd-9696f53873ff",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/36b5c30b-17e5-4896-b813-02653342650b"
+   ],
+   "name": "NY Deli / Gateway Bake Shop",
+   "description": "Snacks, drinks, and coffee conveniently located at Jamaica Station.",
+   "category": "eat",
+   "structureName": "Jamaica Station (AirTrain)",
+   "floorName": "Level 2",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4004715",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1372",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_0629jfk.jpg"
+   ],
+   "name": "NY Fresh Subs",
+   "description": "Fresh custom made sandwiches for a quick stop and bite",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1372",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002694",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6c4549f8-6050-4312-a9db-e7cbcc2ebdf5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/203ac1ad-19bf-4aa6-84b9-43131cbf70c9",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/653fc8e4-0312-4515-bcd4-9f0507f29247"
+   ],
+   "name": "Paris Café & Lisbon Lounge by Jean-Georges",
+   "description": "Inspired by the historic Paris cafe, Chef Jean-Georges offers sophistication and class for TWA guests.",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002694",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002989",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7af825e3-4b39-4c9b-8453-0989f68964b9",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ba471b90-116e-4edb-abc9-63ed03328a1b"
+   ],
+   "name": "Pool Bar",
+   "description": "Take a vacation from your vacation as you lounge with a cold cocktail in hand alongside the TWA infinite pool.",
+   "category": "eat.bar",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 7",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002989",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1012",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_20160121_150808.jpg"
+   ],
+   "name": "PZA",
+   "description": "Grab a seat at the bar or enjoy table service at PZA.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1012",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005840",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/925d1be2-8b46-4a95-bd8b-2475e9d0e010"
+   ],
+   "name": "Shin Ramyun",
+   "description": "Shin Ramyun is a K-style noodle bar featuring Asian cuisine as well as an assortment of snacks and desserts.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005840",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005875",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/42287cf6-3684-4400-8828-36d873213e0b"
+   ],
+   "name": "Soho Bites",
+   "description": "Sit-down restaurant offering a variety of foods and a big bar for those wishing to relax before the trip",
+   "category": "eat.bar",
+   "structureName": "Terminal 1",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gate 3",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005875",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005923",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/359a352d-fb86-467a-97b5-810e4a4b17a1",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/76689668-0276-4d15-a5c2-a1f362867c3f"
+   ],
+   "name": "Starbucks - Gate B20",
+   "description": "Starbucks offers a wide selection of handcrafted coffee and espresso beverages, teas, refreshers, and other specialty drinks. Food offerings include breakfast sandwiches, bakery items, snacks, and grab-and-go options for travelers on the move.",
+   "category": "eat.coffee",
+   "structureName": "Terminal 4",
+   "floorName": "Level 3",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005923",
+   "__typename": "POICard"
+  },
+  {
+   "id": "673",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6437edb0-8d5e-4915-b026-2e509f6c0932"
+   ],
+   "name": "The Golden Krust",
+   "description": "A Jamaican fastfood restaurant offering patties and more.",
+   "category": "eat",
+   "structureName": "Terminal 8",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrivals / Baggage Claim",
+   "mapUrl": "http://maps.jfkairport.com?poiId=673",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4006027",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/42ac62a5-166a-4c23-8a6a-aea1ae7fdea5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f6a41633-7667-4d13-8e83-798a85b65664"
+   ],
+   "name": "The Halal Guys",
+   "description": "The Halal Guys serves \"American halal\" platters and sandwiches, prepared using ingredients such as chicken, gyro meat, falafel, and rice.",
+   "category": "eat",
+   "structureName": "Terminal 5",
+   "floorName": "Level 3",
+   "nearbyLandmark": "Gates 525",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4006027",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002728",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6a59c704-d5d7-4952-9a8e-eef3a8f99c6a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8df39c60-c107-416a-9d9d-ff6f635871cf",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c125dbcc-f24c-4652-b3d4-68a57aba83e0"
+   ],
+   "name": "The Sunken Lounge",
+   "description": "Located in the heart of the Flight Center at the TWA Hotel, The Sunken Lounge slings retro cocktails with swizzle sticks once enjoyed in-flight!",
+   "category": "eat.bar",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 2",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002728",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005506",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/638b2506-52aa-44c7-8560-092b259b150e"
+   ],
+   "name": "Tim Hortons",
+   "description": "Quick stop for coffee and baked goods.",
+   "category": "eat.coffee",
+   "structureName": "Jamaica Station (AirTrain)",
+   "floorName": "Level 1",
+   "nearbyLandmark": null,
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005506",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002599",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f8188af1-0acb-4a08-a1c7-c5f4f6c63839"
+   ],
+   "name": "TWA Corner Store",
+   "description": "In a rush? The Corner Store offers snacks and beverages for passengers on the go!!",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002599",
+   "__typename": "POICard"
+  },
+  {
+   "id": "911",
+   "images": [],
+   "name": "Vending Machine",
+   "description": "",
+   "category": "eat.vending",
+   "structureName": "Terminal 4",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Arrival Lounge",
+   "mapUrl": "http://maps.jfkairport.com?poiId=911",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4003187",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/aaaf1bd3-14e4-448e-ade7-19beba0f7e4f"
+   ],
+   "name": "Vending Machine",
+   "description": "",
+   "category": "eat.vending",
+   "structureName": "Federal Circle Station",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Avis Car Rental",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4003187",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4005366",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/199f24eb-d84a-4a91-bd93-03a947f0ef32"
+   ],
+   "name": "Vending Machine",
+   "description": "",
+   "category": "eat.vending",
+   "structureName": "Federal Circle Station",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Budget Car Rental",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4005366",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4002780",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d012416b-c527-44bc-89e5-5b41188ed405"
+   ],
+   "name": "VINNY'S Panini",
+   "description": "VINNY'S Panini offers classic Italian fare served on freshly baked bread! Choose from other options such as soup of the day, an assortment of salads, pizza, and more!",
+   "category": "eat",
+   "structureName": "TWA Hotel",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.jfkairport.com?poiId=4002780",
+   "__typename": "POICard"
+  },
+  {
+   "id": "193",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0193-jfk-1-foodcourt-wokroll.jpg"
+   ],
+   "name": "Wok & Roll",
+   "description": "Wok & Roll offers an assortment of Japanese and Chinese cuisine.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=193",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1371",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/IMG_0633jfk.jpg"
+   ],
+   "name": "Wurst Sausages",
+   "description": "Quick stop for sausages and sandwiches.",
+   "category": "eat",
+   "structureName": "Terminal 1",
+   "floorName": "Level 4",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.jfkairport.com?poiId=1371",
+   "__typename": "POICard"
+  }
+ ]
+}

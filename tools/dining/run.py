@@ -85,6 +85,40 @@ def fetch(url, cache_path, offline):
     return body
 
 
+def fetch_browser(url, page_url, cache_path, offline):
+    """Fetch a JSON endpoint FROM INSIDE the site's own page.
+
+    WHY A BROWSER IS NEEDED AT ALL: Heathrow's search API answers 403 to a plain
+    request and 200 to the same URL asked for by their own page. The difference
+    is the Origin and Referer a browser attaches, not a token -- so the honest
+    way to ask is to be the page. This navigates there and runs the site's own
+    fetch, which sends exactly the headers their API expects.
+
+    It is not a workaround for a block on scraping: the endpoint is public, the
+    page calls it on every visit, and this makes one request where a visitor
+    makes one request.
+    """
+    if offline:
+        if not os.path.exists(cache_path):
+            raise RuntimeError("--offline but no cached body at %s" % cache_path)
+        return io.open(cache_path, "rb").read()
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(locale="en-GB", user_agent=UA)
+        page = ctx.new_page()
+        page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(3000)
+        text = page.evaluate(
+            """async (u) => { const r = await fetch(u, {headers: {'Accept': 'application/json'}});
+                              return await r.text(); }""", url)
+        browser.close()
+    body = text.encode("utf8")
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    io.open(cache_path, "wb").write(body)
+    return body
+
+
 def load_previous(code):
     path = os.path.join(DATA, code.lower() + ".json")
     if not os.path.exists(path):
@@ -120,6 +154,34 @@ def check_guardrails(code, records, rules, previous):
         if got + 1e-9 < want:
             fail.append("coverage of %s is %.0f%%, expected at least %.0f%%"
                         % (field, got * 100, want * 100))
+
+    # ── DOES THIS SOURCE ACTUALLY COVER THE TERMINALS? ──────────────────
+    #
+    # THE NEAR-MISS THIS EXISTS FOR: a homepage crawl of Changi followed the
+    # site's own navigation to jewelchangiairport.com and produced a clean,
+    # parseable list of restaurants -- all of them in Jewel, the landside mall.
+    # Every guardrail above would have passed it. FRA has the same trap in its
+    # own feed (eleven outlets in The Squaire, an office block over the railway
+    # station) and JFK's location list includes an AirTrain station and a hotel.
+    #
+    # SO THE TERMINALS ARE PINNED. The manifest says which terminals an airport
+    # has; a run whose terminals do not match has scraped somewhere else, and
+    # that is a refusal rather than a warning.
+    if rules.get("require_terminal"):
+        homeless = [r for r in records if not str(r.get("terminal") or "").strip()]
+        if homeless:
+            fail.append("%d record(s) belong to no terminal (e.g. %r)"
+                        % (len(homeless), homeless[0]["name"]))
+    expected = rules.get("expect_terminals")
+    if expected:
+        got = sorted({str(r.get("terminal") or "") for r in records})
+        unexpected = sorted(set(got) - set(expected))
+        missing = sorted(set(expected) - set(got))
+        if unexpected:
+            fail.append("terminals not in the manifest: %s (found %s, expected %s)"
+                        % (unexpected, got, expected))
+        if missing:
+            fail.append("expected terminals absent: %s (found %s)" % (missing, got))
 
     # THE SECURITY COLUMN IS CHECKED SEPARATELY because it is the one the feature
     # lives on. An airport declared explicit in the manifest must stay explicit:
@@ -188,6 +250,10 @@ def emit_ts(all_records, per_airport_meta):
     thousand, intern `terminal`, `category` and `security_raw` into lookup tables
     the way HKG's own file does.
     """
+    def camel(s):
+        a, *b = s.split("_")
+        return a + "".join(w.title() for w in b)
+
     def cell(v):
         if v is None:
             return "null"
@@ -195,6 +261,14 @@ def emit_ts(all_records, per_airport_meta):
             return "true" if v else "false"
         if isinstance(v, (int, float)):
             return repr(v)
+        # NESTED KEYS GET CAMEL-CASED TOO. The record fields are renamed on the
+        # way out; the hours windows inside them have to be renamed with the
+        # same rule, or the emitted objects will not match the type declared
+        # above them -- which tsc catches, loudly, once per row.
+        if isinstance(v, list):
+            return json.dumps(
+                [{camel(k): x[k] for k in x} if isinstance(x, dict) else x for x in v],
+                ensure_ascii=False)
         return json.dumps(v, ensure_ascii=False)
 
     order = [f for f in FIELD_NAMES if f not in ("scraped_at", "source_url", "source_updated_at")]
@@ -215,6 +289,11 @@ def emit_ts(all_records, per_airport_meta):
 // connecting passenger, it is a missed flight.
 //
 // SO READ isAirside WITH securityBasis, ALWAYS:
+//
+// AND READ zone WHEN isAirside IS null. "arrivals" is not a missing answer: it
+// is baggage reclaim or the arrivals concourse, which a CONNECTING passenger
+// cannot reach and a landside visitor cannot either. "You can eat here after you
+// land" is a different sentence from "you can eat here on your layover".
 //
 //   "explicit"  the airport publishes the zone per outlet. Trust it.
 //   "inferred"  we deduced it, e.g. from a gate number. DO NOT present as fact
@@ -238,19 +317,24 @@ def emit_ts(all_records, per_airport_meta):
         "terminal_raw": "string",
         "terminal": "string", "level": "string", "area": "string",
         "gate_hint": "string", "is_airside": "boolean | null",
+        "zone": "'departures_airside' | 'departures_landside' | 'arrivals' | 'unknown'",
         "security_raw": "string", "security_basis": "'explicit' | 'inferred' | 'unknown'",
         "category_raw": "string", "category": "string", "hours_raw": "string",
+        "hours": "HoursWindow[]",
         "is_24h": "boolean", "lat": "number | null", "lon": "number | null",
     }
-
-    def camel(s):
-        a, *b = s.split("_")
-        return a + "".join(w.title() for w in b)
 
     type_lines = "\n".join("  %s: %s;" % (camel(f), ts_fields[f]) for f in order)
     row_type = ", ".join(ts_fields[f] for f in order)
 
     body = '''%s
+export type HoursWindow = {
+  startDay: number;   // 0 = Monday
+  endDay: number;
+  open: string;       // "HH:MM", local to the airport
+  close: string;      // "HH:MM"; "24:00" means midnight at the end of the day
+};
+
 export type Dining = {
 %s
 };
@@ -313,8 +397,18 @@ def main():
         cache_path = os.path.join(RAW, entry["cache"])
 
         try:
-            body = fetch(entry["url"], cache_path, offline)
-        except (urllib.error.URLError, RuntimeError, OSError) as exc:
+            kind = entry.get("kind", "json")
+            if kind == "custom":
+                # THE ADAPTER FETCHES ITSELF. JFK's list only exists as the
+                # answer to a compressed GraphQL query the page builds, and it
+                # has to be asked twice -- once per security filter -- so the
+                # adapter owns the conversation. Everything after it is the same.
+                body = module.fetch(cache_path, offline, UA)
+            elif kind == "browser_json":
+                body = fetch_browser(entry["url"], entry["page_url"], cache_path, offline)
+            else:
+                body = fetch(entry["url"], cache_path, offline)
+        except (urllib.error.URLError, RuntimeError, OSError, Exception) as exc:
             # A SOURCE THAT WILL NOT LOAD IS REPORTED, NOT WORKED AROUND. The
             # previously published data stays exactly as it is.
             print("  FETCH FAILED: %s: %s" % (type(exc).__name__, exc))
@@ -322,7 +416,9 @@ def main():
             continue
 
         print("  fetched %d bytes%s" % (len(body), " (cached)" if offline else ""))
-        raw = json.loads(body.decode("utf8")) if entry["kind"] == "json" else body.decode("utf8", "replace")
+        raw = (json.loads(body.decode("utf8"))
+               if entry.get("kind", "json") in ("json", "browser_json", "custom")
+               else body.decode("utf8", "replace"))
         records, notes = module.parse(raw, scraped_at)
         for n in notes:
             print("  note: %s" % n)
@@ -358,9 +454,14 @@ def main():
         meta.append({"airport": code, "count": len(rows), "source_url": entry["url"],
                      "scraped_at": scraped_at,
                      "source_updated_at": rows[0]["source_updated_at"] if rows else ""})
-        airside = sum(1 for r in rows if r["is_airside"] is True)
-        print("  OK: %d records, %d airside / %d landside"
-              % (len(rows), airside, len(rows) - airside))
+        # THREE BUCKETS, NOT TWO. Counting "not airside" as landside would file
+        # every arrivals row under a zone it is not in -- the exact collapse the
+        # zone field was added to stop.
+        from collections import Counter
+        z = Counter(r["zone"] for r in rows)
+        print("  OK: %d records  |  airside %d, landside %d, arrivals %d, unknown %d"
+              % (len(rows), z["departures_airside"], z["departures_landside"],
+                 z["arrivals"], z["unknown"]))
 
         if i + 1 < len(airports) and not offline:
             time.sleep(PAUSE_BETWEEN_AIRPORTS_S)

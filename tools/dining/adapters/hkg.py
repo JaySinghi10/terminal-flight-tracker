@@ -146,12 +146,21 @@ def parse(raw, scraped_at):
                 gate_hint=(re.sub(r"\s+", "", gate.group(1)) if gate else ""),
                 # EXPLICIT, because the source states it per outlet as a boolean.
                 is_airside=(bool(restricted) if isinstance(restricted, bool) else None),
+                # HKG's boolean covers only the departures split; it has no
+                # arrivals concept, so every labelled outlet is one or the other.
+                zone=("departures_airside" if restricted else "departures_landside")
+                     if isinstance(restricted, bool) else "unknown",
                 security_raw=(restricted_label if restricted else open_label)
                              if isinstance(restricted, bool) else "",
                 security_basis="explicit" if isinstance(restricted, bool) else "unknown",
                 category_raw="|".join(cats),
                 category="|".join(cat_norm),
                 hours_raw=_hours(shop),
+                # EMPTY ON PURPOSE. HKG's hours are prose -- mixed dashes and
+                # "(Last order: 20:30)" -- so there is nothing here that was
+                # already structured. Inventing windows from that would be a
+                # guess wearing the clothes of data. See the note in schema.py.
+                hours=[],
                 is_24h=bool(shop.get("24-hours")),
                 lat=lat, lon=lon,
                 source_url=SOURCE_URL,
