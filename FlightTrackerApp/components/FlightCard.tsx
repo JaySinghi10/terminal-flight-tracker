@@ -77,6 +77,10 @@ import { zonedIsoToTs, clock24 } from '../lib/time';
 // and a clock rather than any screen's state. app/flights reads the same constant
 // for the collapsed rows and for how long focus stays on a leg that has landed.
 import { effectiveStatus, isArchived, BAG_WINDOW_MS, landedInstant } from '../lib/saved';
+// INDEPENDENT CORROBORATION, AND ONLY FOR A LOST FLIGHT. See lib/adsb.ts: it
+// cannot change a status, it cannot set a landing, and its usual answer is
+// nothing at all.
+import { Corroboration, cachedCorroboration, lookupOnce } from '../lib/adsb';
 import {
   getStatusColor,
   routeDateLabel,
@@ -2266,6 +2270,45 @@ type FlightCardProps = {
   legCount?: number;
 };
 
+// ── WHAT AN INDEPENDENT RECEIVER SAW, FOR A FLIGHT THE PROVIDER LOST ────────
+//
+// FIRES ONLY WHEN THE CARD IS ALREADY SHOWING 'stale'. On a healthy flight this
+// asks a question nobody needs answered, and the anonymous ADS-B budget is four
+// hundred calls a day for the whole device.
+//
+// AND IT CANNOT CHANGE THE STATUS. The card is stale before this runs and stays
+// stale after it, whatever comes back. All it can do is add one attributed
+// sentence -- or, far more often, nothing.
+// AN EPOCH IN THE AIRPORT'S OWN ZONE. The ADS-B contact is a unix instant and
+// the sentence it lands in is about a place, so it is printed in that place's
+// time -- not the device's, which would read as a different flight entirely to
+// anybody in another country.
+function clockAt(ms: number, tz: string | null): string | null {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz || 'UTC', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(ms));
+  } catch {
+    return null;
+  }
+}
+
+function useCorroboration(record: SavedFlight | null, stale: boolean, now: number) {
+  const [seen, setSeen] = useState<Corroboration | null>(
+    record === null ? null : cachedCorroboration(record.id) ?? null);
+  useEffect(() => {
+    if (!stale || record === null) return;
+    let live = true;
+    void lookupOnce(record, now).then(r => { if (live) setSeen(r); });
+    return () => { live = false; };
+    // `now` is deliberately NOT a dependency. The lookup is once per record and
+    // the minute tick must not re-run it; lookupOnce caches anyway, and this
+    // stops the effect firing sixty times an hour to discover that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stale, record?.id]);
+  return seen;
+}
+
 export function FlightCard({
   flight,
   flightRecord,
@@ -2835,6 +2878,10 @@ export function FlightCard({
       : tripEffective === 'landed' ? 'landed'
       : (tripEffective === 'cancelled' || tripEffective === 'diverted') ? 'off'
       : 'before';
+
+  // CALLED UNCONDITIONALLY, GUARDED INSIDE. A hook cannot sit behind an if, and
+  // the flag is what stops it spending an ADS-B call on a healthy flight.
+  const seenOnGround = useCorroboration(flightRecord, tripPhase === 'stale', now);
 
   // ── THERE IS NO DELAY LINE, AND THE REASON IS AMBIGUITY RATHER THAN CLUTTER ──
   //
@@ -4173,10 +4220,29 @@ export function FlightCard({
                     IT DOES NOT SAY THE FLIGHT LANDED. We do not know that. It
                     says only what is true: nobody has told us. */}
                 {tripVariant && tripPhase === 'stale' && (
-                  <Text style={s.tripStaleNote}>
-                    {`No update since ${flight.arrTimeValue}. `
-                      + 'The airline has not reported this flight’s arrival.'}
-                  </Text>
+                  <>
+                    <Text style={s.tripStaleNote}>
+                      {`No update since ${flight.arrTimeValue}. `
+                        + 'The airline has not reported this flight’s arrival.'}
+                    </Text>
+                    {/* ── AND WHAT SOMEBODY ELSE SAW, WHEN ANYBODY DID ──
+                        A SEPARATE SENTENCE, ATTRIBUTED, AND CAREFULLY WORDED. It
+                        does not say the flight landed: it says an aircraft
+                        matching it was transmitting from the ground. Those are
+                        different claims and only the second one is ours to make.
+                        THE FLIGHT IS STILL STALE UNDER IT. The pill still reads
+                        NO UPDATE and the status is unchanged -- this is a second
+                        opinion printed beside the first, not a correction of it. */}
+                    {seenOnGround?.kind === 'onGround' && (() => {
+                      const at = clockAt(seenOnGround.atMs, flightRecord?.to.timezone ?? null);
+                      return at === null ? null : (
+                        <Text style={s.tripStaleCorroborated}>
+                          {`An aircraft matching this flight was on the ground at `
+                            + `${seenOnGround.airport} at ${at} · ADS-B`}
+                        </Text>
+                      );
+                    })()}
+                  </>
                 )}
 
                 {/* ── A TRIP LEG IS LAID OUT ON ITS OWN NOW ──
@@ -5255,6 +5321,15 @@ const s = StyleSheet.create({
     lineHeight: 16,
     color: CD_LATE,
     marginTop: 8,
+  },
+  // The corroboration sits under the stale note, dimmer than it: it is a
+  // secondary voice and must not shout over the primary statement.
+  tripStaleCorroborated: {
+    fontFamily: SANS,
+    fontSize: 11,
+    lineHeight: 16,
+    color: 'rgba(226,226,226,0.4)',
+    marginTop: 4,
   },
   tripCountdown: { fontSize: 15, fontFamily: MONO_BOLD, color: CD_GREEN },
   // airportTitle's TREATMENT, RESTATED RATHER THAN COMPOSED, and the difference
