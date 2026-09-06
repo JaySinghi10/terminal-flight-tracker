@@ -1448,8 +1448,12 @@ export default function Index() {
       setRefreshMsg("");
     });
 
+    // THE SECONDS LEFT, rather than a claim about the data. Nothing was fetched
+    // because the cooldown declined to spend, and that is a fact about the clock
+    // -- a message that names the wait can be waited out; one that says "up to
+    // date" invites a second pull that will be refused in the same silence.
     if (r.throttled) {
-      setRefreshMsg('> already up to date');
+      setRefreshMsg(`> just refreshed - try again in ${Math.ceil(r.cooldownMs / 1000)}s`);
       setRefreshTone('info');
       setRefreshMsgCounter(c => c + 1);
     }

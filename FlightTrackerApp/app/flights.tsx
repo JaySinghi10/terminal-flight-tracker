@@ -2084,10 +2084,23 @@ export default function Flights() {
         // be handed its open card's fresh payload back; this screen has no single
         // open card and reads the store instead, which refreshAll has already
         // written by the time it resolves.
+        //
+        // AND THE REPORT IS READ RATHER THAN DISCARDED. `void refreshAll(null)`
+        // threw away a `throttled` the store had already computed, so a pull
+        // inside the cooldown span the spinner and said nothing at all -- which
+        // is exactly what a broken refresh looks like, and is why this was first
+        // reported as the queue never reaching a leg.
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => { void refreshAll(null); }}
+            onRefresh={() => { void (async () => {
+              const r = await refreshAll(null);
+              // THE SECONDS LEFT, because "up to date" alone is a claim about
+              // the data and the true reason is the clock.
+              if (r.throttled) {
+                showToast(`just refreshed - try again in ${Math.ceil(r.cooldownMs / 1000)}s`);
+              }
+            })(); }}
             tintColor="#4ade80"
             colors={['#4ade80']}
           />

@@ -80,6 +80,22 @@ export function flightUrl(number: string, date: string | null, origin: string | 
 const PULL_COOLDOWN_MS = 60 * 1000;
 const AUTO_REFRESH_MAX_FLIGHTS = 2;
 
+// ── HOW MANY FLIGHTS ONE PULL WILL PAY FOR ──────────────────────────────────
+//
+// TEN, AND IT WAS FIVE WRITTEN AS A BARE NUMBER AT THE CALL SITE. Half a full
+// watchlist -- MAX_SAVED_FLIGHTS is 20 -- so any realistic list is covered in a
+// single pull, and a full one still rotates through in two.
+//
+// WHAT IT COSTS: ONE UNIT PER FLIGHT ACTUALLY ATTEMPTED, so at most ten a pull
+// and fewer whenever the list is shorter or a record is skipped as out of date.
+// The spinner runs about 11.7s at a full ten, from REFRESH_SPACING_MS.
+//
+// NOT TWENTY. That doubles the worst case in both units and seconds for the
+// tail of a list that refreshRank has already established is not urgent -- and
+// the whole point of the ordering is that the cap no longer decides WHETHER the
+// flight in the air is reached, only how far down the quiet end it goes.
+const PULL_MAX_FLIGHTS = 10;
+
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  AUTO-REFRESH IS OFF. FLIP THIS ONE CONSTANT TO TURN IT ON.              ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
@@ -396,6 +412,49 @@ function refreshIntervalFor(f: SavedFlight, now: number): number | null {
   if (until < 6 * 60 * 60 * 1000) return 60 * 60 * 1000;
   if (until < 48 * 60 * 60 * 1000) return 6 * 60 * 60 * 1000;
   return 24 * 60 * 60 * 1000;
+}
+
+// ── WHICH RECORD GETS THE UNIT WHEN THERE ARE MORE FLIGHTS THAN ATTEMPTS ────
+//
+// A CAP ON TOP OF A PURELY STALE-FIRST ORDER SPENT THE PULL ON THE WRONG
+// FLIGHTS, and the log said so exactly: LH455 was IN THE AIR at q8 of a queue
+// capped at five, while two of the five units went to flights three weeks out.
+//
+// AND SWIPING THE CARD MADE IT WORSE, WHICH IS WHY IT LOOKED LIKE A PER-CARD
+// SUCCESS AND A BULK FAILURE. A single-card refresh advances updatedAt, so the
+// leg being watched became the FRESHEST record in the store and sorted to the
+// very back of the queue that gets truncated. The workaround was the cause.
+//
+// THREE RANKS, AND THEY ARE refreshIntervalFor's OWN TIERS. That function
+// already decides what is worth asking about how often; disagreeing with it here
+// would mean two different opinions in one file about which flight is volatile.
+//
+//   0  in the air        changing continuously, and the one thing a pull is for
+//   1  under 6h to go    the gate, the terminal and the delay land in this window
+//   2  everything else   distant, or landed, and neither moves in a minute
+//
+// STALENESS STILL ORDERS WITHIN A RANK, so the rotation the old sort was built
+// for survives intact at the quiet end: the records this pull could not reach
+// are the ones the next pull starts with.
+//
+// AIRBORNE IS TESTED TWICE, BY STATUS AND BY THE CLOCK. effectiveStatus is the
+// record's own word for it, and a record whose word is STALE -- still saying
+// scheduled or departed while its departure has passed and its arrival has not
+// -- is precisely the record this whole exercise was about. Trusting the status
+// alone would rank the broken record last and leave it broken.
+const REFRESH_SOON_MS = 6 * 60 * 60 * 1000;
+
+function refreshRank(f: SavedFlight, now: number): number {
+  if (effectiveStatus(f, now) === 'active') return 0;
+  const dep = departureTs(f);
+  // NO READABLE DEPARTURE IS NOT URGENT, only repairable. It goes to the tail
+  // with the distant ones, where staleness will bring it round soon enough.
+  if (dep === null) return 2;
+  if (dep <= now) {
+    const arr = arrivalTs(f);
+    return arr === null || arr > now ? 0 : 2;               // airborne by the clock, or landed
+  }
+  return dep - now < REFRESH_SOON_MS ? 1 : 2;
 }
 
 export function isArchived(f: SavedFlight, now: number): boolean {
@@ -764,9 +823,16 @@ export type SaveOutcome =
 // `list` IS THE LIST AS READ BACK FROM STORAGE, not the state this then set.
 // The open card's own record is looked up in it, and a setState is not visible
 // to the caller that awaited this in the same turn.
+//
+// `cooldownMs` IS WHAT THE SCREEN NEEDS TO SAY WHY. throttled was computed and
+// thrown away -- one caller ignored the report entirely and the other could only
+// say "already up to date", which is a statement about the DATA when the truth
+// is a statement about the CLOCK. This is the milliseconds left on the cooldown,
+// and it is 0 on every other outcome.
 export type RefreshReport = {
   ran: boolean;
   throttled: boolean;
+  cooldownMs: number;
   failures: number;
   openCardFresh: any;
   list: SavedFlight[] | null;
@@ -1361,7 +1427,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     onStarted?: () => void,
   ): Promise<RefreshReport> => {
     const nothing: RefreshReport =
-      { ran: false, throttled: false, failures: 0, openCardFresh: null, list: null };
+      { ran: false, throttled: false, cooldownMs: 0, failures: 0, openCardFresh: null, list: null };
     if (refreshingRef.current) return nothing;                // synchronous guard; iOS can double-fire the pull
     onStarted?.();
     refreshingRef.current = true;
@@ -1386,27 +1452,33 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       const activeSaved = savedFlights.filter(f => refreshable(f, at));
       if (activeSaved.length === 0) return { ...nothing, ran: true };   // spinner alone acknowledges; message can't render here
 
-      if (Date.now() - lastRefreshRef.current < PULL_COOLDOWN_MS) {
-        return { ...nothing, ran: true, throttled: true };
+      const since = Date.now() - lastRefreshRef.current;
+      if (since < PULL_COOLDOWN_MS) {
+        // THE REMAINDER, NOT JUST THE REFUSAL. A spinner that appears and
+        // resolves into nothing is indistinguishable from a broken refresh, and
+        // that is how this went unnoticed long enough to be blamed on the queue.
+        return { ...nothing, ran: true, throttled: true, cooldownMs: PULL_COOLDOWN_MS - since };
       }
       lastRefreshRef.current = Date.now();
 
-      // STALEST FIRST, and this is the refresh QUEUE's order only — a copy, so
-      // activeSaved and everything the list renders from are untouched.
+      // URGENCY FIRST, THEN STALENESS, and this is the refresh QUEUE's order
+      // only — a copy, so activeSaved and everything the list renders from are
+      // untouched.
       //
-      // The cap protects the quota and stays. But a cap on top of a FIXED order
-      // is a cliff rather than a queue: activeSaved comes out of savedFlights in
-      // stored order and is never sorted, so every pull walked the same first
-      // five and the sixth and seventh were not refreshed later, they were never
-      // refreshed at all. Two of seven sat at "updated 1d ago" indefinitely.
+      // THE CAP PROTECTS THE QUOTA AND STAYS. What changes is what it truncates.
+      // Stale-first alone put a flight IN THE AIR at position nine of a queue cut
+      // at five and spent two of those five on flights three weeks away; ranking
+      // first means the cap can now only ever cost the quiet end of the list.
       //
-      // Ordering by updatedAt ascending turns the same cap into a rotation: the
-      // five refreshed here become the five freshest, so the next pull starts
-      // with the ones this one could not reach and two pulls cover seven flights.
-      // It also fixes the worst-looking rows first, because the stalest record is
-      // exactly the one whose age is showing.
-      const refreshQueue = [...activeSaved].sort((a, b) => a.updatedAt - b.updatedAt);
-      const { failures, openCardFresh } = await refreshFlights(refreshQueue, 5, openCardId);
+      // STALENESS STILL ROTATES WITHIN EACH RANK, which is what the old sort was
+      // for and is worth keeping: the records this pull could not reach are the
+      // ones the next pull starts with, so a full watchlist comes round in two.
+      const refreshQueue = [...activeSaved].sort((a, b) => {
+        const byRank = refreshRank(a, at) - refreshRank(b, at);
+        return byRank !== 0 ? byRank : a.updatedAt - b.updatedAt;
+      });
+      const { failures, openCardFresh } =
+        await refreshFlights(refreshQueue, PULL_MAX_FLIGHTS, openCardId);
 
       const list = await getSavedFlights(email);              // read once, set state once
       setSavedFlights(list);
@@ -1417,7 +1489,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       // this is what puts it right.
       reconcile(list, undoKeepIds());
 
-      return { ran: true, throttled: false, failures, openCardFresh, list };
+      return { ran: true, throttled: false, cooldownMs: 0, failures, openCardFresh, list };
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
