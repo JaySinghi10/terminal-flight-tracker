@@ -294,6 +294,11 @@ def emit_ts(all_records, per_airport_meta):
 // what the BRAND serves, not what this counter does, because Mumbai's filter
 // narrows brands rather than addresses. Empty means the source did not say.
 //
+// serveMinutes IS THE SOURCE'S OWN TIME-TO-SERVE ESTIMATE, in minutes, and null
+// where it was not published (which is everywhere except Stockholm today). null
+// means UNKNOWN -- never "fast", never "slow". "Where can I eat" is always asked
+// with a clock running, and this is the only field that answers the clock half.
+//
 // AND READ zone WHEN isAirside IS null. "arrivals" is not a missing answer: it
 // is baggage reclaim or the arrivals concourse, which a CONNECTING passenger
 // cannot reach and a landside visitor cannot either. "You can eat here after you
@@ -324,6 +329,7 @@ def emit_ts(all_records, per_airport_meta):
         "zone": "'departures_airside' | 'departures_landside' | 'arrivals' | 'unknown'",
         "security_raw": "string", "security_basis": "'explicit' | 'inferred' | 'unknown'",
         "flight_scope": "'' | 'domestic' | 'international' | 'both'",
+        "serve_minutes": "number | null",
         "category_raw": "string", "category": "string", "hours_raw": "string",
         "hours": "HoursWindow[]",
         "is_24h": "boolean", "lat": "number | null", "lon": "number | null",
@@ -408,7 +414,7 @@ def main():
                 # answer to a compressed GraphQL query the page builds, and it
                 # has to be asked twice -- once per security filter -- so the
                 # adapter owns the conversation. Everything after it is the same.
-                body = module.fetch(cache_path, offline, UA)
+                body = module.fetch(cache_path, offline, UA, entry)
             elif kind == "browser_json":
                 body = fetch_browser(entry["url"], entry["page_url"], cache_path, offline)
             else:
@@ -424,7 +430,7 @@ def main():
         raw = (json.loads(body.decode("utf8"))
                if entry.get("kind", "json") in ("json", "browser_json", "custom")
                else body.decode("utf8", "replace"))
-        records, notes = module.parse(raw, scraped_at)
+        records, notes = module.parse(raw, scraped_at, entry)
         for n in notes:
             print("  note: %s" % n)
 

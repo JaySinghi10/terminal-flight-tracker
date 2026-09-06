@@ -69,7 +69,7 @@ def _hours(shop):
     return str(shop.get("open") or "").strip()
 
 
-def parse(raw, scraped_at):
+def parse(raw, scraped_at, entry=None):
     """(records, notes) from the decoded shops JSON.
 
     `notes` is everything a human should know about this run that is not a
@@ -156,6 +156,7 @@ def parse(raw, scraped_at):
                 flight_scope="",   # this source does not distinguish
                 category_raw="|".join(cats),
                 category="|".join(cat_norm),
+                serve_minutes=None,   # this source does not publish it
                 hours_raw=_hours(shop),
                 # EMPTY ON PURPOSE. HKG's hours are prose -- mixed dashes and
                 # "(Last order: 20:30)" -- so there is nothing here that was

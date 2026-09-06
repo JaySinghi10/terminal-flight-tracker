@@ -111,7 +111,7 @@ def _hours_raw(entry):
     return "; ".join(p for p in parts if p)
 
 
-def parse(raw, scraped_at):
+def parse(raw, scraped_at, entry=None):
     notes = []
     rows = raw.get("results") if isinstance(raw, dict) else None
     if not isinstance(rows, list) or not rows:
@@ -160,6 +160,7 @@ def parse(raw, scraped_at):
             flight_scope="",   # this source does not distinguish
             category_raw="|".join(cats_raw),
             category="|".join(cats),
+            serve_minutes=None,   # this source does not publish it
             hours_raw=_hours_raw(e),
             hours=_hours(e),
             is_24h=any(w["open"] in ("00:00",) and w["close"] in ("24:00", "00:00")

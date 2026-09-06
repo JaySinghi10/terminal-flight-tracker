@@ -118,7 +118,7 @@ def _post(area_guid, ua):
         return json.loads(r.read().decode("utf8"))
 
 
-def fetch(cache_path, offline, user_agent):
+def fetch(cache_path, offline, user_agent, entry=None):
     """One unfiltered request for the list, then one per Area for the scope.
 
     Five requests, spaced. A visitor clicking through "Load more" and the four
@@ -156,7 +156,7 @@ def _brands(payload):
     return out
 
 
-def parse(raw, scraped_at):
+def parse(raw, scraped_at, entry=None):
     notes = []
     if not isinstance(raw, dict) or "all" not in raw:
         notes.append("FATAL-SHAPE: expected the 'all' response plus one per Area")
@@ -242,6 +242,7 @@ def parse(raw, scraped_at):
                     security_basis="explicit" if explicit else "unknown",
                     category_raw="|".join(cats_raw),
                     category="|".join(cats),
+                    serve_minutes=None,   # this source does not publish it
                     hours_raw="",
                     hours=[],
                     is_24h=False,

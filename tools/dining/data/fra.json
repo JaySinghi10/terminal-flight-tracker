@@ -1,6 +1,6 @@
 {
  "airport": "FRA",
- "scraped_at": "2026-09-06T12:33:13Z",
+ "scraped_at": "2026-09-06T13:03:46Z",
  "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
  "records": [
   {
@@ -19,6 +19,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien|snack-coffee-bars|fruehstueck|miles-and-more-gastronomie",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -32,7 +33,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -51,6 +52,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|snack-coffee-bars|fruehstueck|healthy-food",
    "category": "cafe|vegetarian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -64,7 +66,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -83,6 +85,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|baeckereien|snack-coffee-bars",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -96,7 +99,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -115,6 +118,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien|fruehstueck",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-20:00",
    "hours": [
     {
@@ -128,7 +132,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -147,6 +151,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -160,7 +165,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -179,6 +184,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|snack-coffee-bars",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -192,7 +198,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -211,6 +217,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -224,7 +231,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -243,6 +250,7 @@
    "flight_scope": "",
    "category_raw": "german-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -256,7 +264,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -275,6 +283,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:30-22:00",
    "hours": [
     {
@@ -288,7 +297,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -307,6 +316,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|italian-food",
    "category": "cafe|western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-22:00",
    "hours": [
     {
@@ -320,7 +330,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -339,6 +349,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|healthy-food|miles-and-more-gastronomie",
    "category": "western|cafe|vegetarian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:30-21:00",
    "hours": [
     {
@@ -352,7 +363,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -371,6 +382,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|italian-food",
    "category": "cafe|western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 10:00-18:00",
    "hours": [
     {
@@ -384,7 +396,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -403,6 +415,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|italian-food",
    "category": "cafe|western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -416,7 +429,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -435,6 +448,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|italian-food|burger|miles-and-more-gastronomie",
    "category": "western|fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-21:30",
    "hours": [
     {
@@ -448,7 +462,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -467,6 +481,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|italian-food|burger|miles-and-more-gastronomie",
    "category": "western|fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-21:30",
    "hours": [
     {
@@ -480,7 +495,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -499,6 +514,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 00:00-24:00",
    "hours": [
     {
@@ -512,7 +528,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -531,6 +547,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -544,7 +561,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -563,6 +580,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien",
    "category": "bakery",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -576,7 +594,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -595,6 +613,7 @@
    "flight_scope": "",
    "category_raw": "fast-food|german-food",
    "category": "fast_food|western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 10:00-22:00",
    "hours": [
     {
@@ -608,7 +627,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -627,6 +646,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -640,7 +660,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -659,6 +679,7 @@
    "flight_scope": "",
    "category_raw": "german-food|miles-and-more-gastronomie",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -672,7 +693,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -691,6 +712,7 @@
    "flight_scope": "",
    "category_raw": "german-food|miles-and-more-gastronomie",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -704,7 +726,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -723,6 +745,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien|snack-coffee-bars|fruehstueck",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -736,7 +759,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -755,6 +778,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien|snack-coffee-bars|fruehstueck",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -768,7 +792,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -787,6 +811,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien|snack-coffee-bars|fruehstueck",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -800,7 +825,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -819,6 +844,7 @@
    "flight_scope": "",
    "category_raw": "fast-food|asian-food",
    "category": "fast_food|asian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 11:00-21:00",
    "hours": [
     {
@@ -832,7 +858,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -851,6 +877,7 @@
    "flight_scope": "",
    "category_raw": "italian-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 10:00-21:00",
    "hours": [
     {
@@ -864,7 +891,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -883,6 +910,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|italian-food|burger",
    "category": "western|fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -896,7 +924,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -915,6 +943,7 @@
    "flight_scope": "",
    "category_raw": "german-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -928,7 +957,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -947,6 +976,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|italian-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -960,7 +990,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -979,6 +1009,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 00:00-00:00",
    "hours": [
     {
@@ -992,7 +1023,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1011,6 +1042,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 07:00-22:00",
    "hours": [
     {
@@ -1024,7 +1056,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1043,6 +1075,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 07:00-22:00",
    "hours": [
     {
@@ -1056,7 +1089,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1075,6 +1108,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 07:00-22:00",
    "hours": [
     {
@@ -1088,7 +1122,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1107,6 +1141,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants|snack-coffee-bars",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1120,7 +1155,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1139,6 +1174,7 @@
    "flight_scope": "",
    "category_raw": "fast-food",
    "category": "fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 11:00-19:00",
    "hours": [
     {
@@ -1152,7 +1188,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1171,6 +1207,7 @@
    "flight_scope": "",
    "category_raw": "italian-food|miles-and-more-gastronomie",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 07:00-22:00",
    "hours": [
     {
@@ -1184,7 +1221,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1203,6 +1240,7 @@
    "flight_scope": "",
    "category_raw": "italian-food|miles-and-more-gastronomie",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1216,7 +1254,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1235,6 +1273,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|asian-food|miles-and-more-gastronomie",
    "category": "asian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-22:00",
    "hours": [
     {
@@ -1248,7 +1287,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1267,6 +1306,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|baeckereien|snack-coffee-bars",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -1280,7 +1320,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1299,6 +1339,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|fast-food|asian-food",
    "category": "fast_food|asian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1312,7 +1353,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1331,6 +1372,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1344,7 +1386,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1363,6 +1405,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants|italian-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1376,7 +1419,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1395,6 +1438,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|german-food|miles-and-more-gastronomie",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -1408,7 +1452,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1427,6 +1471,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|german-food|miles-and-more-gastronomie",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-14:00",
    "hours": [
     {
@@ -1440,7 +1485,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1459,6 +1504,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|german-food|miles-and-more-gastronomie",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-14:00",
    "hours": [
     {
@@ -1472,7 +1518,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1491,6 +1537,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|german-food|miles-and-more-gastronomie",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-22:30",
    "hours": [
     {
@@ -1504,7 +1551,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1523,6 +1570,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|german-food|miles-and-more-gastronomie",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-22:30",
    "hours": [
     {
@@ -1536,7 +1584,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1555,6 +1603,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|german-food|miles-and-more-gastronomie",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-14:00",
    "hours": [
     {
@@ -1568,7 +1617,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1587,6 +1636,7 @@
    "flight_scope": "",
    "category_raw": "fast-food|miles-and-more-gastronomie",
    "category": "fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1600,7 +1650,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1619,6 +1669,7 @@
    "flight_scope": "",
    "category_raw": "fast-food|miles-and-more-gastronomie",
    "category": "fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1632,7 +1683,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1651,6 +1702,7 @@
    "flight_scope": "",
    "category_raw": "fast-food|miles-and-more-gastronomie",
    "category": "fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1664,7 +1716,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1683,6 +1735,7 @@
    "flight_scope": "",
    "category_raw": "fast-food|miles-and-more-gastronomie",
    "category": "fast_food",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1696,7 +1749,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1715,6 +1768,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1728,7 +1782,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1747,6 +1801,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-21:00",
    "hours": [
     {
@@ -1760,7 +1815,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1779,6 +1834,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|miles-and-more-gastronomie",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -1792,7 +1848,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1811,6 +1867,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants|italian-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1824,7 +1881,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1843,6 +1900,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1856,7 +1914,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1875,6 +1933,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien|snack-coffee-bars|fruehstueck|miles-and-more-gastronomie",
    "category": "bakery|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-21:00",
    "hours": [
     {
@@ -1888,7 +1947,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1907,6 +1966,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:30-22:30",
    "hours": [
     {
@@ -1920,7 +1980,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1939,6 +1999,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|fruehstueck|miles-and-more-gastronomie|miles-and-more-shops",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -1952,7 +2013,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -1971,6 +2032,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|fruehstueck|miles-and-more-gastronomie|miles-and-more-shops",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 03:00-16:00",
    "hours": [
     {
@@ -1984,7 +2046,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2003,6 +2065,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|fruehstueck|miles-and-more-gastronomie|miles-and-more-shops",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-22:00",
    "hours": [
     {
@@ -2016,7 +2079,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2035,6 +2098,7 @@
    "flight_scope": "",
    "category_raw": "restaurants|snack-coffee-bars|fruehstueck|miles-and-more-gastronomie|miles-and-more-shops",
    "category": "western|cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-19:00",
    "hours": [
     {
@@ -2048,7 +2112,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2067,6 +2131,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2080,7 +2145,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2099,6 +2164,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|italian-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2112,7 +2178,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2131,6 +2197,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|italian-food",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -2144,7 +2211,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2163,6 +2230,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2176,7 +2244,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2195,6 +2263,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -2208,7 +2277,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2227,6 +2296,7 @@
    "flight_scope": "",
    "category_raw": "einkaufen|essen-and-trinken|baeckereien|supermarkt",
    "category": "bakery|other",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 00:01-23:59",
    "hours": [
     {
@@ -2240,7 +2310,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2259,6 +2329,7 @@
    "flight_scope": "",
    "category_raw": "einkaufen|essen-and-trinken|baeckereien|supermarkt",
    "category": "bakery|other",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 05:00-23:59",
    "hours": [
     {
@@ -2272,7 +2343,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2291,6 +2362,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -2304,7 +2376,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2323,6 +2395,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -2336,7 +2409,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2355,6 +2428,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 07:00-20:00",
    "hours": [
     {
@@ -2368,7 +2442,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2387,6 +2461,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -2400,7 +2475,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2419,6 +2494,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|fast-food|restaurants|burger",
    "category": "fast_food|western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 04:00-01:00",
    "hours": [
     {
@@ -2432,7 +2508,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2451,6 +2527,7 @@
    "flight_scope": "",
    "category_raw": "baeckereien",
    "category": "bakery",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2464,7 +2541,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2483,6 +2560,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|snack-coffee-bars",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 07:00-20:00",
    "hours": [
     {
@@ -2496,7 +2574,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2515,6 +2593,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|fruehstueck",
    "category": "cafe",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2528,7 +2607,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2547,6 +2626,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|healthy-food|miles-and-more-gastronomie",
    "category": "cafe|vegetarian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-21:30",
    "hours": [
     {
@@ -2560,7 +2640,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2579,6 +2659,7 @@
    "flight_scope": "",
    "category_raw": "snack-coffee-bars|healthy-food|miles-and-more-gastronomie",
    "category": "cafe|vegetarian",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2592,7 +2673,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2611,6 +2692,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants|german-food|miles-and-more-gastronomie",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2624,7 +2706,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   },
   {
@@ -2643,6 +2725,7 @@
    "flight_scope": "",
    "category_raw": "essen-and-trinken|restaurants|german-food|miles-and-more-gastronomie",
    "category": "western",
+   "serve_minutes": null,
    "hours_raw": "Mon.-Sun. 06:00-22:00",
    "hours": [
     {
@@ -2656,7 +2739,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.frankfurt-airport.com/en/at-the-airport/eat-drink/_jcr_content/root/content/locationfilter.model.json/locations.json",
-   "scraped_at": "2026-09-06T12:33:13Z",
+   "scraped_at": "2026-09-06T13:03:46Z",
    "source_updated_at": ""
   }
  ]

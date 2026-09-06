@@ -127,6 +127,22 @@ class Dining:
     category_raw: str               # source vocabulary, "|"-joined
     category: str                   # CATEGORIES members, "|"-joined
 
+    # ── HOW LONG IT TAKES TO BE SERVED ────────────────────────────────────
+    #
+    # THE FIELD THIS WHOLE FEATURE IS FOR. "Where can I eat" is only ever asked
+    # with a clock running: forty minutes of a layover is a different question
+    # from four hours, and a restaurant that cannot feed you before boarding is
+    # not an option however good it is.
+    #
+    # ONLY SWEDAVIA PUBLISHES IT TODAY, as tags reading "5 minutes", "15 minutes"
+    # and "20 minutes" -- their own estimate of time to be served. It is modelled
+    # now rather than when a second source appears, because a nullable column
+    # costs nothing and a schema change later costs a rebuild of every airport.
+    #
+    # None MEANS NOT PUBLISHED, never "fast" and never "slow". A consumer with no
+    # value should say nothing about timing rather than assume either way.
+    serve_minutes: Optional[int]
+
     # ── when ──────────────────────────────────────────────────────────────
     #
     # TWO FIELDS, BECAUSE THE SOURCES ARE NOT EQUALLY GOOD AND FLATTENING TO THE
@@ -210,6 +226,11 @@ class Dining:
             for t in (w["open"], w["close"]):
                 if not isinstance(t, str) or not TIME_RE.match(t):
                     bad.append("hours window time is not HH:MM: %r" % (t,))
+        if self.serve_minutes is not None:
+            if not isinstance(self.serve_minutes, int) or isinstance(self.serve_minutes, bool):
+                bad.append("serve_minutes must be an int or None, got %r" % (self.serve_minutes,))
+            elif not (0 < self.serve_minutes <= 240):
+                bad.append("serve_minutes out of range: %r" % self.serve_minutes)
         if self.flight_scope not in ("", "domestic", "international", "both"):
             bad.append("flight_scope %r is not one of ''/domestic/international/both"
                        % self.flight_scope)

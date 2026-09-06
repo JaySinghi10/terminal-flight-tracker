@@ -79,7 +79,7 @@ CATEGORY_MAP = {
 DROP_CATEGORIES = {"shop"}
 
 
-def fetch(cache_path, offline, user_agent):
+def fetch(cache_path, offline, user_agent, entry=None):
     """Ask the site both questions and keep every answer.
 
     Returns a JSON document of our own shape -- {"After Security": [...],
@@ -156,7 +156,7 @@ def fetch(cache_path, offline, user_agent):
     return body
 
 
-def parse(raw, scraped_at):
+def parse(raw, scraped_at, entry=None):
     notes = []
     if not isinstance(raw, dict) or not raw:
         notes.append("FATAL-SHAPE: expected a map of zone label -> results")
@@ -225,6 +225,7 @@ def parse(raw, scraped_at):
                 flight_scope="",   # this source does not distinguish
                 category_raw="|".join(cats_raw),
                 category="|".join(cats),
+                serve_minutes=None,   # this source does not publish it
                 hours_raw="",
                 hours=[],
                 is_24h=False,

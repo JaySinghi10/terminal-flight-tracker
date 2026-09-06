@@ -149,6 +149,32 @@
           "area": 1.0
         }
       }
+    },
+    {
+      "code": "ARN",
+      "adapter": "swedavia",
+      "kind": "custom",
+      "slug": "arlanda",
+      "url": "https://www.swedavia.com/services/rfb/{block-id}/en",
+      "page_url": "https://www.swedavia.com/arlanda/food-beverages/",
+      "cache": "swedavia_arn.json",
+      "notes": "One adapter, several Swedish airports. securityLocation is literally 'airside'/'landside' per spot -- the cleanest source in the set. The endpoint id is read from block-id=\"NNNNNNN\" on the airport's own food-beverages page rather than hardcoded, so a republish cannot silently break it. Bromma (1 brand) and the airports with no listing block (UME, RNB, KRN) are deliberately not included.",
+      "guardrails": {
+        "min_records": 50,
+        "min_ratio": 0.7,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "T2",
+          "T4",
+          "T5"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "security_raw": 1.0
+        }
+      }
     }
   ],
   "parked": [
@@ -156,6 +182,10 @@
       "code": "SIN",
       "page_url": "https://www.changiairport.com/en/dine-and-shop/dining-directory.html",
       "reason": "PARKED -- do not re-attempt from scratch. Two blockers, both measured. (1) NO SECURITY ZONE AT RECORD LEVEL: a card carries only data-analytics-details=\"Location | Level | Category\" (e.g. \"Jewel | L1 | Cafe\"). The 'transit'/'public' words on the page are furniture and JS config, not per-outlet -- checked in context. The 'Airport Area' filter exists but is a custom widget, not a <select>, so the JFK trick of asking once per zone is unconfirmed. (2) JEWEL CONTAMINATION: 7 of the first 15 cards are Jewel, the LANDSIDE MALL, which is not a terminal and must be excluded -- an earlier homepage crawl followed Changi's own navigation straight to jewelchangiairport.com and produced a clean, parseable list of mall restaurants that every guardrail would have passed. TO REVISIT: crack the Airport Area widget and confirm it yields per-zone result sets; only then is SIN worth an adapter."
+    },
+    {
+      "code": "LLA / MMX / BMA (Swedavia regionals)",
+      "reason": "SKIPPED DELIBERATELY, not unattempted. The adapter works on them -- Lulea 4 brands, Malmo 2, Bromma 1 -- but they publish NO terminal object, so each would need require_terminal and expect_terminals switched off. That is the check that catches SkyCity, Jewel and The Squaire, and weakening it for 7 records across three airports is a bad trade. Revisit if Swedavia starts publishing a terminal for them. UME, RNB and KRN have no listing block at all."
     }
   ]
 }

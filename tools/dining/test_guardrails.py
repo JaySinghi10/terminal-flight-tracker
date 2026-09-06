@@ -90,7 +90,7 @@ def rec(**kw):
     base = dict(airport="HKG", name="X", source_id="ABC123",
                 terminal_raw="T1", terminal="T1", level="L6",
                 area="Terminal 1", gate_hint="", is_airside=True,
-                zone="departures_airside", flight_scope="",
+                zone="departures_airside", flight_scope="", serve_minutes=None,
                 security_raw="Restricted Area", security_basis="explicit",
                 category_raw="fastf", category="fast_food", hours_raw="07:00 - 23:00",
                 hours=[{"start_day": 0, "end_day": 6, "open": "07:00", "close": "23:00"}],
@@ -124,6 +124,13 @@ check("a zone outside the vocabulary is rejected",
       rec(zone="beyond_passport_control", is_airside=None).check() != [])
 check("a bad flight_scope is rejected", rec(flight_scope="transit").check() != [])
 check("flight_scope 'both' is allowed", rec(flight_scope="both").check() == [])
+check("serve_minutes None is allowed (nobody but ARN publishes it)",
+      rec(serve_minutes=None).check() == [])
+check("serve_minutes 15 is allowed", rec(serve_minutes=15).check() == [])
+check("serve_minutes 0 is rejected", rec(serve_minutes=0).check() != [])
+check("a negative serve_minutes is rejected", rec(serve_minutes=-5).check() != [])
+check("an absurd serve_minutes is rejected", rec(serve_minutes=9999).check() != [])
+check("a non-integer serve_minutes is rejected", rec(serve_minutes="15").check() != [])
 check("a category outside the vocabulary is rejected",
       rec(category="sushi").check() != [])
 check("half a coordinate is rejected", rec(lon=None).check() != [])

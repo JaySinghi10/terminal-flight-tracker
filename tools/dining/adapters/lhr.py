@@ -97,7 +97,7 @@ def _terminals(doc):
     return uniq
 
 
-def parse(raw, scraped_at):
+def parse(raw, scraped_at, entry=None):
     notes = []
     results = (raw or {}).get("results")
     docs = None
@@ -162,6 +162,7 @@ def parse(raw, scraped_at):
                 flight_scope="",   # this source does not distinguish
                 category_raw="|".join(cats_raw),
                 category="|".join(cats),
+                serve_minutes=None,   # this source does not publish it
                 hours_raw="",       # not on this endpoint; the detail page has it
                 hours=[],
                 is_24h=False,
