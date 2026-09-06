@@ -100,7 +100,7 @@
     },
     {
       "code": "JFK",
-      "adapter": "jfk",
+      "adapter": "panynj",
       "kind": "custom",
       "url": "https://www.jfkairport.com/api/graphql",
       "page_url": "https://www.jfkairport.com/dine-shop-relax/food",
@@ -123,7 +123,14 @@
           "terminal": 1.0,
           "security_raw": 1.0
         }
-      }
+      },
+      "non_terminal": [
+        "jamaica station (airtrain)",
+        "federal circle station",
+        "twa hotel",
+        "airtrain",
+        "long term parking"
+      ]
     },
     {
       "code": "BOM",
@@ -168,6 +175,57 @@
           "T2",
           "T4",
           "T5"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "security_raw": 1.0
+        }
+      }
+    },
+    {
+      "code": "EWR",
+      "adapter": "panynj",
+      "kind": "custom",
+      "url": "https://www.newarkairport.com/api/graphql",
+      "page_url": "https://www.newarkairport.com/dine-shop-relax/food",
+      "cache": "panynj_ewr.json",
+      "non_terminal": [],
+      "notes": "Same Port Authority platform as JFK -- same /api/graphql, same 'Area in Terminal' filter, same POI shape. The zone is a QUERY, not a field: the adapter asks once per security value and labels each answer by the question. availableLocations is all terminals here (A, B, C), so unlike JFK there is nothing non-terminal to exclude -- checked, not assumed.",
+      "guardrails": {
+        "min_records": 20,
+        "min_ratio": 0.7,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "TA",
+          "TB",
+          "TC"
+        ],
+        "coverage": {
+          "name": 1.0,
+          "terminal": 1.0,
+          "security_raw": 1.0
+        }
+      }
+    },
+    {
+      "code": "LGA",
+      "adapter": "panynj",
+      "kind": "custom",
+      "url": "https://www.laguardiaairport.com/api/graphql",
+      "page_url": "https://www.laguardiaairport.com/dine-shop-relax/food",
+      "cache": "panynj_lga.json",
+      "non_terminal": [],
+      "notes": "Same Port Authority platform as JFK -- same /api/graphql, same 'Area in Terminal' filter, same POI shape. The zone is a QUERY, not a field: the adapter asks once per security value and labels each answer by the question. availableLocations is all terminals here (B, C), so unlike JFK there is nothing non-terminal to exclude -- checked, not assumed.",
+      "guardrails": {
+        "min_records": 20,
+        "min_ratio": 0.7,
+        "security_basis": "explicit",
+        "require_terminal": true,
+        "expect_terminals": [
+          "TB",
+          "TC"
         ],
         "coverage": {
           "name": 1.0,

@@ -1,0 +1,2381 @@
+{
+ "After Security": [
+  {
+   "id": "640",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b456285f-9b43-4121-bfd7-24b24c521bc4",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5d662473-6041-4c9d-96fd-d94f9dcb1f76"
+   ],
+   "name": "3Sixty Duty Free & More",
+   "description": "As the duty and tax-free and specialty shop experts, providing a unique customer experience that includes 10-50% savings on some of the finest in luxury brand names. Sales at retail for liquor, tobacco products, cosmetics, fragrances, luxury gifts and high quality accessories, and confections.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B62",
+   "mapUrl": "http://maps.newarkairport.com?poiId=640",
+   "__typename": "POICard"
+  },
+  {
+   "id": "653",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/32ee18a4-cc72-4706-bb7a-360894b91c8d"
+   ],
+   "name": "3Sixty Duty Free and More",
+   "description": "As the duty and tax-free and specialty shop experts, providing a unique customer experience that includes 10-50% savings on some of the finest in luxury brand names. Sales at retail for liquor, tobacco products, cosmetics, fragrances, luxury gifts and high quality accessories, and confections.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=653",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004744",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/66554866-0de0-4827-a2b6-15b381199217",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8c163527-05f3-4628-b12e-ac9cd6df011a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ebb2dd49-bfcb-4696-ab8c-79172ddb1e8f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bc826132-9596-46ae-b363-6359355deed1"
+   ],
+   "name": "3Sixty Duty Free and More",
+   "description": "As the duty and tax-free and specialty shop experts, providing a unique customer experience that includes 10-50% savings on some of the finest in luxury brand names. Sales at retail for liquor, tobacco products, cosmetics, fragrances, luxury gifts and high quality accessories, and confections.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gates B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004744",
+   "__typename": "POICard"
+  },
+  {
+   "id": "219",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ea640b72-3e7d-41c2-83d4-bb92ecb58079",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/44595293-d430-4ec9-845c-ed5d850788f5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4e1c3e14-b9e4-4ba6-82a0-b6a12a93580b"
+   ],
+   "name": "Abruzzo Italian Steakhouse",
+   "description": "A traditional Italian steakhouse serving aged meats cut by the area's finest butchers, scratch cooking, and house made pasta.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C71",
+   "mapUrl": "http://maps.newarkairport.com?poiId=219",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004276",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8bb29e11-3b1e-4d92-be0c-5deeeef8e96b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ce1842a2-1581-46c9-a561-f1311fb4e3c3",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f81fc30d-1f2d-4138-adbb-836951a81669"
+   ],
+   "name": "Abruzzo Mercato",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C73",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004276",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1025",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/243030e0-17df-4734-9c13-3939628bf7a4"
+   ],
+   "name": "All You Need",
+   "description": "Travel essential stop for pre-packaged sandwiches, snacks, beverages, newspapers, books.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B40",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1025",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1027",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5e995412-06bb-4d72-9197-342ad5a58424"
+   ],
+   "name": "All You Need",
+   "description": "Travel essential stop for pre-packaged sandwiches, snacks, beverages, newspapers, books.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Concourse to B40-B49",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1027",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004177",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3c073792-77b3-41bc-ae5b-25c269741d70"
+   ],
+   "name": "Bang Cookies",
+   "description": "Jersey City's famous Bang Cookies shows off their giant all-natural delicious certified Kosher cookies made with organic ingredients like flour, cane sugar, dark chocolate, and grass-fed butter from New Zealand for that perfectly crispy, crunchy exterior with gooey melt-in-your-mouth center.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A27",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004177",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1001",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3d93b20b-c40a-4471-85d0-6caa036b347e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5fc2ad6f-d1da-4099-9ec5-be39ab5b7cab"
+   ],
+   "name": "Bar Left",
+   "description": "Inspired by luxury Revive Bar brings balance to both style and finely crafted beverages. One step inside and you will see what a dose of opulence can feel like.",
+   "category": "eat.bar",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C80",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1001",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004644",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f4682a6e-52dd-4915-b270-c565ae5f1fa2"
+   ],
+   "name": "Bar Right",
+   "description": "Inspired by luxury Revive Bar brings balance to both style and finely crafted beverages. One step inside and you will see what a dose of opulence can feel like.",
+   "category": "eat.bar",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C80",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004644",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004301",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b54c8b1c-b8e5-41ab-9ca1-70d281a63415"
+   ],
+   "name": "Beecher's Handmade Cheese",
+   "description": "Beecher's in Terminal A brings its award‑winning, handcrafted cheeses to travelers in a casual dining setting. Guests can enjoy signature items like grilled cheese sandwiches, creamy mac and cheese, hearty soups, fresh salads, and grab‑and‑go snacks. The menu highlights quality ingredients and bold flavors, offering comforting, satisfying meals perfect for any time of day. Passengers can also sit at the large bar and enjoy a cocktail or sporting event on one of the many TV screens.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A27",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004301",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001364",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4835cc31-b8a2-4264-b433-6b74b6bdef1d"
+   ],
+   "name": "Bluestone Lane Coffee",
+   "description": "Bluestone Lane in Terminal A offers a premium, Australian-inspired cafe experience focusing on high-quality coffee and healthy, fast breakfast/lunch options. Typical menu items include Avocado Smash, breakfast burritos, egg sandwiches, gluten-free banana bread, wellness drinks, cold-pressed juices, and their signature coffee blends. This location also offers a full-service bar and won the Best Burger in Terminal A Award.",
+   "category": "eat.coffee",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A5",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001364",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001382",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/97b60c36-dbe4-47bb-b675-8616fee414ae"
+   ],
+   "name": "Boardwalk",
+   "description": "Boardwalk in Terminal A offers travelers a convenient selection of travel essentials and local favorites. Shoppers can find snacks, beverages, magazines, books, electronics accessories, personal care items, souvenirs, and last‑minute necessities. The store highlights New Jersey-inspired products alongside trusted travel brands, making it easy to grab everything needed for a comfortable and enjoyable journey.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Exit",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001382",
+   "__typename": "POICard"
+  },
+  {
+   "id": "998",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2a4e36aa-5f0b-413d-8a7e-01c65117e87a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/61781c69-6ffd-4b76-871c-b5456b8afe64",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/38a32347-7a08-43d8-a4d9-46d3340f18e5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a78273ce-32b4-4909-8e44-885e38238a2e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/84ab8e71-6e53-4f35-8a9f-b450cef8b185",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5a6dd81a-47ce-451c-9f0d-eecc909291b1"
+   ],
+   "name": "Breakfast Boli/ Uptop Pizza",
+   "description": "Breakfast Boli is an egg-forward breakfast bar with a focus on breakfast stromboli, served until 10:30am. Uptop Pizza is a quick serve concept offering build-your-own personal pie options with a variety of toppings, available until 10:30pm.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=998",
+   "__typename": "POICard"
+  },
+  {
+   "id": "23",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/266f5bc8-b823-422d-ae8b-d3c775fb05e8",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7abb84e9-586d-427e-8d54-0045f329fe5d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ee9950a1-bd00-47fd-9906-0e72847544b6",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b506fd89-1013-4141-9dcc-5a82cfe18782"
+   ],
+   "name": "Breakfast Boli/Tagliare",
+   "description": "Breakfast Boli is an egg-forward breakfast bar with a focus on breakfast stromboli, served until 10:30am. Tagliare is a lively eatery that offers classic pizza by the slice or by the pie. Using fresh, locally sourced ingredients, house-made tomato sauce, and our own dough recipe, Tagliare bakes pizzas throughout the day in piping-hot pizza ovens.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C130",
+   "mapUrl": "http://maps.newarkairport.com?poiId=23",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001350",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/45238eb0-f835-43e8-81c2-1fbc02f02cdd"
+   ],
+   "name": "BurgerFi",
+   "description": "BurgerFi in Terminal A is the #1 BurgerFi in the Country! It serves up fresh, made‑to‑order burgers crafted from high‑quality ingredients. The menu features all‑natural Angus beef burgers, chicken sandwiches, veggie burgers, fresh‑cut fries, onions rings, and frozen custard shakes. Guests can also enjoy craft beer, wine, and cocktail at the full-service bar making BurgerFi a flavorful stop for elevated fast‑casual dining while traveling.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A27",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001350",
+   "__typename": "POICard"
+  },
+  {
+   "id": "887",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/961273e7-d30c-4910-b370-13d7ed7d8416"
+   ],
+   "name": "Caps Beer Garden",
+   "description": "This Asian Style Beer Garden features an expansive list of 48 types of domestic and international beers available. Caps' impressive beer program is complemented by a menu featuring American inspired bar bites and entrees.",
+   "category": "eat.bar",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C120",
+   "mapUrl": "http://maps.newarkairport.com?poiId=887",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001300",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3a7eb10a-78ee-4a64-8564-0d328a7f9e73"
+   ],
+   "name": "Carlitos BBQ Taqueria",
+   "description": "Carlito's Barbeque Taqueria in Terminal A offers bold, fresh, flavor‑packed Mexican‑inspired fare with a barbecue twist. Travelers can enjoy fresh made tortillas, tacos, burritos, quesadillas, and bowls filled with seasoned meats, fresh toppings, and house‑made sauces. The menu also includes sides and grab‑and‑go options, as well as beer and margarita offerings, delivering hearty, satisfying meals perfect for fueling up before a flight.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A16",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001300",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1005",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b6a9a88d-53a9-4e68-9830-24de0bbae4ec",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f1e8aa24-5147-4b96-8068-e7003ed88e44",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/65a3b9c3-c41d-4c10-bf60-c871306a45d3",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8411474f-a377-49a5-8297-3bce04c3ea3c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4804e4f6-3edc-426a-b7e7-6d2cd2ef66f2"
+   ],
+   "name": "Casciano's",
+   "description": "Casciano's Italian Specialties centers on rotisserie style meats, like slow-roasted porchettas, roast beef and farm-fresh",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1005",
+   "__typename": "POICard"
+  },
+  {
+   "id": "51",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0051-ewr-c3-ciboexpress.jpg"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C120",
+   "mapUrl": "http://maps.newarkairport.com?poiId=51",
+   "__typename": "POICard"
+  },
+  {
+   "id": "124",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c1c1f94e-8327-4f13-8e4e-1ec97754b1d4"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C93",
+   "mapUrl": "http://maps.newarkairport.com?poiId=124",
+   "__typename": "POICard"
+  },
+  {
+   "id": "992",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2855c9a2-7199-4f6a-98e3-4c96a7f470ea"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C104",
+   "mapUrl": "http://maps.newarkairport.com?poiId=992",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1004",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/EWR-0478.jpg"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C75",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1004",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4718",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e9b13939-f18c-4222-a202-51fd202b5fc3"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4718",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4742",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d87497db-e9a5-47e3-8bd6-1d60a6baf687"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C132",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4742",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004642",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6619d31a-e7c5-4b81-9e36-5e97262f8cf7"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "A uniquely curated assortment of fresh, wholesome foods, health & beauty items, gifts, electronics and travel items",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C90",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004642",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004372",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/40c44b1d-055b-4477-8bbf-697caa5b759b"
+   ],
+   "name": "City Rub Barbecue Cafe",
+   "description": "City Rub Barbecue Café in Terminal A delivers elevated, bold, smoky flavors with a creative twist. Known for its award‑winning tacos (voted Best Tacos in Terminal A by a panel of media judges), the menu features slow‑smoked meats, fresh ingredients, and signature sauces. This location offers beer and wine. Travelers can also order sandwiches, sides, and beverages for the flight that offer the same hearty, flavor‑forward experience.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A26",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004372",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1046",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8084d825-02dc-4eb6-b6c8-e00e9221fcee",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/55ea8912-f63f-4ef6-9357-f52b642e5095",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/658ce8ed-f88d-44ed-96e8-b7544ff97ecb",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2bb9e31c-65a9-4687-99e0-ebbb1ca884d1",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71f7348e-7043-4688-a64e-53d1697a5110",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/11cd0e3a-4569-46fb-b1cd-a0eeda965420"
+   ],
+   "name": "Creperie Juliette/Wabi Sabi",
+   "description": "Enjoy Creperie Juliet from 5:00am through 10:30am. Served from 10:30am through last flight, Wabi-Sabi features dim sum favorites including a variety of dumplings and noodle dishes.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C90",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1046",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004697",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a4356d9a-82c2-4ae6-84d3-1546968e4183"
+   ],
+   "name": "D'Taco Joint",
+   "description": "D'Taco Joint in Newark Liberty International Airport's Terminal A serves authentic, street‑style Mexican flavors made fresh for travelers on the go. The menu features tacos, burritos, quesadillas, and bowls filled with seasoned meats, fresh vegetables, and bold salsas. With customizable options and hearty portions, D'Taco Joint is a flavorful, fast‑casual stop for a satisfying pre‑flight meal.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Central Plaza",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004697",
+   "__typename": "POICard"
+  },
+  {
+   "id": "930",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e4c73827-0f53-437c-a03a-75c652806b2a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/050b15de-3dd8-4c8e-9298-9afb8fee54bc",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/74846c6b-82b0-4852-afe5-926275ba5800"
+   ],
+   "name": "DAILY",
+   "description": "Daily uses seasonal Mediterranean ingredients and vibrant Middle Eastern flavors to serve a vegetable-forward menu. An immersive wine-and-dine experience featuring 64 wines offered by the glass and by the bottle. Seasonal tapas and salatim are available to perfectly pair.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C73",
+   "mapUrl": "http://maps.newarkairport.com?poiId=930",
+   "__typename": "POICard"
+  },
+  {
+   "id": "994",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5c34d6f0-1808-4ed3-b926-c30179a37b07"
+   ],
+   "name": "Dunkin'",
+   "description": "Make and serve the freshest, most delicious coffee and donuts quickly and courteously in modern, well-merchandised stores",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C110",
+   "mapUrl": "http://maps.newarkairport.com?poiId=994",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001316",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c9a5edbc-19dc-4899-b274-c7a1cdc22d63"
+   ],
+   "name": "Dunkin'",
+   "description": "Long-running chain serving signature breakfast items & a variety of coffee drinks.",
+   "category": "eat.coffee",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A24",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001316",
+   "__typename": "POICard"
+  },
+  {
+   "id": "25",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fb106813-e8bd-4d4d-a0e8-0d7beefd7ec8",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/22371a48-2a9a-4fcb-a42c-7f5cfced01b5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7b112aeb-4657-4db5-b2ff-34890db04a81",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5dc2b677-8ad1-4cc5-961a-7c623154704f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4c5caea4-c971-4388-9c8e-6cf59ba3d352",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ed95a9f0-9a3b-4b27-a40a-7b362e0b580b"
+   ],
+   "name": "Eggy Weggy/Custom Burger",
+   "description": "Eggy Weggy, open from 4:45am-10:30am, is a Quick Serve Restaurant located in the Global Food Hall. Breakfast options at Eggy Weggy include made to order eggs and fluffy omelets with all the fixings. For lunch/dinner, Custom Burger serves up delicious gourmet burgers using a custom meat mix by renowned NY purveyor Pat LaFrieda.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C130",
+   "mapUrl": "http://maps.newarkairport.com?poiId=25",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1048",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e05c7a4f-cb60-4c64-ada7-0860440c7251",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d3f01034-9c29-45fa-8140-c0fcef58ad36",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2f6eae55-e6a4-447e-b871-c943ed1d232b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5ef81422-5870-4860-b229-d468828549b4",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/795898a4-bfee-4873-8978-bf2564e0220b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8035b928-56cc-40d0-9903-c2677a9abcaa"
+   ],
+   "name": "Eggy Weggy/Custom Burger",
+   "description": "Eggy Weggy, open from 4:45am-10:30am, is a Quick Serve Restaurant located in the Global Food Hall. Breakfast options at Eggy Weggy include made to order eggs and fluffy omelets with all the fixings. For lunch/dinner, Custom Burger serves up delicious gourmet burgers using a custom meat mix by renowned NY purveyor Pat LaFrieda.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1048",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001298",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d48f9306-e972-48ae-97b3-2bde0238e2d1"
+   ],
+   "name": "Ess-A-Bagel",
+   "description": "Ess‑A‑Bagel in Terminal A brings iconic New York-style bagels to traveling guests. Known for their large, hand‑rolled, kettle‑boiled bagels, the shop offers a variety of fresh flavors paired with classic cream cheese spreads, smoked fish, and made‑to‑order breakfast and deli sandwiches. It's a must‑stop for authentic, hearty comfort food on the go.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A15",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001298",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001351",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d3cfed75-6c41-4b3d-86c2-d896f0631cb7"
+   ],
+   "name": "Evolve by Hudson",
+   "description": "Evolve by Hudson in Terminal A offers travelers a modern, wellness‑focused shopping experience. The store features a curated assortment of activewear, athleisure, footwear, beauty and skincare products, wellness items, and innovative travel essentials. Designed for today's health‑conscious traveler, Evolve blends style, comfort, and functionality to support an active lifestyle while on the move with healthy grab-n-go, Kosher-certified sandwich options.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A8",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001351",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004423",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/73b8b227-77ca-45b6-98b0-d23f81cd3741"
+   ],
+   "name": "Farmer's Fridge Kiosk",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004423",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000126",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8815607a-1eec-4abc-a35e-dbc1db53a846"
+   ],
+   "name": "Farmer's Fridge Vending Machine",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B51",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000126",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000129",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cc90346e-20fe-41f0-b006-160d2512bb73"
+   ],
+   "name": "Farmer's Fridge Vending Machine",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B47",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000129",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004269",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/547d0b31-c3bb-4705-a19e-ef89d50359a9"
+   ],
+   "name": "Farmer's Fridge Vending Machine",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Concourse to Gates B40-49",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004269",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004378",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/47018f2c-3176-40a5-995f-51b43140ad86"
+   ],
+   "name": "Felina Cucina",
+   "description": "Felina Cucina in  Terminal A, brings a taste of New Jersey, rooted Italian dining to traveling guests. With local ties and a reputation for quality, the restaurant offers Italian‑inspired favorites such as artisanal pizzas, handmade pastas, and seasonal dishes crafted from fresh ingredients. Paired with select wines and cocktails, Felina Cucina delivers elevated comfort with a strong sense of place.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A7 / A8",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004378",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4709",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/99ca800c-5da9-4401-a844-eebf4a1efa57",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5f853edf-4fc7-4e55-87ed-11b8f46eb7d0"
+   ],
+   "name": "Firehouse Subs",
+   "description": "Get a delicious made-to-order sandwich and choose from a variety of hot sauces at Firehouse Subs.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "B1 Concourse to Gates B40-49",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4709",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1039",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/48bdc871-8c47-4a60-a6d6-ea2f4e1de47c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f7ea7dcd-b0bf-42d6-9af9-62bdad3ed126",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e7a1de29-b5c7-4c11-a100-56885ad44183",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1e2cfc8a-6f68-4deb-b48e-93dfeeeac1ef"
+   ],
+   "name": "Flip Flop Pancake/Philly Cheesesteak",
+   "description": "Flip Flop Pancake Shop is a quick-serve restaurant serving fresh pancakes at the terminal from 5:00am through 10:30am. / Philly Cheesesteaks is your quick stop for an authentic Philly-style cheesesteak before your travels 10:30am through last flight.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C133",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1039",
+   "__typename": "POICard"
+  },
+  {
+   "id": "22",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/09180443-f2f2-4f8d-b2f3-064270d3c8d9",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/845f0366-737c-4aa7-bd33-200681bf6b6e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1cb95a74-0f15-4137-8522-bf43f26324ab"
+   ],
+   "name": "Flora Café",
+   "description": "A café featuring staple dishes full of flavor and spices reminiscent of the Mediterranean coast.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=22",
+   "__typename": "POICard"
+  },
+  {
+   "id": "990",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/EWR-0527.jpg",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d914598a-0c15-4a54-bf7a-05a1c3e51e18",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4e076598-9884-4371-b355-1adf16cb4b1e"
+   ],
+   "name": "Forno Magico",
+   "description": "Curated and custom pizzas are fired in a 600+ degree oven, and an assortment of antipasti and salads accompany the pizza menu.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C120",
+   "mapUrl": "http://maps.newarkairport.com?poiId=990",
+   "__typename": "POICard"
+  },
+  {
+   "id": "993",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0be70efd-f01b-4428-8367-4c265f37960c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9c784c2f-fe52-4485-b090-31fc9bfb63f7",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f0d0cf0d-cb73-4d9f-9288-f153cdd5f2d2",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1365fb21-14e9-49fa-8e5c-d1a256450d58",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f5cd1781-455b-4e88-9aee-5cb0a2b315b7",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/35f3bc5b-147d-417f-8270-c0e1789e26b1"
+   ],
+   "name": "Garden State Diner",
+   "description": "Welcome to the Garden State Diner, located in New Jersey, the Diner Capital of the world.  We are a family run business that has been providing fresh home cooked meals to hungry travelers inside Newark Liberty International Airport for over 30 years.  Our goal is to provide you with delicious food, fast and friendly service and a magnificent dining experience right before you board your flight.  We would be happy to serve you as you pass through Newark Airport, happy travels!",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C107",
+   "mapUrl": "http://maps.newarkairport.com?poiId=993",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001296",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/438e6865-7c2b-4b1e-afe5-018be0a2bec2",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a1d3ea69-695e-4252-b596-27fc4fd6bf0d"
+   ],
+   "name": "Garden State Market",
+   "description": "Garden State Market, located post‑security in Terminal A, offers travelers a convenient stop for food and snacking essentials. Guests can choose from grab‑and‑go snacks, beverages, coffee, and travel necessities. Newly added personal pizzas and empanadas provide quick, satisfying meal options for travelers of all ages.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A22",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001296",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1029",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/24168779-fa9b-4669-bd25-4e5ab0249b98",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ae839544-e70c-453b-b08e-00c61b549f98"
+   ],
+   "name": "Global Bazaar",
+   "description": "Convenient food hall offering ready-made snacks and a selection of pre-packaged food items.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C132",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1029",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004453",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cc97e45c-88a3-4383-b79b-ab514b44b2cd"
+   ],
+   "name": "Global Bazaar",
+   "description": "Convenient food hall with ready-made bites, a salad bars, and other pre-packaged food items.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004453",
+   "__typename": "POICard"
+  },
+  {
+   "id": "612",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ac66adfd-2dfa-4315-803a-7c25a97217c4"
+   ],
+   "name": "Grab & Go",
+   "description": "Stop by for an assortment of pre-packaged sandwiches, salads, snacks and beverages.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B51",
+   "mapUrl": "http://maps.newarkairport.com?poiId=612",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004317",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6a54f832-e2de-4b67-8176-01c419a86e2a"
+   ],
+   "name": "Guy Fieri's Flavortown Kitchen + Bar",
+   "description": "Guy Fieri's Flavortown in Newark Liberty International Airport's Terminal A delivers bold, American comfort food inspired by the celebrity chef's signature style. Travelers can enjoy favorites like burgers, sandwiches, nachos, and hearty entrées, along with convenient grab‑and‑go options for meals on the move. A full‑service bar featuring cocktails, beer, and wine makes Flavortown a lively stop for dining or relaxing before or after a flight.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Restrooms",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004317",
+   "__typename": "POICard"
+  },
+  {
+   "id": "890",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f9caf30f-de1c-4741-adfb-4f2f36b99e48",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/032e6f12-e938-4d4b-af01-05a8bf79ad09",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/988ac28d-9836-4497-8162-9417380f1f85",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/629f9b7b-626b-4deb-8fae-2d76667a96ef",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/96360840-371a-4795-a795-fc60d5855657"
+   ],
+   "name": "Happy Clam",
+   "description": "An Italian-inspired clam bar that showcases seafood fried, steamed and cooked to perfection.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C107",
+   "mapUrl": "http://maps.newarkairport.com?poiId=890",
+   "__typename": "POICard"
+  },
+  {
+   "id": "888",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5c88f26d-c976-4fb9-942b-9f3ee961b484"
+   ],
+   "name": "Hot & Cold Salad Bar",
+   "description": "An assortment of open concept food choices. Including a plethora of hot and cold selections to your satisfaction.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C90",
+   "mapUrl": "http://maps.newarkairport.com?poiId=888",
+   "__typename": "POICard"
+  },
+  {
+   "id": "611",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dec9caa1-065d-4661-a3ea-073c4ec4626f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cc63bf94-478d-4bf9-9d87-8092d8a06732",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/71cb65e1-1220-4f32-8cc6-b7478c636513"
+   ],
+   "name": "House of Friends",
+   "description": "House of Friends and Casamigos began with friends and a simple idea: to create Tequila so smooth it could be enjoyed without salt or lime. What started as something created for by friends for friends, has grown into an award-winning brand, now loved around the world - still rooted in the same spirit of friendship and connection.  Enjoy your favorite Casamigos Tequila cocktail or one of our hand-crafted signature margaritas like the classic House of Friends or Touch of smoke with Mezcal and passion fruit.  If you're feeling hungry House of Friends has you covered with a full menu of delicious chef driven offerings. Just sit back and enjoy our House with your friends",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B51",
+   "mapUrl": "http://maps.newarkairport.com?poiId=611",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001383",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6e5088e9-2259-4aea-bcb3-1a1aa3eb379d"
+   ],
+   "name": "Hudson Nonstop",
+   "description": "Hudson Nonstop, powered by Amazon, in Terminal A offers a seamless, checkout‑free shopping experience. Travelers can quickly grab snacks, beverages, travel essentials, and everyday necessities and leave without waiting in line. Using advanced technology, purchases are automatically detected and charged, making Hudson Nonstop an efficient, contactless option for travelers looking for speed, convenience, and ease on the go.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Exit",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001383",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004268",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9b07415d-7ae8-4fbc-a366-c025aa1dd809"
+   ],
+   "name": "illy Coffee Kiosk",
+   "description": "Renowned around the world and recognized for the high quality and velvety taste of our coffee, a blend made of nine varieties of pure Arabica that delights millions of people every day at home, in the office, in hotels, restaurants and coffee shops. The company has built a world of experience, taste, science and art around the pleasure of the perfect cup of coffee.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Concourse to Gates B40-B49",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004268",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004399",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/953e6e37-d966-44e9-bec9-ab96a1f4a47d"
+   ],
+   "name": "illy Coffee Kiosk",
+   "description": "Renowned around the world and recognized for the high quality and velvety taste of our coffee, a blend made of nine varieties of pure Arabica that delights millions of people every day at home, in the office, in hotels, restaurants and coffee shops. The company has built a world of experience, taste, science and art around the pleasure of the perfect cup of coffee.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B51",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004399",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004405",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/39013e10-9115-4479-bfb7-0567df3cf740"
+   ],
+   "name": "illy Coffee Kiosk",
+   "description": "Renowned around the world and recognized for the high quality and velvety taste of our coffee, a blend made of nine varieties of pure Arabica that delights millions of people every day at home, in the office, in hotels, restaurants and coffee shops. The company has built a world of experience, taste, science and art around the pleasure of the perfect cup of coffee.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Concourse to Gates B50-57",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004405",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001348",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0eec1631-8280-4259-8a23-69db74568d61"
+   ],
+   "name": "Ink By Hudson",
+   "description": "Ink by Hudson in Terminal A offers travelers a curated mix of reading materials, stationery, gifts, records, vinyl, music, and travel essentials. Featuring a unique partnership with local New Jersey brand Dirty Soles, the store highlights creative, locally inspired apparel and accessories. Ink by Hudson blends convenience with a strong sense of place, making it a great stop for thoughtful souvenirs or last‑minute travel reading needs.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A8",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001348",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004180",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3cb6c955-f1a1-4557-ada8-078a72e2c34b"
+   ],
+   "name": "Jersey & Co. Gelato",
+   "description": "This Jersey City-based business leverages small-batch, handcrafted gelato features exotic, Asian-inspored flavors like Ube, Stracciatella, amaretto, mango and pistachio.  Bobba teas, espresso, coffee, cappuccino, and Asian beverages are also available.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A8",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004180",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4271",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bff6b1c2-7b8e-46d0-9720-d24874386baa",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3489f972-979f-47f0-bf67-e4fc6dc7b68f"
+   ],
+   "name": "Jersey by the Shore",
+   "description": "",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "B1 Food Hall",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4271",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004696",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/65aeb888-0e21-4d3f-9307-2fea2ddc0578"
+   ],
+   "name": "Jersey Mike's Subs",
+   "description": "Jersey Mike's in Terminal A serves its iconic East Coast-style subs made fresh to order. Travelers can enjoy hot and cold sandwiches prepared with sliced‑to‑order meats and cheeses, fresh‑baked bread, and classic toppings. The menu also includes breakfast sandwiches, wraps, chips, and beverages, offering a quick, hearty, and familiar option for a satisfying meal on the go.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Central Plaza",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004696",
+   "__typename": "POICard"
+  },
+  {
+   "id": "642",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d1825c2d-44e2-43f2-8cfa-5a6e574e0017"
+   ],
+   "name": "Jersey Reserve Coffee",
+   "description": "Espresso/coffee bar offering gourment hot and iced espresso and coffee-based beverages. Offers an assortment of pre-packaged foods including snacks, pastries and kosher sandwiches.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B66",
+   "mapUrl": "http://maps.newarkairport.com?poiId=642",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004360",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6f664888-b035-4047-911a-368c65e13cd9"
+   ],
+   "name": "Just Jersey",
+   "description": "Just Jersey in Terminal A brings local pride and Garden State style to travelers. Inspired by its popular sister store in Morristown, NJ, the shop offers a curated collection of New Jersey-themed apparel, gifts, souvenirs, locally made food products, and a new grab-and-go offering of food and beverage options. It's the perfect stop to celebrate regional culture or pick up a meaningful NJ‑inspired takeaway.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A7",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004360",
+   "__typename": "POICard"
+  },
+  {
+   "id": "996",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/285de3df-d59b-4fed-80c4-348167f9d5a0",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d745b77f-dc0e-4f71-9784-c690994f433a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e3eeb525-770e-480c-b598-b6b17cd0b303",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/26117629-49be-4f66-838e-739a9e19e730"
+   ],
+   "name": "Kaedama Ramen Bar",
+   "description": "Kaedama provides a taste of Tokyo and offers handmade traditional & fusion ramen noodles, small plates, soups and dumplings.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=996",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001297",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/acdd6ed3-5b86-4152-9e95-0bb23684af85",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2250b4c3-3da9-47e4-9b3a-1aa061fcaf62",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/90b640ad-9d59-4e35-a615-e008df97edab",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f2231d73-3f4c-417c-a5c5-9a3048c645e3"
+   ],
+   "name": "Kitchen Step",
+   "description": "KitchenStep in  Terminal A brings the local familiar flavors of its Jersey City restaurant to travelers. A beloved local favorite, KitchenStep is known for elevated comfort food made with fresh, seasonal ingredients. The EWR location earned the AXN Award for Best Casual Dining Concept for Large Airports, offering thoughtfully prepared entrées and convenient options that showcase New Jersey's vibrant culinary scene.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A22",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001297",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004347",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3727aab7-e569-492c-b1cc-2db8f97b739d"
+   ],
+   "name": "Liberty Market",
+   "description": "Liberty Market, located before Gates A33 in Newark Liberty International Airport's Terminal A, offers travelers fresh, healthy options for eating on the go. The market features a selection of fresh fruit, yogurt, smoothies, and wholesome snacks, along with bottled beverages. It's a convenient stop for travelers seeking lighter, better‑for‑you choices before boarding their flight.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Before A33",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004347",
+   "__typename": "POICard"
+  },
+  {
+   "id": "151",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c020b2b1-6944-4b0a-8688-0670bae499ae"
+   ],
+   "name": "Lick Candy",
+   "description": "Shop at Lick for all sorts of sweets and candy related toys.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=151",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000124",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e2cd1f66-3383-483f-bce6-47ae3fa6cb65"
+   ],
+   "name": "Lick!",
+   "description": "The ultimate candy store for kids and adults of all ages.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000124",
+   "__typename": "POICard"
+  },
+  {
+   "id": "931",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6337778d-a46a-4266-80ad-6fb49062d211",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5e55c28b-85d7-486f-ad5a-560abb60554d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a5af4a16-a01e-49c6-b47a-feaf89a521f1"
+   ],
+   "name": "Little Purse",
+   "description": "An Asian fusion restaurant that features the best flavors from Southeast Asia.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C103",
+   "mapUrl": "http://maps.newarkairport.com?poiId=931",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1010",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/61491fc3-cca2-4ec9-a64a-73d88055c9a5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/971c03d8-1ec1-49c9-a01e-aa25db75d5a3",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/810bc89a-7d5f-4a32-ae00-acde0bfb8d59"
+   ],
+   "name": "Little Purse",
+   "description": "An Asian fusion restaurant that features the best flavors from Southeast Asia.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C75",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1010",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4708",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/15d4f60d-59e1-4ffe-8220-d4094cd10f5b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/81669f4a-669f-44e6-ad89-6a41a6b28ff9",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e320574d-af15-425f-b71d-aac273eedad0",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c7e461d0-9b9e-496d-925d-0fe0e28d50ca",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dadf30c1-8d3e-4cac-9fab-ce75e9851c8c"
+   ],
+   "name": "Little Tony's Pizzeria",
+   "description": "Choose from a variety of New York style pizza by the slice or calzones at Little Tony's.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "B1 Concourse to Gates B40-B49",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4708",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4707",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1b093cd9-7ca0-4013-b1cb-f086d4d2e23f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/89b0bc10-f19e-4e3f-a654-a4e555ce6b37",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d0597f16-6358-4de4-b83c-96a1d85254d7"
+   ],
+   "name": "Malone's Fish Market",
+   "description": "Malone's serves seafood fresh from the wharf. Pair it with a craft beer or signature cocktail for a lovely meal.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "B1 Concourse to Gates B40-B49",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4707",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004183",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8e5dd62b-1422-4141-8d12-c8312f7b9fc3"
+   ],
+   "name": "Mediterranean Grill",
+   "description": "Mediterranean Grill in Newark Liberty International Airport's Terminal A offers travelers fresh, healthy dining inspired by classic Mediterranean flavors. The menu features grilled proteins, crisp salads, grain bowls, hummus, vegetables, and flavorful sauces made with wholesome ingredients. With lighter, nutritious options and bold seasoning, Mediterranean Grill is an ideal choice for travelers seeking balanced, satisfying meals while on the go.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Central Plaza",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004183",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1000",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f06db5ab-9faf-4a97-90a6-c420769b99dc",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3ff9376d-c261-42a6-9c52-de2c3c5a6aae",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c6750768-ba82-487e-b79c-c43df7dd62c2"
+   ],
+   "name": "Melange Bakery Cafe",
+   "description": "Mélange Bakery Cafe is a fully functional bakery developed with James Beard Award winning pastry chef & chocolatier Jacques Torres.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1000",
+   "__typename": "POICard"
+  },
+  {
+   "id": "999",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f24fe9e1-1fe4-48ab-84a6-5cc890709c54",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5f94f45b-7dd7-4e5b-ba94-f387b8fc9846",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/60a81435-8f2d-4254-97ed-d124d202f028"
+   ],
+   "name": "Melange Bakery Chocolaterie",
+   "description": "A 24-hour production bakery inside the airport that provides the freshest baked goods to traveler's terminal-wide.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=999",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001302",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/55ba666b-c0ae-49b3-9dc7-f075a21393f7"
+   ],
+   "name": "New Jersey Monthly",
+   "description": "New Jersey Monthly in Newark Liberty International Airport's Terminal A offers travelers a convenient blend of food, drink, and local flavor. Guests can pick up fresh grab‑and‑go sandwiches, beverages, and snacks, along with a curated selection of magazines and reading materials. Featuring New Jersey Monthly and regional content, it's an easy stop for fueling up and enjoying local stories before departure.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A15",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001302",
+   "__typename": "POICard"
+  },
+  {
+   "id": "614",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/19ef9ec6-5519-46be-be47-ecd4ec02134b"
+   ],
+   "name": "New Stand",
+   "description": "Retail concession provides pre-packaged refrigerated and snacks, bottled beverages travel essentials and electronics.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B57",
+   "mapUrl": "http://maps.newarkairport.com?poiId=614",
+   "__typename": "POICard"
+  },
+  {
+   "id": "50",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/01c1a7a9-8e6a-4ba8-a74f-d004cd7c38c2"
+   ],
+   "name": "Newark Duty Free Shops",
+   "description": "Duty Free for tobacco, liquor, fragrances, cosmetics, candy and more.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C120",
+   "mapUrl": "http://maps.newarkairport.com?poiId=50",
+   "__typename": "POICard"
+  },
+  {
+   "id": "102",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9a9b3b6d-2b66-48d7-aa9a-6b717ea98d32"
+   ],
+   "name": "Newark Duty Free Shops",
+   "description": "Duty Free for tobacco, liquor, fragrances, cosmetics, candy and more.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C107",
+   "mapUrl": "http://maps.newarkairport.com?poiId=102",
+   "__typename": "POICard"
+  },
+  {
+   "id": "162",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8d53f51d-f98a-4eca-a702-59810f4795fc"
+   ],
+   "name": "Newark Duty Free Shops",
+   "description": "Duty Free for tobacco, liquor, fragrances, cosmetics, candy and more.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C81",
+   "mapUrl": "http://maps.newarkairport.com?poiId=162",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004507",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e665977c-89ef-4a5e-9562-86959dc91107",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fa8325be-a15d-4b45-9576-6f0af740b52b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a26124c5-c7b2-472d-98b4-86a426ddb2d3"
+   ],
+   "name": "Nonna's Kitchen & Bar",
+   "description": "Nonna's menu offers an extraordinary variety of meatball-based platters and sandwiches using different meats, cheeses, toppings, and sauces.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "C130",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004507",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1045",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3f7c7503-aa3a-477b-971b-e578a1a54c46",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0867d577-fcc2-4036-bd74-aeeeb9353105",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/167f5c3e-d6cf-4456-98c6-fb091ebd64da",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/696dcdc1-e7b0-4602-b5a0-e80e573e83c8",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8e2a34fe-9dbe-4333-8f45-66c2a0eb873b",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/933267d6-6c01-4860-8ea7-9bc6bfdbd0ea"
+   ],
+   "name": "Notorious PIG",
+   "description": "Flip Flop Pancake Shop is a quick-serve restaurant serving fresh pancakes at the terminal from 5:00am through 10:30am. Notorious Pig is a taco shop that features an array of street-style tacos, built with house-made salsa and tortillas, in addition to a selection of sopes, tortas, and elotes.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C90",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1045",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1007",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/45fe45bb-7326-4fd9-b859-664aa2c3f4f4",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fd6d084e-4ebd-4b6f-83c0-8803278d8679",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/283e0408-c66b-4a7d-a2bf-1ecb6654818c"
+   ],
+   "name": "Novella",
+   "description": "This globally inspired concept features small plates in a lively atmosphere. The menu includes a diverse offering of small plates and light entrees that are locally focused and globally artistic with a definite Latin flair.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1007",
+   "__typename": "POICard"
+  },
+  {
+   "id": "907",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/84bdbb44-350c-45d8-9479-7378015e7ee8"
+   ],
+   "name": "OENO",
+   "description": "An immersive wine-and-dine experience that offers the most ambitious wine program, with 64 world-class wines from around the world offered by the glass and by the bottle.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=907",
+   "__typename": "POICard"
+  },
+  {
+   "id": "643",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/11704fa5-302b-4b3b-a748-dc3450829f50",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/743aeb0a-b75c-4300-a7c7-e204971bcab8"
+   ],
+   "name": "Piattino's Pizza and Bar",
+   "description": "Piattino's offers classic Italian fare and a full bar.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B68",
+   "mapUrl": "http://maps.newarkairport.com?poiId=643",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004186",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/03cceb01-cfa8-4b28-868b-33fe6d021e42"
+   ],
+   "name": "Playa Bowls",
+   "description": "Playa Bowls in  Terminal A brings its New Jersey‑based, fan‑favorite bowls to traveling guests. Known for fresh, vibrant flavors, Playa Bowls offers acai, pitaya, coconut, and green bowls topped with fruit, granola, and superfoods, along with smoothies and juices. Certified Kosher and made with high‑quality ingredients, it's a refreshing, feel‑good option for travelers seeking a wholesome bite on the go.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004186",
+   "__typename": "POICard"
+  },
+  {
+   "id": "26",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9fed85fd-0c41-4ff8-bf7e-0b0714bdf592",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8b1130a1-8fe1-492a-8653-c228df92da3a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8d2ef74f-524b-4006-ab9f-1c042d8ad6b1",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/08ec4f9e-abf2-4863-85d3-7db21f57fcbd",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/69218fe2-1702-492a-ae05-5a326cd9b397",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2a12b51a-7347-4dae-b262-641cbbeb8a00"
+   ],
+   "name": "Poppy's Bagels/Wabi Sabi",
+   "description": "Poppy's Bagels offers travelers authentic New York-style bagels from 5:00am through 10:30am.  Inspired by the oldest dim sum parlor in New York City, Nom Wah Tea Parlor, Wabi-Sabi is open from 10:30am through last flight and features dim sum favorites including a variety of dumplings and noodle dishes.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=26",
+   "__typename": "POICard"
+  },
+  {
+   "id": "891",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/40d32480-e6a6-4521-bb3e-d8797c52825e"
+   ],
+   "name": "Proof Whiskey Bar",
+   "description": "An upscale whiskey lounge with a well curated selection of spirits from the world's top distillers, delivered by knowledgeable and friendly bartenders. The tavern-inspired menu complements the more than 150 variations of whiskey oﬀered.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C101",
+   "mapUrl": "http://maps.newarkairport.com?poiId=891",
+   "__typename": "POICard"
+  },
+  {
+   "id": "986",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2a3875ce-f738-45aa-9f84-f544b7f88800"
+   ],
+   "name": "Red Mango",
+   "description": "Red Mango / Fresh Market offers all-natural frozen yogurts, fresh fruit smoothies, acai bowls, freshly made wraps and salads, grab-and-go snack boxes, and sides.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C83",
+   "mapUrl": "http://maps.newarkairport.com?poiId=986",
+   "__typename": "POICard"
+  },
+  {
+   "id": "913",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/EWR-0445.jpg",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/da2e7613-25d9-47c6-831e-1b3b92f6e43a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/26b468ae-23b0-4974-b728-a656ae5b747e"
+   ],
+   "name": "Riviera",
+   "description": "Global fusion bistro and breakfast. Riviera's French-inspired menu was created under the culinary direction of Butter's Alex Guarnaschelli. Featuring light bistro fare and French entrees made from locally sourced premium ingredients, Riviera also offers robust wine, spirit and beer programs, Parisian-inspired ambiance.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=913",
+   "__typename": "POICard"
+  },
+  {
+   "id": "47",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a10455fa-27de-4a95-8d86-a30c76c3f468",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/42dd5277-3c48-44ae-ab44-961ce0cd2600",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8a8d6c56-35d2-439a-9a89-0ddf991be4aa"
+   ],
+   "name": "Saison",
+   "description": "Saison serves traditional bistro fare from breakfast through late-night supper.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C120",
+   "mapUrl": "http://maps.newarkairport.com?poiId=47",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001360",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5103ea9a-d2d1-4992-8361-6d5650da1f04"
+   ],
+   "name": "Shake Shack",
+   "description": "Shake Shack in Terminal A serves its signature elevated comfort food with standout hospitality. Guests can enjoy made‑to‑order burgers, chicken sandwiches, crinkle‑cut fries, and creamy custard shakes, along with select beer and wine options. Known for amazing customer service, this location delivers a consistently welcoming experience, making it a favorite stop for travelers seeking quality food and friendly service.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A6",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001360",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001327",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/aa667ac4-31a1-48f8-8ac3-49ca7bdc301c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e9d0db8a-e2a6-4138-9090-094d0f4b609e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0befad87-b473-4bb9-9cbb-19595ec28b16",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ef5d55da-f714-45f8-a41d-4ed7c0114e7e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/52843d0c-38be-422c-8458-a101c3326e71"
+   ],
+   "name": "Shore Points Market",
+   "description": "Shore Points Market in Newark Liberty International Airport's Terminal A is centrally located in the Central Concourse beneath a striking 40‑foot‑tall mural by artists WERC and Gera. Shore Points offers a convenient mix of food, gifts, and travel essentials, including New Jersey and New York souvenirs, Jersey-made food products, books, and reading materials. Travelers can also enjoy grab‑and‑go sandwiches and beverages, making it an ideal stop before departure.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A9",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001327",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001355",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/00ffd537-54ac-4f84-b847-62f84747971a"
+   ],
+   "name": "Smokehouse BBQ",
+   "description": "Smoke House BBQ brings the bold, smoky flavors of a famous New Jersey barbecue joint to Terminal A. Travelers can enjoy slow‑smoked meats, classic barbecue sides, and signature sauces in a full‑service dining setting with a welcoming bar offering beer and cocktails. Convenient grab‑and‑go options are also available, making it easy to enjoy authentic barbecue whether dining in or on the move.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A27",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001355",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004185",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b719d015-9692-4bf0-9ce8-23af09891c73"
+   ],
+   "name": "Sora Sushi Bar",
+   "description": "Sora Sushi offers travelers a fresh, flavorful Japanese dining experience with both sit‑down and grab‑and‑go options. The menu features expertly prepared sushi rolls, sashimi, nigiri, and bento‑style selections made with high‑quality ingredients. Guests can enjoy a relaxed meal at the counter or quickly pick up convenient sushi packs, making Sora Sushi an ideal choice for both leisurely dining and meals on the move.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Food Court north",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004185",
+   "__typename": "POICard"
+  },
+  {
+   "id": "67",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/54b90ea6-284a-444c-9346-2a538cc1c9bf"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high-quality coffee from around the world, Handcrafted drinks passionately made just for you, premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C120",
+   "mapUrl": "http://maps.newarkairport.com?poiId=67",
+   "__typename": "POICard"
+  },
+  {
+   "id": "984",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/EWR-0484.jpg"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high-quality coffee from around the world, Handcrafted drinks passionately made just for you, premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C94",
+   "mapUrl": "http://maps.newarkairport.com?poiId=984",
+   "__typename": "POICard"
+  },
+  {
+   "id": "985",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f63a76e3-4990-4cc2-9c4c-0618d1fcc57e"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high-quality coffee from around the world, Handcrafted drinks passionately made just for you, premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C84",
+   "mapUrl": "http://maps.newarkairport.com?poiId=985",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1026",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/94d86e6b-0f4a-4617-91e6-123d28532fc5"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high quality coffee from around the world, Handcrafted drinks passionately made just for you,  premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B40",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1026",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001371",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9ed818b0-5bee-4e00-ac34-a7bc4c227f03"
+   ],
+   "name": "Starbucks",
+   "description": "Starbucks in Terminal A offers travelers the brand's full menu of handcrafted coffee and espresso beverages, teas, and seasonal favorites. Guests can choose to sit down and relax or grab‑and‑go with fresh pastries, breakfast sandwiches, and snacks. Recognized as the number one Starbucks store in the country, this award‑winning location is known for exceptional quality, speed, and customer experience.",
+   "category": "eat.coffee",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A28",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001371",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004543",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/63499d52-586e-4a26-b520-24376b0ecc5a"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high-quality coffee from around the world, Handcrafted drinks passionately made just for you, premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C132",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004543",
+   "__typename": "POICard"
+  },
+  {
+   "id": "870",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f8e2914a-35b5-42ee-898a-62f6ccdd03ae",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fda57c39-5198-41d8-b1d5-088cef15811a",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/65d5fd95-79e9-4d42-8e60-1b098c3dea02"
+   ],
+   "name": "Stella Artois - Bar & Lounge",
+   "description": "The Stella Artois Bar & lounge celebrates a proud and rich Belgian heritage.  Stella Artois traces its origins to over 600 years ago, to the Den Hoorn brewery in Leuven, Belgium founded in 1366. Stella Artois was born as a Holiday gift to the people of Leuven from the brewery. The name \"Stella\" - meaning \"star\" in Latin - pays homage to the occasion, and a star has been proudly displayed on Stella Artois bottles ever since.  Enjoy a cold pint of Stella Artois or your favorite cocktail paired along with a delicious dish from our classic pub-style menu.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B51",
+   "mapUrl": "http://maps.newarkairport.com?poiId=870",
+   "__typename": "POICard"
+  },
+  {
+   "id": "645",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9ddfefc1-2dc9-4573-8204-7eec8d184ac9",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d21eb589-6b22-4793-b12c-5f0ad38c70ed"
+   ],
+   "name": "StrEat Market",
+   "description": "StrEat offers a variety of grab and go food and a full service bar.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=645",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1047",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/49eb8a66-35fb-41a6-9a00-1628c46774fa",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ab0f2dcd-01c8-4ef2-a31c-65386297ad7e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3c059921-d498-493e-8269-3ef6e6da2630",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b676dcb9-7612-441a-abdd-00dd3da233fc",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1806d25b-a814-4d4c-8898-08cf37ba54a3",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5c4d2745-8443-45c8-a588-0ad2d2740a93"
+   ],
+   "name": "Supreme Bowl/Philly Cheesesteaks",
+   "description": "Supreme Bowl: Yogurt breakfast bowls start with rich creamy yogurt, topped with fresh fruits, nuts, granola and superfoods for a perfect start to the day.  OTG freshly prepares sustainably and locally sourced ingredients for a lighter breakfast alternative that is still nutritionally packed for any journey, long or short. \t\nServing from 10:30 a.m. until 11:00 p.m., stop by Philly Cheesesteak for your quick stop for an authentic Philly-style cheesesteak before your travels.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1047",
+   "__typename": "POICard"
+  },
+  {
+   "id": "889",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f3c91fc2-a9ab-49ce-95b6-157a8c930ead",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c0207ef5-1905-485c-a230-86dd64eccf74",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/05747a39-39d0-41fb-9686-c16d2a72ec47",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/be7fa1df-245f-4709-b473-eaf6cf24bce6",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ac2cf575-414f-4310-96f3-1394da222a41"
+   ],
+   "name": "SURF Bar",
+   "description": "This oasis offers the best of Jersey Shore fish shacks, elevated to a new level. With a selection of fresh fish and sandwiches, guests can enjoy a fresh bite from the oasis or holdroom.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C81",
+   "mapUrl": "http://maps.newarkairport.com?poiId=889",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001318",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/39e0887e-60ef-4afa-b927-ece8a0387fdb"
+   ],
+   "name": "Telegraph 1st Edition",
+   "description": "Telegraph 1st Edition in Terminal A offers travelers a convenient stop for news, snacks, and daily essentials. The shop gives a nod to New Jersey as the home of the \"telegraph\" and features a wide selection of reading materials, snacks, souvenirs, and grab‑and‑go food and beverages. Travelers can also find travel necessities and last‑minute items, making it an easy, efficient stop to refuel, stay informed, and prepare for the journey ahead.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A11",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001318",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001352",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b2c34086-32b4-4901-bd0b-df895e3f60e3"
+   ],
+   "name": "The Atrium",
+   "description": "The Atrium is EWR Terminal A's duty-free shop featuring designer perfumes, colognes, alcohol, tobacco, candy, and other gift ideas.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A27",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001352",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001381",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/def1b546-0cb7-4b69-a175-41e6aece159b"
+   ],
+   "name": "The Atrium",
+   "description": "The Atrium Kiosk is a smaller duty-free shop featuring alcohol, tabacco, grab and go sandwiches, candy and snacks, beverages, travel supplies and electronics, personal hygiene products, and reading materials.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A3",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001381",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1040",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5cce79a1-9690-48fb-b175-3ba76a7f2dfc",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1b36eb8f-26b1-4d93-8e9e-ef3779ad9286",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6d95a4d4-5db9-42c2-8b27-cb1698b43ca8"
+   ],
+   "name": "The Deli",
+   "description": "This quick serve offers made-to-order sandwiches, wraps and salads using Boar's Head meats and cheese.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C133",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1040",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004702",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c0eac738-5577-4c2b-aafa-2d22f7cf9968"
+   ],
+   "name": "The Market",
+   "description": "The Market in Terminal A offers travelers a convenient stop for everyday essentials and quick bites. Guests can find a wide selection of snacks, beverages, grab‑and‑go meals, travel necessities, reading materials, and last‑minute items. Designed for speed and ease, The Market makes it simple to pick up refreshments or essentials while moving through the terminal.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A7",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004702",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004719",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fa7527e5-9135-4f5a-9857-6a32f0417c04"
+   ],
+   "name": "The Market",
+   "description": "The Market in Terminal A offers travelers a convenient stop for everyday quick bites. Guests can find a wide selection of snacks, beverages, and hot grab‑and‑go items including pizza by the slice. The Market makes it simple to pick up refreshments or essentials while moving through the terminal.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A7",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004719",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004720",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5b092774-a9cd-427a-863e-6cf0e40a81c9"
+   ],
+   "name": "The Market",
+   "description": "The Market in Terminal A offers travelers a convenient stop for everyday quick bites. Guests can find a wide selection of snacks, beverages, and hot grab‑and‑go items including pizza by the slice. The Market makes it simple to pick up refreshments or essentials while moving through the terminal.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A28",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004720",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000115",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/56b832f9-63d6-4925-a865-23890ae02221"
+   ],
+   "name": "The New Stand",
+   "description": "Retail concession provides pre-packaged refrigerated and ambiant snacks, bottled beverages travel essentials and electronics.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000115",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001369",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cb81bfe4-ad89-4251-a688-807b407fb922"
+   ],
+   "name": "The Office Tavern Grill",
+   "description": "The Office Tavern Grill in Terminal A offers travelers a welcoming place to relax and enjoy classic American fare. Known as the winner of the Best Margarita in Terminal A, the menu is complemented by a full bar featuring over 20 beers on tap, along with wine and cocktails and wine. With hearty dishes and a lively atmosphere, it's an ideal spot for dining or unwinding before a flight.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A7",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001369",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004645",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/bcc89c9c-409f-4801-babe-3b4bd424f65f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a19d1ebc-ada8-4a2b-bb76-d217f5089fa7",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/26c4081c-aa01-4e6d-bff7-00ed73291e0f"
+   ],
+   "name": "The Panini Shop",
+   "description": "Serves hot-pressed sandwiches, fresh bakery treats, and handcrafted coffee for a satisfying meal any time of day.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate 75",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004645",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004698",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0bfc2f46-1a58-4a82-95a6-a4db54b8fa42"
+   ],
+   "name": "Town Bar + Kitchen",
+   "description": "TOWN Bar + Kitchen in Terminal A brings the elevated dining style of its original Morristown location to travelers. Featuring a full bar, TVs for sports viewing, and a refined yet inviting atmosphere, TOWN offers a standout airport experience. The menu includes upscale comfort fare and a new taqueria selection, delivering bold flavors and a relaxed place to dine, drink, and unwind before departure or upon arrival.",
+   "category": "eat.bar",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A 6",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004698",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1006",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6fb441dd-d47a-4b0c-89c5-47b2ec85ea51"
+   ],
+   "name": "Tsukiji Fishroom",
+   "description": "Tsukiji Fishroom boasts some of the finest sushi available in the New York / New Jersey area. Focused on fresh, sourcing and quality exceed anything seen before in the airport space.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1006",
+   "__typename": "POICard"
+  },
+  {
+   "id": "991",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2427eaa1-f86c-41e3-b096-8c4929726be4",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e93a178a-cf8a-4fa1-b395-b30ac004f5bb",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/691ff1ac-ece2-496b-a781-140e28fe0919"
+   ],
+   "name": "Vanguard Kitchen",
+   "description": "Vanguard Kitchen is a prominent restaurant featuring contemporary American cuisine. Its menu focuses on fresh, seasonal fare that is simply prepared to enhance the ingredients' natural flavors.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C101",
+   "mapUrl": "http://maps.newarkairport.com?poiId=991",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4806",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/97eb9ea3-9604-465a-8070-c19d06cd630c"
+   ],
+   "name": "Vanguard Market",
+   "description": "A longside neighboring restaurant concept Vanguard Kitchen, Vanguard Market features specialty goods and exclusive curated offerings.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C101",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4806",
+   "__typename": "POICard"
+  },
+  {
+   "id": "161",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a5d4b5da-d40c-41f9-a66c-cd1c2e010d45",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/571769a6-a3e6-4299-b7c8-2faa44c26e58",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8073f546-8b16-4b56-9245-3c7d54c60c25"
+   ],
+   "name": "Vesper Tavern",
+   "description": "This gastropub-style tavern menu features great tasting, straightforward food, with menu highlights including Herb-Roasted Chicken, Fish and Chips and a juicy burger.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C82",
+   "mapUrl": "http://maps.newarkairport.com?poiId=161",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004533",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d4595825-75c5-407c-80bd-d756a5a0d7e3",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/05d2db6a-da09-4b3a-ae99-e5bfe89009a5",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d9e0e83b-7830-4a50-83f1-4b2f0e03f489"
+   ],
+   "name": "Victory Grille",
+   "description": "Newark Airport's top entertainment spot features a massive LED screen wall for an unparalleled live sports experience alongside crafted cocktails and modern American tavern fare.",
+   "category": "eat.bar",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C132",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004533",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000125",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a3902767-fc0d-4e46-b199-0a7da279b17e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/75d3e626-8abf-44f1-b124-761af5453cfd"
+   ],
+   "name": "Vino Volo",
+   "description": "Vino Volo offers various small plates and wines. They also sell bottles to go.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B60",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000125",
+   "__typename": "POICard"
+  },
+  {
+   "id": "593",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/Voyage-EWR-B.jpg"
+   ],
+   "name": "Voyage",
+   "description": "Soon to be your favorite souvenir shop, including t-shirts, sweaters, keychains, water bottles and more.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B40",
+   "mapUrl": "http://maps.newarkairport.com?poiId=593",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004290",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2f7efd36-af6a-4584-96d0-1294ab2ebc9b"
+   ],
+   "name": "W.B. Law Coffee Company",
+   "description": "WB Law Coffee Company in Terminal A marks the first retail location for the iconic local coffee brand. Travelers can enjoy expertly crafted coffee beverages made from carefully sourced and roasted beans, along with espresso drinks and grab‑and‑go offerings. Rooted in local culture and quality craftsmanship, WB Law brings an authentic New Jersey coffee experience to the airport environment.",
+   "category": "eat.coffee",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A30",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004290",
+   "__typename": "POICard"
+  },
+  {
+   "id": "894",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/56bbd2a3-0a24-4fc5-af47-8353bb2b6b73",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/49eaee6f-c2b1-4d85-b3b3-1e3a45022e3d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8869ed7e-e752-4c4a-b146-2bc90ca3d06c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ac1e90d3-7eed-4593-9afb-a676b0ab691e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6313165f-e65a-44bc-9f5e-94d5e35354cf"
+   ],
+   "name": "Wanderlust Burger Bar",
+   "description": "A burger lover's oasis, this burger bar features the famed 'Wander Burger' along with a selection of creative and seasonally inspired burgers and classic American fare.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C92",
+   "mapUrl": "http://maps.newarkairport.com?poiId=894",
+   "__typename": "POICard"
+  },
+  {
+   "id": "995",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/EWR-0520.jpg"
+   ],
+   "name": "Wendy's",
+   "description": "At Wendy's quality is our recipe. We serve fresh never frozen beef. Open for breakfast, lunch and dinner! Come see us at gate 112.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Gate C112",
+   "mapUrl": "http://maps.newarkairport.com?poiId=995",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001361",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e9aac1fd-fde1-4136-9d14-03d22943384d"
+   ],
+   "name": "WH Smith + Wellness",
+   "description": "WH Smith offers a variety of travel essential needs, fresh grab and go food and beverage options, snacks, electronics, apparel, books and more.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A6",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001361",
+   "__typename": "POICard"
+  },
+  {
+   "id": "24",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0a239686-b69b-4bee-9ecd-9528ab5087d3"
+   ],
+   "name": "World Bean",
+   "description": "World Bean provides airport guests an elevated, eco-friendly, and well-curated coffee experience.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C130",
+   "mapUrl": "http://maps.newarkairport.com?poiId=24",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1013",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ffe9611d-50b5-4df8-801b-c82fbc32c322",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0977af62-c2a6-4bc2-91d8-06b9fcd0be5b"
+   ],
+   "name": "World Bean",
+   "description": "World Bean provides airport guests an elevated, eco-friendly, and well-curated coffee experience.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Food Court C74",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1013",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001349",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/15f71725-7206-496e-b142-61ca288489f2"
+   ],
+   "name": "Zaro's Family Bakery",
+   "description": "Zaro's Family Bakery in Terminal A, centrally located in the Central Concourse, brings generations of artisan baking to travelers. Known for its fresh‑baked breads, pastries, bagels, and traditional Mediterranean treats like baklava and pita, Zaro's also offers sandwiches, coffee, and grab‑and‑go options. It's a delicious stop for comforting, handcrafted bakery favorites made with family tradition and quality.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Concourse",
+   "nearbyLandmark": "Gate A8",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001349",
+   "__typename": "POICard"
+  }
+ ],
+ "Before Security": [
+  {
+   "id": "690",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6e4b0a0e-a309-4bdc-97b0-d13519742df0",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a1115487-9ca3-4790-9eb9-ee363dd22030",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b58ce3ab-6347-40cf-96e0-6b27f55d2d71",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/33e19702-cb69-490b-8931-2d98e181fb67",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dfc5cbe5-5786-4484-82f8-8b9c4d977a99"
+   ],
+   "name": "3Sixty Duty Free & More",
+   "description": "As the duty and tax-free and specialty shop experts, providing a unique customer experience that includes 10-50% savings on some of the finest in luxury brand names. Sales at retail for liquor, tobacco products, cosmetics, fragrances, luxury gifts and high quality accessories, and confections.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Security Checkpoint",
+   "mapUrl": "http://maps.newarkairport.com?poiId=690",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004743",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/80ac288f-c378-46af-a4a5-78134665b60c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e8f27414-cf65-4866-b905-f5c07bdae8af",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/00132f8c-2592-460c-8fea-57967e5757ef"
+   ],
+   "name": "3Sixty Duty Free & More",
+   "description": "As the duty and tax-free and specialty shop experts, providing a unique customer experience that includes 10-50% savings on some of the finest in luxury brand names. Sales at retail for liquor, tobacco products, cosmetics, fragrances, luxury gifts and high quality accessories, and confections.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Gate B51",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004743",
+   "__typename": "POICard"
+  },
+  {
+   "id": "3311",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f658158c-41de-426b-b266-39874d84827d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ca993685-ea46-485f-96be-4ceea2a78c65"
+   ],
+   "name": "Budweiser Brew House",
+   "description": "Offers a wide selection of beers and pub-style food. With a casual and welcoming atmosphere, it provides a space for patrons to enjoy a relaxed dining and drinking experience",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food & Shops",
+   "mapUrl": "http://maps.newarkairport.com?poiId=3311",
+   "__typename": "POICard"
+  },
+  {
+   "id": "193",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/59c2d67e-ec39-44d6-8a67-760576f32ea6"
+   ],
+   "name": "CIBO Express Gourmet Market",
+   "description": "CIBO Express is the ultimate grab & go offering sweet and savory snacks as well as an array of healthy options.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=193",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4889",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ad854449-11f8-4963-ab8a-2e2522eff05b"
+   ],
+   "name": "Discover New Jersey",
+   "description": "A one stop shop for drinks, snacks, travel essentials and New Jersey swag.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Headhouse South",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4889",
+   "__typename": "POICard"
+  },
+  {
+   "id": "299",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6634226f-a7a6-45c8-b451-e38f7aa8223c"
+   ],
+   "name": "Dunkin'",
+   "description": "Make and serve the freshest, most delicious coffee and donuts quickly and courteously in modern, well-merchandised stores",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=299",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001277",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c25ec6a7-f07f-4010-b386-53e79ebc9f29"
+   ],
+   "name": "Dunkin'",
+   "description": "Dunkin' in the Arrivals Hall of Newark Liberty International Airport's Terminal A at baggage carousel 3 offers travelers familiar favorites any time of day, 24 hours a day. Guests can enjoy freshly brewed coffee, espresso beverages, donuts, bagels, breakfast sandwiches, and convenient grab‑and‑go snacks. It's an ideal stop for arriving passengers, early departures, and anyone seeking reliable comfort and quick refreshment.",
+   "category": "eat.coffee",
+   "structureName": "Terminal A",
+   "floorName": "Arrivals",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001277",
+   "__typename": "POICard"
+  },
+  {
+   "id": "805",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/dunk-baggager-EWR-B-landside.jpg"
+   ],
+   "name": "Dunkin' Express",
+   "description": "Dunkin' Donuts is an American favorite, featuring bakery, deli, and breakfast items.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=805",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000135",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/413f54a7-ede8-4409-a2ae-01d15088f158"
+   ],
+   "name": "Dunkin' Express",
+   "description": "Limited kiosk offering hot and cold beverages, donuts and sweets.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Check-In",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000135",
+   "__typename": "POICard"
+  },
+  {
+   "id": "3300",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3b61d96a-8295-4faf-b3fe-1898a280a111"
+   ],
+   "name": "Farmer's Fridge Vending Machine",
+   "description": "Farmer's Fridge vending machines offer fresh chef-crafted salads, breakfast, sandwiches, and bowls, delivered daily.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Food & Shops",
+   "mapUrl": "http://maps.newarkairport.com?poiId=3300",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004387",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e55b34f8-dff8-407f-afd3-3601e28376ec"
+   ],
+   "name": "Garden State Market",
+   "description": "Garden State Market, located pre‑security on the Departures Level in Terminal A, offers a convenient one‑stop destination for travelers and visitors. The market features grab‑and‑go meals, snacks, beverages, coffee,  and local New Jersey favorites. Guests can also enjoy newly added personal pizzas and empanadas, perfect for a quick, satisfying bite before heading through security.",
+   "category": "eat",
+   "structureName": "Terminal A",
+   "floorName": "Departures",
+   "nearbyLandmark": "Near Air Canada check-in",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004387",
+   "__typename": "POICard"
+  },
+  {
+   "id": "781",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cccfb981-5414-4169-9dba-bc9337abda99"
+   ],
+   "name": "Jersey Reserve Coffee",
+   "description": "Jersey Reserve Coffee offers bakery items and specialty coffee.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Arrivals",
+   "mapUrl": "http://maps.newarkairport.com?poiId=781",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1016",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7642e2d7-6ff4-4625-84c4-e1e787d0a413",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4a48bae9-1e9a-4f60-95b0-d4f1b8790a6a"
+   ],
+   "name": "Liberty Eatery",
+   "description": "Comfortable diner serving burgers, fries and shakes.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "B3 security",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1016",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004522",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e778c251-163f-479e-bf5b-d096bb3e9d0b"
+   ],
+   "name": "Licorice Vending Machine",
+   "description": "If you are Licorice-obsessed like we are, check out our variety of gourmet licorice candies.",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Near Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004522",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004547",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8ca12a6f-1d91-48c8-a1b0-07d5851b2305"
+   ],
+   "name": "New Jersey Monthly",
+   "description": "New Jersey Monthly in the Arrivals Hall at baggage claim carousel 5 offers a convenient stop for arriving passengers and visitors. Guests can enjoy fresh grab‑and‑go sandwiches, beverages, and snacks, along with a selection of New Jersey-themed souvenirs and gifts. Featuring reading materials and local favorites, it's an easy way to refuel or take home a taste of the Garden State.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Arrivals",
+   "nearbyLandmark": "Carousel 5",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004547",
+   "__typename": "POICard"
+  },
+  {
+   "id": "3304",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ec8eb96c-f554-4006-aaa5-3f8c159595e3"
+   ],
+   "name": "New Stand",
+   "description": "Retail concession provides pre-packaged refrigerated and ambient snacks, bottled beverages travel essentials and electronics.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Food & Shops",
+   "mapUrl": "http://maps.newarkairport.com?poiId=3304",
+   "__typename": "POICard"
+  },
+  {
+   "id": "669",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9adc65e6-bd2e-472d-8a62-d09d20368424"
+   ],
+   "name": "Panda Express",
+   "description": "Fast-food chain for Chinese standards, including some health-conscious options.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=669",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004499",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2c61c3e2-7c17-4d77-aa9d-808a62f240a2",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8c598064-b1cf-4770-9f07-71be8806027e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cc13b79a-34b5-48ac-9efe-726af89bd093"
+   ],
+   "name": "Poppy's Bagels / Uptop Pizzeria",
+   "description": "Poppy's Bagels offers travelers authentic New York-style bagels from 5:00am through 10:30am. Uptop Pizzeria offers a quick serve concept offering build-your-own personal pie options with a variety of toppings, served until 10:00pm.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004499",
+   "__typename": "POICard"
+  },
+  {
+   "id": "668",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3ce8ab5b-13d9-4252-bc61-4d99a84b58d4"
+   ],
+   "name": "Salsaritas",
+   "description": "Specialty Mexican dishes and offerings including tacos, burritos, chips, and rice bowls.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=668",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4004675",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/310497e0-7191-4b67-ac3b-ed4cae9e2aad"
+   ],
+   "name": "ShopAll Fans",
+   "description": "",
+   "category": "eat.vending",
+   "structureName": "Terminal B",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4004675",
+   "__typename": "POICard"
+  },
+  {
+   "id": "670",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/cc54a0ed-d62f-4ef6-a711-86c3a881fc85",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9cad863b-f22b-4125-a2b9-c8bf1d0bdc46",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9abad3ce-bdf0-455e-8127-6c0c8830cf21",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ac4596ed-b3f6-4c69-b986-313274ff753f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5c7f66bb-22cd-4be7-8b24-5956cd72f98c"
+   ],
+   "name": "Smashburger",
+   "description": "Variety of smashed burgers, fries and sides. Including breakfast options.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=670",
+   "__typename": "POICard"
+  },
+  {
+   "id": "222",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/31af18e7-d36c-44a7-839c-7cc08c6a45ff"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high quality coffee from around the world, Handcrafted drinks passionately made just for you,  premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Level 1",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=222",
+   "__typename": "POICard"
+  },
+  {
+   "id": "676",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c06da9f3-29af-48f1-8e65-ded674fb9a9d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a266408d-0645-4b98-aa68-69343ac26ade"
+   ],
+   "name": "Starbucks",
+   "description": "Starbucks is an internationally known coffee shop offering drinks, snacks, and to-go items.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=676",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1035",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3e4b8984-c874-4787-94c1-ac1f0c5b3f27"
+   ],
+   "name": "Starbucks",
+   "description": "Ethically sourced high-quality coffee from around the world, Handcrafted drinks passionately made just for you, premium teas and delectable food and pastry treats to enjoy while you travel.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Economy Check-In",
+   "mapUrl": "http://maps.newarkairport.com?poiId=1035",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000136",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2e02f0da-5bee-4c29-bc70-df90112b28cf"
+   ],
+   "name": "The New Stand",
+   "description": "Retail concession provides pre-packaged refrigerated and ambiant snacks, bottled beverages travel essentials and electronics.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Level 2",
+   "nearbyLandmark": "Check-In",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4000136",
+   "__typename": "POICard"
+  },
+  {
+   "id": "3297",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/e085524e-a212-448b-ba80-ee76c4f5fa02",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5b4978f1-00c0-4454-ad1c-fdf076c3cc40"
+   ],
+   "name": "Tony and Benny's Pizza Parlor",
+   "description": "Italian origin cuisine offering salads, pizzas, pastas, calzones, strombolis and meat and vegetable entrees.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=3297",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001282",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7989d76a-c925-4830-8714-491754ddafaa"
+   ],
+   "name": "VUE New Jersey",
+   "description": "VUE, located in the Arrivals Hall near Baggage Carousel 2 of Terminal A, is inspired by New Jersey's iconic lifestyle magazine. The shop offers a curated mix of grab‑and‑go food, beverages, reading materials, and locally inspired gifts and souvenirs. Designed for arriving passengers, VUE provides a stylish, convenient way to refuel and explore the culture, people, and places that define New Jersey while waiting for a bag or a ride.",
+   "category": "shop",
+   "structureName": "Terminal A",
+   "floorName": "Arrivals",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.newarkairport.com?poiId=4001282",
+   "__typename": "POICard"
+  },
+  {
+   "id": "3289",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/63eade87-4926-4be2-a660-d8510bc71554",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/20e2179d-ae16-45f2-811f-a2c2f8a1c646",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0a746135-2ad9-47a7-9525-9ffdc5f0f2ab"
+   ],
+   "name": "Zaro's Family Bakery",
+   "description": "Welcome to Zaro's, we continue to handmake old world recipes that have defined our family and business for four generations.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Departures Level",
+   "nearbyLandmark": "Pre-Security Food Court",
+   "mapUrl": "http://maps.newarkairport.com?poiId=3289",
+   "__typename": "POICard"
+  }
+ ]
+}

@@ -1,4 +1,9 @@
-"""New York JFK.
+"""The Port Authority of New York and New Jersey -- JFK, EWR and LGA.
+
+ONE PLATFORM, THREE AIRPORTS. All three run the same site: the same
+/api/graphql, the same "Area in Terminal" filter, the same POI shape. Only the
+host, the terminal names and the list of things that are not terminals differ,
+so all three come from this file and the manifest carries the differences.
 
 THE SECURITY ZONE IS A QUESTION, NOT A FIELD, and that is what makes this
 airport workable. A POI carries:
@@ -35,20 +40,35 @@ import re
 
 from schema import Dining
 
-AIRPORT = "JFK"
-PAGE_URL = "https://www.jfkairport.com/dine-shop-relax/food"
-SOURCE_URL = "https://www.jfkairport.com/api/graphql"
+# Per-airport values live in the manifest. Defaults are JFK's, so a missing
+# entry fails loudly on the terminal check rather than quietly scraping Queens.
+DEFAULT_PAGE = "https://www.jfkairport.com/dine-shop-relax/food"
+
+
+def _cfg(entry):
+    entry = entry or {}
+    page = entry.get("page_url") or DEFAULT_PAGE
+    host = page.split("/")[2]
+    return {
+        "code": entry.get("code", "JFK"),
+        "page": page,
+        "graphql": "https://%s/api/graphql" % host,
+        # WHAT IS NOT A TERMINAL, PER AIRPORT AND MEASURED. JFK's location list
+        # names eight places and three are not terminals -- Jamaica Station
+        # (AirTrain), Federal Circle Station and the TWA Hotel. EWR's is
+        # ["Terminal A","Terminal B","Terminal C"] and LGA's is ["Terminal B",
+        # "Terminal C"]: nothing to exclude at either, checked rather than
+        # assumed. The manifest may override; the default is JFK's.
+        "non_terminal": {s.lower() for s in (entry.get("non_terminal") or [
+            "jamaica station (airtrain)", "federal circle station", "twa hotel",
+            "airtrain", "long term parking",
+        ])},
+    }
 
 # JFK's own words for the two zones, and what they mean to us.
 ZONE_MAP = {
     "After Security": "departures_airside",
     "Before Security": "departures_landside",
-}
-
-# structureName values that are NOT terminals. See the note above.
-NON_TERMINAL = {
-    "jamaica station (airtrain)", "federal circle station", "twa hotel",
-    "airtrain", "long term parking",
 }
 
 TERMINAL_RE = re.compile(r"^\s*Terminal\s+([0-9A-Za-z]+)\s*$", re.I)
@@ -80,6 +100,7 @@ DROP_CATEGORIES = {"shop"}
 
 
 def fetch(cache_path, offline, user_agent, entry=None):
+    cfg = _cfg(entry)
     """Ask the site both questions and keep every answer.
 
     Returns a JSON document of our own shape -- {"After Security": [...],
@@ -114,7 +135,7 @@ def fetch(cache_path, offline, user_agent, entry=None):
                 seen.append(pois)
 
         page.on("response", on_resp)
-        page.goto(PAGE_URL, wait_until="domcontentloaded", timeout=60000)
+        page.goto(cfg["page"], wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(8000)
 
         for label in ZONE_MAP:
@@ -157,6 +178,7 @@ def fetch(cache_path, offline, user_agent, entry=None):
 
 
 def parse(raw, scraped_at, entry=None):
+    cfg = _cfg(entry)
     notes = []
     if not isinstance(raw, dict) or not raw:
         notes.append("FATAL-SHAPE: expected a map of zone label -> results")
@@ -173,7 +195,7 @@ def parse(raw, scraped_at, entry=None):
             notes.append("the %r filter returned nothing" % label)
         for poi in rows:
             structure = str(poi.get("structureName") or "").strip()
-            if structure.lower() in NON_TERMINAL:
+            if structure.lower() in cfg["non_terminal"]:
                 dropped.append("%s (%s)" % (poi.get("name"), structure))
                 continue
             m = TERMINAL_RE.match(structure)
@@ -208,7 +230,7 @@ def parse(raw, scraped_at, entry=None):
             gate = re.search(r"Gates?\s+([0-9]+(?:\s*(?:and|-|–|to)\s*[0-9]+)?)", landmark, re.I)
 
             out.append(Dining(
-                airport=AIRPORT,
+                airport=cfg["code"],
                 name=str(poi.get("name") or "").strip(),
                 source_id=poi_id,
                 terminal_raw=structure,
@@ -230,7 +252,7 @@ def parse(raw, scraped_at, entry=None):
                 hours=[],
                 is_24h=False,
                 lat=None, lon=None,
-                source_url=SOURCE_URL,
+                source_url=cfg["graphql"],
                 scraped_at=scraped_at,
                 source_updated_at="",
             ))

@@ -1,0 +1,1243 @@
+{
+ "After Security": [
+  {
+   "id": "681",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/fb8a196b-ead2-45ad-926f-bae491565f7b"
+   ],
+   "name": "5 Boroughs Food Emporium",
+   "description": "5 Boroughs Food Emporium offers a modern, dynamic energetic marketplace curated with a great selection of snacks, treats, sandwiches, drinks and more from local purveyors.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 59",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=681",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001724",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6e16016b-50f6-4db2-98f6-270beb09bf75"
+   ],
+   "name": "AG1 Automated Retail",
+   "description": "Daily on-the-go nutritional powder packs with foundational vitamins, minerals, probiotics, adaptogens, and whole-food nutrients supporting energy, immunity and gut health.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Corridor to Gates 40-59",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001724",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001831",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8ac49fdb-b828-42e6-9df6-239cef3db961"
+   ],
+   "name": "Artichoke Pizza",
+   "description": "Artichoke Pizza is known for its signature artichoke slice and New York style pizza. It delivers a classic, indulgent city favorite in a quick-serve format.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001831",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001828",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/eada02a1-fbe4-433b-8298-cae182bbb2cb"
+   ],
+   "name": "Auntie Anne's",
+   "description": "Auntie Anne's serves freshly baked pretzels and snacks in a quick service format. It's a popular stop for a warm, savory bite on the go.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001828",
+   "__typename": "POICard"
+  },
+  {
+   "id": "680",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/131f704b-74df-4b17-a58e-d6ee39466744"
+   ],
+   "name": "Bar 212",
+   "description": "Bar 212 features New American classics highlighting fresh, locally-sourced ingredients, paired alongside hand-crafted cocktails.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 49",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=680",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000155",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/b652381d-1475-401f-9bfb-f0265ef064db"
+   ],
+   "name": "Bar Veloce",
+   "description": "Opened by oenophile and restauranteur Fredrick Twomey, Bar Veloce has been a long-standing NYC favorite in the East Village since 2000. Guests will enjoy wine & beer sourced from all over the world with something for every taste which can be thoughtfully paired with a menu of tapas-style small plates and hot-pressed panini sandwiches.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 24",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4000155",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000154",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/45ec2504-fa44-439a-87b3-fb937ba8df9f",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2787ce04-e2e2-49c1-8999-434d286222dd"
+   ],
+   "name": "Beecher's Handmade Cheese / Sweetleaf Coffee Roasters",
+   "description": "Showcasing the best in artisanal fare, Beecher's Market Café will delight passengers with exceptional, handcrafted meals to go and carefully sourced, regional products. Featuring an all-day menu including favorites such as the Oprah-endorsed \"World's Best\" Mac & Cheese, grilled cheese sandwiches, soup, salads, wraps and more!\n\nSweetleaf coffee is the perfect blend of art and science. Sweetleaf was founded in 2008 by Rich Nieto, a Queens native who wanted to roast coffee that reflects New York City: diverse, sophisticated and decidedly unique.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 30",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4000154",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1824",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c8f2674c-5425-418d-9616-10a8687f75ec"
+   ],
+   "name": "Birch Coffee / H&H Bagels / Rossi Pizzeria",
+   "description": "Birch Coffee / H&H Bagels / Rossi Pizzeria is a multi-concept dining area offering coffee, classic New York bagels, and pizza. It provides quick, familiar options for travelers at any time of the day.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 92",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=1824",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001834",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6f3b70c4-53eb-42fc-9de3-1df6591a2245"
+   ],
+   "name": "Brklyn's Best Bagels / Kombu",
+   "description": "Brklyn's Best Bagels / Kombu combines traditional New York bagels with Japanese-inspired offerings. It provides a diverse menu blending classic and modern flavors.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001834",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2495",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d69a892c-5049-4a80-a799-7ee08ece6cf8"
+   ],
+   "name": "Brooklyn Diner",
+   "description": "Celebrating the borough of Brooklyn's diverse culinary history with classic American dishes that have a distinct ethnic personality-dishes that define America's melting pot cuisine, Brooklyn Diner features scratch-made specialties including house-cured hot pastrami, chicken pot pie and double-fisted hamburgers, as well as tacos, burritos, frankfurters and pasta. From the bar, guests can enjoy a wide range of local craft brews, premium wines and handcrafted cocktails, as well as soft drinks, tea and coffee.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Bridge to Gates 40-59",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2495",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001210",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9d631276-8978-469a-8798-7254be6cb2fb",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5824d63c-2c1a-422b-a39e-ca67b3cfdaed"
+   ],
+   "name": "Bubby's",
+   "description": "New York City's beloved cozy and boozy restaurant and pie shop, Bubby's, opened on Thanksgiving Day 1990. Chef and Owner Ron Silver began baking pies and selling them to restaurants and his neighbors out of a small kitchen in Tribeca. The concept focuses on simple and fresh, no fuss comfort food made from scratch American cooking. Bubby's has the quintessential comfort dish for everyone - crispy fried chicken, light and fluffy traditional pancakes, delectable pies, and homemade buttermilk biscuits! The menu is chef driven featuring ingredients sourced from local farms and small purveyors.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001210",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001205",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/25472d69-ae54-4745-b45b-7616de7bc32a"
+   ],
+   "name": "BuzzFeed",
+   "description": "Newstand selling snacks, magazines, and other media.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 73",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001205",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001212",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0381e47f-1dc0-4e60-bc23-0dc126e03519"
+   ],
+   "name": "BuzzFeed",
+   "description": "Newstand and shop offering a wide variety of snacks, drinks, grab-n-go and media.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001212",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001677",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/97dd462a-1edb-48b2-b575-33a465228c07"
+   ],
+   "name": "Calista Taverna",
+   "description": "Full-service Greek Mediterranean restaurant and bar that also serves breakfast from 5:00AM to 10:30AM",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001677",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001891",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3b1167fc-a16f-46e2-97c0-1600402def7c",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/12a99c92-4da8-4436-b058-f4b720ac2c47"
+   ],
+   "name": "Capital One Landing",
+   "description": "The Capital One Landing at LaGuardia (LGA) is an airport culinary experience, featuring elevated tapas-styles plates and beverages curated by José Andrés Group. Enjoy delicious food and beverage options, whether that be a leisurely meal or quick bite en route to your gate. Intentional design with first-class finishes, local artwork that bring the space to life and essential travel amenities like luggage nooks, convenient outlets and high-speed Wi-Fi. The Landing is located in Terminal B skybridge on your way to Gates 11-31.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Bridge to Gates 11-31",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001891",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001810",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a1124f49-48e1-41a4-b104-d80ab38908cd"
+   ],
+   "name": "Chopt",
+   "description": "Take away restaurant with a variety of salad offerings.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001810",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001905",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3ba65fa2-58b6-4436-bb92-da6b5179ccdb"
+   ],
+   "name": "CIBO Express Foodhall",
+   "description": "CIBO Express Foodhall has a variety of takeaway restaurants, as well as grab-and-go food products.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate C61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001905",
+   "__typename": "POICard"
+  },
+  {
+   "id": "151",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c4a3e24e-9961-4fe5-8d43-f2a1d0ce72f1"
+   ],
+   "name": "CIBO Express Gourmet Markets",
+   "description": "CIBO Express Gourmet Markets is a convenient grab-and-go market offering fresh snacks, beverages, and travel essentials for passengers on the move. It provides a quick, reliable, option for quality food and last-minute items.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=151",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001347",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/73fb24ca-162d-4287-aa2c-18dd8cfe8fab"
+   ],
+   "name": "CIBO Express Gourmet Markets",
+   "description": "CIBO Express Gourmet Markets is a convenient grab-and-go market offering fresh snacks, beverages, and travel essentials for passengers on the move. It provides a quick, reliable, option for quality food and last-minute items.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001347",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001681",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1287d2fa-d6e6-435b-9775-d499cbc73909"
+   ],
+   "name": "CIBO Express Gourmet Markets",
+   "description": "CIBO Express Gourmet Markets is a convenient grab-and-go market offering fresh snacks, beverages, and travel essentials for passengers on the move. It provides a quick, reliable, option for quality food and last-minute items.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001681",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001698",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/35de6385-60a9-43b4-ad9b-c6358760b656"
+   ],
+   "name": "CIBO Express Gourmet Markets",
+   "description": "CIBO Express Gourmet Markets is a convenient grab-and-go market offering fresh snacks, beverages, and travel essentials for passengers on the move. It provides a quick, reliable, option for quality food and last-minute items.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 85",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001698",
+   "__typename": "POICard"
+  },
+  {
+   "id": "303",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2733c5b0-63a2-4e4f-9d65-c21899f7ab73",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2282cd85-0896-42a3-ab91-f8d8fd71c643"
+   ],
+   "name": "Cotto Trattoria & Market Place",
+   "description": "Cotto Trattoria & Market Place is open for sit-down dining, with breakfast served daily until 10:00 AM, while the Market Place opens at 4:00 AM offering grab-and-go options for travelers.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 64",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=303",
+   "__typename": "POICard"
+  },
+  {
+   "id": "689",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a1ad5aec-56e0-411c-a573-4e9d606b0153"
+   ],
+   "name": "District Market",
+   "description": "District Market is a NYC themed marketplace featuring grab & go snacks, travel essentials, local and national gifts, souvenirs, toys, books, magazines, and more!",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 48",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=689",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001811",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4b8f60df-6b03-4643-abb4-4b5b543199d1"
+   ],
+   "name": "Dos Toros",
+   "description": "Dos Toros is a takeaway taqueria chain that offers fresh, flavorful and melty burritos, tacos, quesadillas, bowls, salads and nachos.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001811",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001503",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5379fd63-107f-4572-90f8-ae3d96719608"
+   ],
+   "name": "Dos Toros Taqueria",
+   "description": "New York City's original mission-style taqueria, serving burritos, tacos, bowls and salads made from scratch, using only fresh ingredients and naturally raised meats.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001503",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2475",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3f0949f7-27cb-4f0d-aa92-1894cdd58eba"
+   ],
+   "name": "Dunkin'",
+   "description": "LGA runs on Dunkin'! Enjoy Dunkin's original blend of premium coffee as well as freshly baked donuts, breakfast sandwiches and packaged snacks, salads, yogurts and fruit.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2475",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001206",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/eb494019-88d8-44a5-ac33-069fb289cf18"
+   ],
+   "name": "Eggy Weggy / Essex Burger",
+   "description": "Eggy Weggy serves breakfast options until 10:00AM, Essex Burger lunch and dinner options begin at 10:30AM",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 74",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001206",
+   "__typename": "POICard"
+  },
+  {
+   "id": "688",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2ce1e55b-4363-4cc7-952a-6392ab3cc91f"
+   ],
+   "name": "FAO Schwarz",
+   "description": "FAO Schwarz has been a brand synonymous with quality and innovation, offering an unparalleled selection of extraordinary toys that have enchanted generations and cultivated a loyal clientele. LaGuardia's FAO Schwarz location will feature an FAO Schweetz shop-in-shop experience, offering classic and nostalgic candy treats from everyone's favorite toy store.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 48",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=688",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1827",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/edf20865-5768-4932-bdb4-8ac0fddf0073"
+   ],
+   "name": "Fiorello Market",
+   "description": "You'll find various gifts and keepsakes as well as prepared food at this convenient retail shop.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 92",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=1827",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1825",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/4e78f6de-de56-4957-bc17-fccc498e6f7a"
+   ],
+   "name": "Flatiron Tavern & Provisions",
+   "description": "Fill up yourself with some straightforward yet elevated American cuisine prepared with care at Flatiron Tavern & Provisions.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 92",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=1825",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001597",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/90c4ac37-f9bf-4580-99ae-fb83b934f2a8"
+   ],
+   "name": "Freshii",
+   "description": "Freshii focuses on healthy, fast-casual options like bowls, wraps, and smoothies. It's ideal for travelers looking for lighter, nutritious meals.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001597",
+   "__typename": "POICard"
+  },
+  {
+   "id": "3065",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8dc1c929-d50a-4a7d-a6a4-7c13089bb066"
+   ],
+   "name": "Gotham News",
+   "description": "Gotham News offers a curated selection of travel essentials, local snacks, beverages, tech, souvenirs and reading materials. Stop in for last-minute needs and everyday travel comforts.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 24",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=3065",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2488",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/27d91270-d215-4e61-8f3f-44b01825b2c8"
+   ],
+   "name": "Green Leaf's",
+   "description": "Serving chef-inspired salads, wraps, grain bowls, smoothies and fresh juices, using only the highest quality ingredients.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2488",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2487",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9a44de06-7a5e-4ab5-9ce5-b6c066b8d9c6"
+   ],
+   "name": "Hill Country Barbecue Market",
+   "description": "Based in New York City, barbecue and fried chicken straight from the Hill Country of Texas. Serving a selection of barbecue including chopped brisket and pulled pork, as well as mouthwatering fried chicken and Texas sized tenders with an array of classic sides.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2487",
+   "__typename": "POICard"
+  },
+  {
+   "id": "690",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/93b09297-fe8e-40fc-a5d0-32041b4ee7c2"
+   ],
+   "name": "Hudson",
+   "description": "Hudson, an iconic New York City staple, is an internationally-recognized travel essentials and convenience concept designed with customer ease at its core. Hudson delivers the lifestyle shopping experience preferred by today's traveler.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 47",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=690",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001359",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7fdb090a-0beb-486c-854f-1a170d20d88e"
+   ],
+   "name": "Hunt and Fish Grill",
+   "description": "A contemporary New York steakhouse offering the classic cuts of beef and innovative dishes.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 22",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001359",
+   "__typename": "POICard"
+  },
+  {
+   "id": "679",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/20f778ff-8969-4217-bad6-46014fb348b8"
+   ],
+   "name": "Il Viaggio",
+   "description": "Il Viaggio is a modern spin on the classic Italian restaurant highlighting the most iconic culinary destinations across Italy.  Offering a wide variety of Italian inspired dishes, including classic tomato stewed meatballs, baked goat cheese, authentic chicken parmesan and a myriad of handcrafted pizzas.  And let's not forget breakfast with a full array of favorites to start the day.  To complement the full menu is a carefully crafted wine, beer and cocktail menu featuring many of the classics and even local picks from right here in New York State.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 47",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=679",
+   "__typename": "POICard"
+  },
+  {
+   "id": "682",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/57c337ab-70dc-4dc5-97ca-ace9ecd788fc"
+   ],
+   "name": "Irving Farm Coffee Roasters",
+   "description": "A bona fide New York institution, Irving Farm Coffee Roasters has been an important fixture on New York's coffee scene since it was founded as a neighborhood café near Gramercy Park in 1996.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 47",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=682",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001829",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/27faf442-9b66-4066-9a60-ee7c380da48a"
+   ],
+   "name": "Jamba Juice",
+   "description": "Jamba Juice offers smoothies, juices, and light snacks made with fruit and wholesome ingredients. It's a refreshing option for travelers seeking a quick pick-me-up.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001829",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001830",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c1c2d394-328c-4f96-be64-864948565f1b"
+   ],
+   "name": "Jersey Mike's",
+   "description": "Jersey Mike's specializes in fresh-sliced subs made to order with quality ingredients. It provides a hearty, customizable meal option.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001830",
+   "__typename": "POICard"
+  },
+  {
+   "id": "1826",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3433247b-a788-4c02-8bfb-4fecd83335ff"
+   ],
+   "name": "Juice Press",
+   "description": "Refresh and refuel with a made to order smoothie from Juice Press.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 92",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=1826",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2486",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/1c6789ba-92e7-4ac8-a073-5818c42d89e4"
+   ],
+   "name": "Junior's Restaurant and Cheesecake",
+   "description": "Originally opened in the heart of Brooklyn in 1950, over 65 years and three generations later, Junior's continues to be the epitome of New York comfort food. Serving sliced deli sandwiches, hot Reubens, juicy burgers, fresh cut fries, hearty breakfasts, and of course the best cheesecake in the world!",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2486",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001832",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8de4b172-4677-4eed-8a43-3d67500140f2"
+   ],
+   "name": "King David Tacos",
+   "description": "King David Tacos offers Austin-style breakfast tacos with bold flavors and fresh ingredients. It's a unique and satisfying option for a quick bite.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001832",
+   "__typename": "POICard"
+  },
+  {
+   "id": "683",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c8a700de-7283-4e7a-897f-19dd0867f3ec"
+   ],
+   "name": "La Chula Bar & Taqueria",
+   "description": "La Chula brings authentic 5 star quality Mexican food by Chef Julian Medina and redefines what quick-serve Mexican dining looks like.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 42",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=683",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2477",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3b49a25a-1bc5-4fe5-b18c-b0b981ee0243"
+   ],
+   "name": "Mad Ave. Market",
+   "description": "Pick up all the essentials and treats you need for your flight -- snacks, beverages, reading materials and more.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2477",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001827",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/99be62cd-9d18-4f1f-b4f6-cc833a33c919"
+   ],
+   "name": "Magnolia Bakery",
+   "description": "Magnolia Bakery is known for its classic desserts, including cupcakes and banana pudding. It offers a sweet treat option for travelers looking to indulge",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001827",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001723",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3b656a3b-6c4a-4736-93eb-0f620d0948c2"
+   ],
+   "name": "Melt Shop",
+   "description": "Melt Shop is a fast-casual restaurant chain founded in NYC in 2011, specializing in gourmet grilled cheese sandwiches, melts, tater tots, and hand-spun milkshakes. Known for comfort food, it offers quick, elevated takes on classic cheese melts.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 23",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001723",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000453",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/f7e8e7b2-1d25-42a1-9819-50404cdcb0e3"
+   ],
+   "name": "Mi Casa Cantina",
+   "description": "Mi Casa offers fast, freshly made Mexican street food jam-packed full with an explosion of fresh flavors.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 22",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4000453",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2490",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ae227ef7-5f3f-4ec6-8dea-84370fa18837"
+   ],
+   "name": "Mulberry Street",
+   "description": "Mulberry Street by Marc Forgione brings the best of this hometown gastronaut's critically acclaimed plates and serves them in a wholly engaging, casual meets culinary chef-led dining experience. Passengers are invited to sit-down, relax and watch their meal prepared in real-time. This isn't just a chef-driven restaurant. Mulberry Street is a bona fide culinary experience.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2490",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2482",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/9105ccb0-6c65-4ea8-ab92-6e1f6ecdc215"
+   ],
+   "name": "NY Creperie",
+   "description": "NY Creperie offers sweet and savory selections filled with fresh combinations for breakfast, lunch, dinner, and dessert. Sandwiches, coffee and smoothies are also available.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Court",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2482",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001375",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/80d9c57d-dc0d-46e0-8a51-06d27021d8f2"
+   ],
+   "name": "Panorama Bar",
+   "description": "An inviting New York bar for worldly travelers to gather, LaGuardia's Panorama Bar & Lounge transports everyday travelers to their next envy-worthy destination. It offers stunning panoramic views of the airport's skyline. Panorama Bar & Lounge is known for its spacious layout, making it a perfect spot for socializing and enjoying the scenery. The bar serves a wide selection of cocktails, wines, beers, and spirits, accompanied by a menu of appetizers, small plates, and light bites.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Check-in / To Gates",
+   "nearbyLandmark": "United Club",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001375",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001207",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/024805b0-fd0f-4ac5-8cca-b596e46b7823"
+   ],
+   "name": "Poppy's Bagels / Chuko Ramen",
+   "description": "Poppy's Bagels serves breakfast favorites from 5:00am to 10:30am. Chuko Ramen has a full-service restaurant and bar serving Asian fare.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 76",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001207",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001557",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a0466406-df0c-4364-ad16-bab2cca0b426"
+   ],
+   "name": "Potbelly",
+   "description": "Potbelly offers toasted sandwiches, soups, and salads in a casual setting. It's a great choice for a warm, quick meal before boarding.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001557",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001680",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/0a3e477e-583b-4b9b-81a6-f4f911325282"
+   ],
+   "name": "Prime Steakhouse",
+   "description": "Full service bar and restaurant serving steakhouse favorites, a variety of salads and sandwiches, and a kid's menu.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001680",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001813",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/62a37d43-c0c4-441f-a2e8-4e8c5560bc1f"
+   ],
+   "name": "Protein Bar & Kitchen",
+   "description": "Protein Bar & Kitchen serves protein-focused meals, shakes, and snacks designed for a healthy lifestyle.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001813",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2979",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/ca3f440e-005a-4c5b-a393-5f8862e1ca20"
+   ],
+   "name": "Queens Corner",
+   "description": "",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2979",
+   "__typename": "POICard"
+  },
+  {
+   "id": "678",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/89754120-1117-4b6f-beb5-57a58f82b478"
+   ],
+   "name": "Shake Shack",
+   "description": "Shake Shack is a modern day burger stand. A once local favorite founded by revered New York restaurateur Danny Meyer, it has since grown into a global phenomenon.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 41",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=678",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001682",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d091080f-75b8-4a25-88f0-cfe7920992a8"
+   ],
+   "name": "Soleil Brasserie",
+   "description": "Full-service bar and sit-down restaurant serving entrees, sandwiches, salads and desserts.  Grab and go options available including breakfast from 5:00AM to 10:30AM.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Upper Level (Gates 80-89)",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001682",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2491",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d22b7197-022b-480d-a793-03e50233834b"
+   ],
+   "name": "Spirit & Bell",
+   "description": "Created specifically for Terminal B by one of New York's most influential hospitality teams, Spirit & Bell serves up a full-service wine and cocktail bar which features one of the world's best cocktail menus.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2491",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001204",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2aaa163c-efcf-428a-bcb0-7a70e5a79360"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 71",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001204",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001215",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8861a844-0f40-4921-afde-a0215031745c"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Concourse to 90s Gates",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001215",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001346",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/37fdc74a-e8bf-4fe1-9f6c-75c6da1a867d"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001346",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001362",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6e1c85c8-1e7f-42da-b908-7d583ed30a1d",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/3b90d1ee-e8e4-42a7-8c3a-a902e4d0bf9d"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001362",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001692",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7f442aa0-5d9a-48c4-85f3-305dc2f56a27"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 81",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001692",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001802",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/d813977d-ef62-46d4-b485-38410e1bf90b"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001802",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001209",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/85d2bc26-6384-44bf-afb6-6620cb511622",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/8e3f7b41-8241-4ef8-85e9-3668ddd55be8"
+   ],
+   "name": "Sunday Supper Trattoria",
+   "description": "Italian restaurant and full bar with grab and go options. Breakfast is also served until 10:30 am",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001209",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001835",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/062a978e-1328-445f-9444-80e340a72de1"
+   ],
+   "name": "Taim Mediterranean Kitchen",
+   "description": "Taim serves Mediterranean-inspired dishes including falafel, hummus, and bowls. It's a flavorful and fresh option for a quick, healthy meal.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001835",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001517",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2d64b760-2191-444d-bfd3-e033f1ff5045"
+   ],
+   "name": "Talde Noodle Bar",
+   "description": "Asian fusion restaurant by celebrity chef Dale Talde, offering elevated noodle dishes, small plates, and cocktails with both dine-in and takeout options. Known for its blend of traditional Asian recipes with modern techniques, featuring items like ramen, crispy chicken noodles, and bao buns.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001517",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001559",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a382ab60-3156-45b1-b6a9-a2d936d96cdf"
+   ],
+   "name": "Terrace Bar",
+   "description": "Terrace Bar offers a relaxed bar setting with a selection of cocktails, beer, and wine. It provides a comfortable space for travelers to unwind before their flight.",
+   "category": "eat.bar",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001559",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001688",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/894a670f-e3d0-4c5a-ae9c-a5ea80818a0b"
+   ],
+   "name": "Terrace Bar",
+   "description": "Terrace Bar offers a relaxed bar setting with a selection of cocktails, beer, and wine. It provides a comfortable space for travelers to unwind before their flight.",
+   "category": "eat.bar",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 80",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001688",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2481",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/800ef30e-b9c7-468a-b3f4-64852f4e198a"
+   ],
+   "name": "The Bowery Bay Shops",
+   "description": "The Bowery Bay Shops is a state of the art 15,000 square foot immersive shopping experience featuring local NYC artisanal food and gifts, grab & go snacks, souvenirs, mens and womens fashion, NY sports apparel, Strand Bookstore, Kate Spade, L'Oreal Beauty Hub, LEGO,  travel essentials, and the latest tech and travel accessories!",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2481",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001803",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/653c0ad1-6e6f-4638-90e0-8a2f10f063f5"
+   ],
+   "name": "The Grille",
+   "description": "The Grille offers travelers a taste of classic American cuisine with a contemporary twist. Menu highlights include the Western Blue Ring Burger, Southern Belle Chicken Sandwich, and the Seared Ahi Sandwich, alongside a delectable NY Strip and a kid-friendly menu.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001803",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001588",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/6089c763-922e-4939-8f84-e687785f4a9d"
+   ],
+   "name": "The Line Sports Grill",
+   "description": "The Line Sports Grill is a full-service sports bar featuring classic American fare and multiple screens for live games. It provides a lively atmosphere for dining and relaxing.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Gate 86",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001588",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001504",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c23555bb-0ef0-422e-be50-abb18690a1f9"
+   ],
+   "name": "Tony and Benny's Pizza Parlor",
+   "description": "A traditional pizza parlor straight from the streets of Brooklyn. Serving pizza by the slice, pasta smothered in house-made sauce and other traditional Italian recipes and flavors delivered with just the right amount of Brooklyn attitude and flair.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001504",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001899",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c90b1a36-5c8d-4d7a-85e3-69a22c737344"
+   ],
+   "name": "Trinity Burgers",
+   "description": "A takeout eatery offering hamburgers, hotdogs and french fries.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Departures",
+   "nearbyLandmark": "Food Hall near Gate 61",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001899",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2476",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/92ae353a-38e2-4d33-9df3-524ee9baeb1b"
+   ],
+   "name": "Uptown Essentials",
+   "description": "Your quick stop for New York favorites and everyday cravings. Grab fresh sandwiches, sushi, pastries, snacks, candy, chocolate, cold drinks, and more for your travels!",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2476",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4000416",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/c851a45d-f8f0-4368-abe6-4735f048b826"
+   ],
+   "name": "W.H. Smith",
+   "description": "WHSmith,  powered by Amazon's Just Walk Out technology, offers everyday travel must-haves in a convenient, checkout-free environment.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Gate 14",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4000416",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2483",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/a309d133-697d-4f21-954b-530e92267d31"
+   ],
+   "name": "Wendy's",
+   "description": "Dig into a classic Wendy's single, double or triple. Spice things up with some zesty chili. Or grab a signature garden-fresh salad. Whatever you do, don't forget the Frosty!",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2483",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001556",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/56ee0c0a-8562-438d-93d1-a61788091850"
+   ],
+   "name": "Wendy's",
+   "description": "Wendy's serves classic fast-food favorites including burgers, chicken sandwiches, and fries. It's reliable, quick service option for travelers on the go.",
+   "category": "eat",
+   "structureName": "Terminal C",
+   "floorName": "Security",
+   "nearbyLandmark": "Gate 70",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001556",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2489",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/798d1319-5225-4837-9eeb-178a0c6a6933"
+   ],
+   "name": "Zaro's Family Bakery",
+   "description": "A fourth-generation Bronx bakery since 1927, Zaro's has expanded throughout the New York Metropolitan area becoming a household name in one of the busiest commuter hubs in the world. Enjoy a fresh selection of quality baked goods such as bagels and pastries, deli sandwiches, and Zaro's very own house blend coffee.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Food & Shops",
+   "nearbyLandmark": "Food Hall",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2489",
+   "__typename": "POICard"
+  }
+ ],
+ "Before Security": [
+  {
+   "id": "4001349",
+   "images": [],
+   "name": "CIBO Express Gourmet Markets",
+   "description": "CIBO Express Gourmet Markets is a convenient grab-and-go market offering fresh snacks, beverages, and travel essentials for passengers on the move. It provides a quick, reliable, option for quality food and last-minute items.",
+   "category": "shop",
+   "structureName": "Terminal C",
+   "floorName": "Arrivals",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001349",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2385",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/926d8efb-bde3-4ce7-a80b-69289508afc0"
+   ],
+   "name": "Dunkin'",
+   "description": "LGA runs on Dunkin'! Enjoy Dunkin's original blend of premium coffee as well as freshly baked donuts, breakfast sandwiches and packaged snacks, salads, yogurts, and fruit.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Bus & Shuttles",
+   "nearbyLandmark": "Level 1",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2385",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001881",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/5411a458-4df0-45d2-b1e1-5a92495540ee"
+   ],
+   "name": "Mezze",
+   "description": "Modern fast-casual Mediterranean on the go. Wholesome, flavorful meals made with fresh, high-quality ingredients. From gourmet sandwiches on rustic breads to hearty hot entrées and fresh-baked pastries, Mezze offers something for everyone.",
+   "category": "eat",
+   "structureName": "Terminal B",
+   "floorName": "Bus & Shuttles",
+   "nearbyLandmark": "Level 1",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001881",
+   "__typename": "POICard"
+  },
+  {
+   "id": "2412",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/83fe3e09-a441-4fb2-a2fd-9fae7126ed3e",
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/7d524dd9-41c7-4c19-a56a-5308aaee06d4"
+   ],
+   "name": "NYC Aglow",
+   "description": "Celebrating the lights of NYC, NYC Aglow has everything travelers need to keep shining in the city that never sleeps. You can bask in the store's reimagined skyline as you pick up a souvenir, a cold drink, healthy snacks or a newspaper without leaving the terminal.",
+   "category": "shop",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=2412",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001529",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/53291689-8a61-4fa3-a9af-d65c4de5a010"
+   ],
+   "name": "Orpheus + Apollo",
+   "description": "The Orpheus and Apollo Lounge is a landside bar on the mezzanine level of The Atrium Business & Conference Center, located pre-security at Terminal B. The lounge offers 136 first-class seats, craft cocktails and snacks to be enjoyed with views of LaGuardia Airport's active tarmac and Richard Lippold's iconic Orpheus and Apollo sculpture.",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Mezzanine",
+   "nearbyLandmark": "Atrium",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001529",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001531",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/355dd703-757d-41e8-adbd-d94c276f8940"
+   ],
+   "name": "Pour Authority",
+   "description": "Pour Authority is a coffee shop by day and bar by night, located on the ground level of The Atrium Business & Conference Center, pre-security at Terminal B. Grab a cup of joe and sandwich on-the-go or relax with a glass of wine and snack before your flight. Join the loyalty program and earn points with every fly-by!",
+   "category": "eat.bar",
+   "structureName": "Terminal B",
+   "floorName": "Check-in / To Gates",
+   "nearbyLandmark": "Atrium",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001531",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001350",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/2b5ada7f-3ed8-4a5e-873f-e9da2493d3b8"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal C",
+   "floorName": "Arrivals",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001350",
+   "__typename": "POICard"
+  },
+  {
+   "id": "4001598",
+   "images": [
+    "https://img.locuslabs.com/resize/A119NSPH8JLU80/png/transparent/1053x591contain/poi/58a04552-4fc6-429a-a99d-1f84a5605523"
+   ],
+   "name": "Starbucks",
+   "description": "Iconic Seattle-based coffeehouse chain known for its signature roasts and light bites.",
+   "category": "eat.coffee",
+   "structureName": "Terminal B",
+   "floorName": "Baggage / Gates",
+   "nearbyLandmark": "Baggage Claim",
+   "mapUrl": "http://maps.laguardiaairport.com?poiId=4001598",
+   "__typename": "POICard"
+  }
+ ]
+}
