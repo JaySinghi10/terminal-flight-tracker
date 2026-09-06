@@ -379,10 +379,48 @@ def unregister_watch(device_id, flight_number, flight_date):
 # plausible names and nothing more. A miss writes null and the raw body still
 # holds the truth.
 _ITEM_KEYS = ("flights", "items", "alerts", "data", "results", "notifications", "events")
+# ── WHERE THE BALANCE ACTUALLY LIVES, NOW THAT SIXTEEN DELIVERIES HAVE SHOWN ──
+#
+# balance.creditsRemaining, ONE LEVEL DOWN, AND THAT IS WHY EVERY DELIVERY
+# RECORDED None. The old lookup read top-level keys only. It had both halves of
+# the right answer in its list -- "balance" and "creditsRemaining" -- and could
+# not reach it: parsed["balance"] IS present but is a dict, which fails the
+# numeric test, and parsed["creditsRemaining"] does not exist at the top level.
+# The key was in the list twice and the lookup was one level too shallow.
+#
+# THE OBSERVED PAYLOAD, from delivery c63585c2 of the EK500 run:
+#
+#   { id, timestampUtc, flights: [...],
+#     subscription:    { id, isActive, billingType, createdOnUtc, subject, ... },
+#     balance:         { creditsRemaining: 9, lastRefilledUtc, lastDeductedUtc },
+#     deliveryAttempt: { seqNo: 1, costCredits: 1, timestampUtc } }
+#
+# THE TOP-LEVEL NAMES ARE KEPT AS A FALLBACK rather than replaced. They cost one
+# dict lookup each and they are the shapes a different provider, or a later
+# version of this one, might use. What is added is the nesting, not a new guess.
 _CREDIT_KEYS = (
-    "credits_remaining", "creditsRemaining", "credits", "balance",
+    "credits_remaining", "creditsRemaining", "credits",
     "remaining_credits", "remainingCredits", "units_remaining", "unitsRemaining",
 )
+
+# THE CONTAINERS WORTH LOOKING INSIDE, in order. "balance" is what AeroDataBox
+# sends; the rest are the same idea under other names, and each is only opened if
+# it is actually a dict.
+_CREDIT_CONTAINERS = ("balance", "quota", "usage", "account")
+
+# ── WHAT ONE DELIVERY COST, AND WHETHER IT IS A REDELIVERY ───────────────────
+#
+# costCredits IS THE ONLY HONEST RECORD OF WHAT THE EXPERIMENT SPENT. The
+# balance says what is left, which moves for reasons that have nothing to do
+# with this webhook -- a refill, a lookup somewhere else -- so it cannot be
+# differenced to get a cost. This is the provider stating the price of THIS
+# delivery, and sixteen of them at 1 credit each is the whole bill.
+#
+# seqNo IS HOW A REDELIVERY IS SPOTTED. A retry of the same notification arrives
+# with the same seqNo and a new delivery_id, so two records sharing one seqNo are
+# one event counted twice -- which is exactly the thing that would make a
+# delivery count look higher than the flight's real number of updates.
+_ATTEMPT_KEY = "deliveryAttempt"
 
 
 def _item_count(parsed):
@@ -399,15 +437,46 @@ def _item_count(parsed):
     return None
 
 
+def _number(value):
+    """A real number or nothing. bool is a subclass of int and True is not a
+    balance, a cost or a sequence number."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    return None
+
+
 def _credits_remaining(parsed):
     if not isinstance(parsed, dict):
         return None
+    # The nesting first, because it is where the answer demonstrably is.
+    for container in _CREDIT_CONTAINERS:
+        inner = parsed.get(container)
+        if isinstance(inner, dict):
+            for key in _CREDIT_KEYS:
+                found = _number(inner.get(key))
+                if found is not None:
+                    return found
+    # Then the top level, unchanged, for a shape this has not seen.
     for key in _CREDIT_KEYS:
-        value = parsed.get(key)
-        # bool is a subclass of int and True is not a balance.
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return value
+        found = _number(parsed.get(key))
+        if found is not None:
+            return found
     return None
+
+
+def _attempt(parsed):
+    """(cost_credits, seq_no) from deliveryAttempt, or (None, None).
+
+    ONE READER FOR TWO FIELDS because they arrive in one object and are useless
+    apart: a cost without a sequence cannot be de-duplicated, and a sequence
+    without a cost says nothing about the bill.
+    """
+    if not isinstance(parsed, dict):
+        return (None, None)
+    attempt = parsed.get(_ATTEMPT_KEY)
+    if not isinstance(attempt, dict):
+        return (None, None)
+    return (_number(attempt.get("costCredits")), _number(attempt.get("seqNo")))
 
 
 def build_delivery(raw_body_bytes, headers_subset) -> dict:
@@ -453,8 +522,22 @@ def build_delivery(raw_body_bytes, headers_subset) -> dict:
         "body_bytes": body_bytes,
         "truncated": truncated,
         "parsed_json": parsed_json,
+        # THE ITEM CONTAINER IS "flights" AND _ITEM_KEYS ALREADY LED WITH IT,
+        # which is why item_count was right through the whole experiment while
+        # credits_remaining was not.
+        #
+        # AND flights[].status IS A NUMBER, NOT A STRING. The observed payload
+        # carries `"status": 1` and `"number": "EK 500"` -- so whatever reads
+        # this to dispatch a notification must compare against integers, not
+        # against the provider's own words. The REST endpoint this app already
+        # calls returns "Arrived", "EnRoute", "GateClosed"; the WEBHOOK does not,
+        # and STATUS_MAP in mcp_server.py would silently map every one of them to
+        # "unknown". Nothing decides on it yet. Nothing should start to without
+        # reading this line first.
         "item_count": _item_count(parsed) if parsed_json else None,
         "credits_remaining": _credits_remaining(parsed) if parsed_json else None,
+        "cost_credits": _attempt(parsed)[0] if parsed_json else None,
+        "seq_no": _attempt(parsed)[1] if parsed_json else None,
         # The record of truth. Everything above it is a convenience derived from
         # this, and every one of those derivations is allowed to be wrong.
         "raw_body": raw_body,
@@ -514,6 +597,12 @@ def _summary(delivery: dict) -> dict:
         "parsed_json": delivery.get("parsed_json"),
         "item_count": delivery.get("item_count"),
         "credits_remaining": delivery.get("credits_remaining"),
+        # WHAT IT COST AND WHICH ATTEMPT IT WAS. Both belong in the SUMMARY
+        # rather than only in the raw body: the two questions a listing is opened
+        # to answer are what the day spent and whether anything arrived twice,
+        # and neither should need a second request per delivery to answer.
+        "cost_credits": delivery.get("cost_credits"),
+        "seq_no": delivery.get("seq_no"),
     }
 
 

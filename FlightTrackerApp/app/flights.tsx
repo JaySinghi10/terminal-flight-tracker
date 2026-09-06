@@ -20,7 +20,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
-  Modal, Animated,
+  Modal, Animated, RefreshControl,
   // FOR THE FOLDER'S OWN CURVE, which is declared here rather than taken from
   // lib/glass. See FOLD_EASE.
   Easing,
@@ -1456,7 +1456,18 @@ function TripFolder({ title, count, date, tone, open, first, onToggle, children 
 export default function Flights() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { savedFlights, ownFlight, disownFlight, refreshOne } = useSaved();
+  const {
+    savedFlights, ownFlight, disownFlight, refreshOne,
+    // ── THE PULL THIS SCREEN NEVER HAD ──
+    //
+    // MY FLIGHTS HAD NO REFRESH GESTURE AT ALL, and that is not a figure of
+    // speech: there was no RefreshControl on its ScrollView and refreshAll was
+    // called from exactly one place in the app, the home screen. Pulling down
+    // here bounced the scroll view and did nothing. A leg could sit eight hours
+    // stale on the one screen built to show it, and the only ways to update it
+    // were a swipe on the leg or a trip to another tab.
+    refreshAll, refreshing,
+  } = useSaved();
   const { showToast } = useToast();
   const { isOnMap, addRoute, removeRoute } = useMapRoutes();
 
@@ -2066,6 +2077,21 @@ export default function Flights() {
       <ScrollView
         contentContainerStyle={[st.scroll, st.scrollFill, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
+        // THE HOME SCREEN'S OWN CONTROL, value for value -- the same green, the
+        // same `refreshing` off the store, so the two screens pull identically.
+        //
+        // null FOR THE OPEN CARD ID. That parameter exists so the home screen can
+        // be handed its open card's fresh payload back; this screen has no single
+        // open card and reads the store instead, which refreshAll has already
+        // written by the time it resolves.
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { void refreshAll(null); }}
+            tintColor="#4ade80"
+            colors={['#4ade80']}
+          />
+        }
       >
         <Text style={st.brand}>{'>_'}</Text>
         {/* THE TITLE AND THE ONE ACTION, ON ONE LINE. The plus is only here while

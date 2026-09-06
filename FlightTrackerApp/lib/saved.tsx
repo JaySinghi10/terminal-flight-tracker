@@ -79,11 +79,56 @@ export function flightUrl(number: string, date: string | null, origin: string | 
 // These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
 const AUTO_REFRESH_MAX_FLIGHTS = 2;
-const AUTO_REFRESH_MIN_AGE_MS = 100 * 365 * 24 * 60 * 60 * 1000; // auto-refresh disabled while on the free tier; set to 12 * 60 * 60 * 1000 to re-enable
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  AUTO-REFRESH IS OFF. FLIP THIS ONE CONSTANT TO TURN IT ON.              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// WHAT FLIPPING IT DOES: saved flights start refreshing themselves in the
+// background -- on launch, and on app-resume past AUTO_REFRESH_RESUME_COOLDOWN_MS
+// -- at most AUTO_REFRESH_MAX_FLIGHTS per run, on the schedule refreshIntervalFor
+// sets out. Nothing else changes. Pull-to-refresh is unaffected either way.
+//
+// WHAT IT COSTS: one API unit per flight per lookup. A saved flight days away is
+// about ONE UNIT A DAY; the same flight over its final day and its time in the
+// air is fifteen to twenty in total. Ten watched flights, mostly distant, is
+// roughly ten units a day. See refreshIntervalFor for the tiers those come from.
+//
+// IT WAS A HUNDRED YEARS, WHICH IS THE SAME OFF WRITTEN AS A NUMBER. A constant
+// called MIN_AGE set past any possible age is a disabled feature wearing the
+// clothes of a tunable one -- and it cost eight hours of a landed flight showing
+// DEPARTED before anybody noticed the schedule was not the reason.
+const AUTO_REFRESH_ENABLED = false;
 const AUTO_REFRESH_RESUME_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 // The provider's BASIC plan caps requests at one per second and rejects the rest
 // with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
 const REFRESH_SPACING_MS = 1300;
+
+// ── HOW LONG A RECORD IS STILL WORTH REFRESHING ─────────────────────────────
+//
+// TWENTY-FOUR HOURS PAST ARRIVAL, WHICH IS FOUR TIMES THE ARCHIVE WINDOW, and
+// the gap between those two numbers is the bug it exists to close.
+//
+// THE REFRESH USED TO FILTER ON isArchived, which is six hours past arrival --
+// and the trip screen shows a leg for as long as ANY leg of its journey is
+// unarchived. So a leg that landed eight hours ago sat on screen, plainly
+// visible, and was skipped by every refresh as too old to bother with. It showed
+// DEPARTED while the provider had ARRIVED, an actual arrival time and a belt
+// number, and no amount of pulling would have fixed it.
+//
+// A LEG STILL ON SCREEN SHOULD BE REFRESHABLE. That is the whole rule. Twenty-
+// four hours covers everything that can still change after a landing -- the belt
+// appears minutes later, an actual arrival time can land later still -- and stops
+// well before the point where nothing about a flight will ever move again.
+//
+// AND IT STAYS INSIDE WHAT THE BACKEND WILL ANSWER. REFRESH_MAX_PAST_MS below
+// refuses a record whose DATE is more than 36 hours old, because the provider
+// rejects it; a flight that arrived 24 hours ago departed at most a few hours
+// before that, so this window can never ask for something that would be refused.
+//
+// THE HAND STILL OVERRULES. archivedAt is checked first and separately: filing a
+// flight away by hand means stop spending units on it, whatever the clock says.
+const REFRESH_UNTIL_AFTER_ARRIVAL_MS = 24 * 60 * 60 * 1000;
 
 // The backend accepts one day back (ROUTE_MAX_PAST_DAYS). A record older than
 // that can only ever be refused, so it is never asked for. Kept slightly under
@@ -297,6 +342,60 @@ export function effectiveStatus(f: SavedFlight, now: number): string {
     if (ts !== null && ts > now) return 'scheduled';
   }
   return s;
+}
+
+// WHETHER THIS RECORD IS STILL WORTH SPENDING A UNIT ON. Not the same question
+// as isArchived, and the two were conflated until a landed leg sat eight hours
+// stale on a screen that was showing it. See REFRESH_UNTIL_AFTER_ARRIVAL_MS.
+//
+// A RECORD WITH NO READABLE ARRIVAL IS REFRESHABLE. That is a pre-v3 record or
+// one with no timezone, and it is exactly the record a refresh would REPAIR --
+// refusing to fetch it would leave it broken for ever.
+function refreshable(f: SavedFlight, now: number): boolean {
+  if (f.archivedAt !== null) return false;
+  const ts = arrivalTs(f);
+  return ts === null || now - ts <= REFRESH_UNTIL_AFTER_ARRIVAL_MS;
+}
+
+// ── HOW OFTEN ONE FLIGHT IS WORTH ASKING ABOUT ──────────────────────────────
+//
+// PROXIMITY, NOT ONE INTERVAL. A flight next Tuesday changes when the airline
+// republishes a timetable; a flight boarding in an hour changes when a gate is
+// assigned; a flight in the air changes continuously. One number for all three
+// either wastes units on the first or is useless for the third.
+//
+//   in the air              30m     ~2 units an hour, for a few hours
+//   landed, inside 24h       1h     the belt and the actual arrival still land
+//   under 6h to departure    1h     gate, terminal, delay -- the actionable window
+//   6h to 48h                6h     4 a day
+//   beyond 48h              24h     1 a day
+//   past the window        never    see refreshable
+//
+// A TYPICAL FLIGHT COSTS ABOUT ONE UNIT A DAY while it is distant and fifteen to
+// twenty across its last day and its flight. Ten saved flights mostly days out is
+// around ten a day.
+//
+// AIRBORNE IS TESTED FIRST AND BY effectiveStatus, not by the clock. A flight
+// running late is still 'active' past its scheduled arrival, and that is when it
+// is most worth asking about -- ordering this test after the arrival check would
+// drop it to hourly at exactly the wrong moment.
+//
+// null MEANS NEVER, which is the only value that stops a record being asked
+// about at all. Every other branch returns a duration.
+function refreshIntervalFor(f: SavedFlight, now: number): number | null {
+  if (!refreshable(f, now)) return null;
+  if (effectiveStatus(f, now) === 'active') return 30 * 60 * 1000;
+  const arr = arrivalTs(f);
+  if (arr !== null && now > arr) return 60 * 60 * 1000;
+  const dep = departureTs(f);
+  // NO READABLE DEPARTURE FALLS TO THE MIDDLE TIER rather than to either end.
+  // Hourly would spend units on a record we cannot place; daily would leave a
+  // repairable record broken for a day.
+  if (dep === null) return 6 * 60 * 60 * 1000;
+  const until = dep - now;
+  if (until < 6 * 60 * 60 * 1000) return 60 * 60 * 1000;
+  if (until < 48 * 60 * 60 * 1000) return 6 * 60 * 60 * 1000;
+  return 24 * 60 * 60 * 1000;
 }
 
 export function isArchived(f: SavedFlight, now: number): boolean {
@@ -890,6 +989,9 @@ export function SavedProvider({ children }: { children: ReactNode }) {
 
   // Silent background refresh: no spinner, no message. Failures are invisible — the row age tells the truth.
   const autoRefresh = useCallback(async (list: SavedFlight[], isCancelled: () => boolean) => {
+    // THE SWITCH, AND IT IS THE FIRST LINE FOR A REASON. Everything below costs
+    // API units; nothing above it does. See AUTO_REFRESH_ENABLED.
+    if (!AUTO_REFRESH_ENABLED) return;
     if (refreshingRef.current) return;
     // THE LATER OF THE TWO. updatedAt says when this flight's data last came
     // back; the map says when the provider last answered about it at all. A
@@ -911,8 +1013,22 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     // the ticking clock with a one-off reading inside a function is how the two
     // get confused later.
     const at = Date.now();
-    const stale = list.filter(f =>
-      at - Math.max(f.updatedAt, lastTriedRef.current.get(f.id) ?? 0) > AUTO_REFRESH_MIN_AGE_MS);
+    // ── PER FLIGHT, ON ITS OWN SCHEDULE ──
+    //
+    // ONE INTERVAL PER RECORD rather than one for the list, so a flight in the
+    // air and a flight next week are not asked about at the same rate. A null
+    // interval is a record that should not be asked about at all.
+    //
+    // THE LATER OF THE TWO CLOCKS, unchanged: updatedAt says when this flight's
+    // data last came back, and lastTriedRef says when the provider last answered
+    // about it AT ALL. A flight whose lookup fails never advances updatedAt, so
+    // without the second reading it would sit at the head of the queue for ever
+    // and starve everything behind it.
+    const stale = list.filter(f => {
+      const every = refreshIntervalFor(f, at);
+      if (every === null) return false;
+      return at - Math.max(f.updatedAt, lastTriedRef.current.get(f.id) ?? 0) > every;
+    });
     if (stale.length === 0) return;
     refreshingRef.current = true;
     try {
@@ -1256,9 +1372,18 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       // needs a time, and a pull happens on a tap rather than at render, so the
       // instant of the tap is the right one to read.
       const at = Date.now();
-      // Active only. An archived flight is not refreshed, which is the whole
-      // reason it does not count against MAX_SAVED_FLIGHTS.
-      const activeSaved = savedFlights.filter(f => !isArchived(f, at));
+      // ── REFRESHABLE, NOT UNARCHIVED, AND THE DIFFERENCE IS THE BUG ──
+      //
+      // THIS FILTERED ON !isArchived AND THAT IS SIX HOURS PAST ARRIVAL. The trip
+      // screen keeps a leg on screen while ANY leg of its journey is unarchived,
+      // so a leg that landed eight hours ago was visible and unrefreshable at the
+      // same time: it showed DEPARTED while the provider had ARRIVED, an actual
+      // arrival and a belt number, and pulling could not fix it because the
+      // record never entered this list.
+      //
+      // refreshable IS THE SAME SHAPE AT TWENTY-FOUR HOURS, and it still refuses
+      // anything filed away by hand. See its note.
+      const activeSaved = savedFlights.filter(f => refreshable(f, at));
       if (activeSaved.length === 0) return { ...nothing, ran: true };   // spinner alone acknowledges; message can't render here
 
       if (Date.now() - lastRefreshRef.current < PULL_COOLDOWN_MS) {
