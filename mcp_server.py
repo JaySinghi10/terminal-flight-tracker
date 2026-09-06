@@ -300,6 +300,35 @@ def _times(movement: dict, field: str):
     return block.get("local"), block.get("utc")
 
 
+# ── WHETHER A MOVEMENT IS BEING WATCHED OR ONLY SCHEDULED ───────────────────
+#
+# THE PROVIDER SAYS SO PER MOVEMENT AND WE WERE THROWING IT AWAY. Each movement
+# carries a `quality` list naming the data behind it, and "Live" in that list is
+# the difference between a time that will be corrected as the flight happens and
+# a time copied out of a timetable months ago.
+#
+# IT IS NOT COSMETIC. EK500 into BOM carried arrival quality Basic for the whole
+# flight and gained Live only in the same update that reported the arrival --
+# three hours and twenty-four minutes AFTER touchdown. A poller that did not
+# read this would spend that whole window asking a schedule whether a flight had
+# landed, at whatever interval it had been told to use. Reading it is what lets
+# a caller stop asking.
+#
+# TWO ENCODINGS OF ONE ENUM, AND BOTH ARE ACCEPTED. This REST endpoint sends
+# STRINGS -- ["Basic", "Live"] -- and the notification webhook sends INTEGERS
+# for the same field: [0] became [0, 1] on exactly the update that added the
+# arrival. So 0 is Basic and 1 is Live, confirmed by observation on both sides,
+# and this reads either. A caller must never be asked which endpoint its data
+# came from.
+_QUALITY_LIVE = ("live", "1")
+
+
+def _live_feed(quality) -> bool:
+    if not isinstance(quality, list):
+        return False
+    return any(str(q).strip().lower() in _QUALITY_LIVE for q in quality)
+
+
 def _build_movement(movement, movement_name: str, raw_status, include_baggage: bool) -> dict:
     m = movement or {}
     airport = m.get("airport") or {}
@@ -367,6 +396,26 @@ def _build_movement(movement, movement_name: str, raw_status, include_baggage: b
         "actual_source": actual_source,
         "estimated_source": est_source,
         "runway_time": format_time(run_local, tz) if run_local else None,
+        # WHEELS ON OR OFF AS AN INSTANT, not just as something to print.
+        #
+        # runway_time WAS DISPLAY TEXT AND NOTHING ELSE -- format_time output,
+        # which cannot be compared, subtracted or ordered. Touchdown is the
+        # moment everything after a landing is measured from, so it needs the
+        # same treatment every other time on this DTO already gets: local wall
+        # clock with the true offset, built by the one function that does it.
+        #
+        # NOT THE SAME THING AS actual_iso, and the difference is load-bearing.
+        # actual_iso is the GATE time, which is what a delay is honestly measured
+        # against; this is the RUNWAY. Reporting a delay from wheels-down would
+        # flatter every arrival by the length of its taxi. Both are emitted
+        # because they answer different questions.
+        "runway_iso": _to_wire_iso(run_local, run_utc) if run_local else None,
+        # THE PROVIDER'S OWN WORD FOR ITS SOURCES, carried verbatim for the same
+        # reason raw_status is: so a live response can be diagnosed without
+        # another call, whichever spelling the endpoint used.
+        "quality": m.get("quality") if isinstance(m.get("quality"), list) else [],
+        # AND THE ONE QUESTION ANYBODY ASKS OF IT. See _live_feed.
+        "live_feed": _live_feed(m.get("quality")),
     }
     if include_baggage:
         # baggageBelt only appears once the flight has landed; N/A before that.
