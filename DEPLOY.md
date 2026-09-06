@@ -94,6 +94,39 @@ PARSE_MODEL=claude-haiku-4-5
 service's entire environment, which would silently drop `RAPIDAPI_KEY` and
 `ALERTS_BUCKET` and break flight lookups and alerts along with it.
 
+## Landing detection: `FR24_API_TOKEN`
+
+| variable | required | what it is |
+| --- | --- | --- |
+| `FR24_API_TOKEN` | no | Flightradar24 API token, from Key management in the FR24 API portal. |
+
+```sh
+gcloud run services update "$SERVICE" --region "$REGION" --project "$PROJECT_ID"   --update-env-vars FR24_API_TOKEN='<token>'
+```
+
+**Absent means disabled, not broken.** `fr24.py` answers `error / not
+configured` and every caller carries on, so a deployment that has not set this
+behaves exactly as the service did before landing detection existed:
+AeroDataBox's own arrival stands, and the sixty-minute `stale` rule catches the
+flights it loses. Nothing 500s and nothing is stuck.
+
+**What it costs.** `/landing` reads FR24's `flight-summary/light`, billed per
+returned record -- 1 credit live, 2 historic, and 1 for a query that returns
+nothing. The device checks a flight every five minutes from twenty minutes
+before its arrival estimate until three hours after -- at most forty checks. So
+one arrival costs about seven credits typically and eighty at the very worst.
+The Explorer plan is 30,000 a month (60,000 under the double-credit
+promotion running to the end of 2026). This is not a budget that needs watching.
+
+**It does not spend AeroDataBox units.** That is the reason `/landing` is its
+own endpoint rather than a field on `/flight`: the two providers are billed in
+different currencies and only the AeroDataBox one is scarce.
+
+**Rotating it is a plain env-var update** and takes effect on the next revision.
+An old token in flight fails as `error`, which by design does NOT let
+AeroDataBox start declaring landings again -- so a botched rotation shows up as
+cards that stop reaching `landed`, not as wrong arrival times.
+
 ### Why `VERTEX_PROJECT_ID` is required
 
 The Anthropic SDK documents a fallback to the project on your credentials, and

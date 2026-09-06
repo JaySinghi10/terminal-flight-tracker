@@ -13,6 +13,11 @@ from datetime import datetime, timedelta, timezone
 # this file no longer names a provider anywhere, which is the whole point of the
 # translation layer and the one property worth protecting when editing it.
 import llm
+# THE ONLY THING PERMITTED TO SAY A FLIGHT HAS LANDED. Its own module for the
+# same reason llm.py is one: a second vendor with its own credential, its own
+# quota currency, its own error vocabulary and its own cache does not belong
+# inside the AeroDataBox layer.
+import fr24
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,6 +140,52 @@ def get_route(origin: str, destination: str, hours: int = 12, date: str | None =
     return fetch_route(origin, destination, hours, date)
 
 
+# ──────────────────────────────────────────────
+# HAS IT LANDED
+# ──────────────────────────────────────────────
+#
+# ITS OWN ENDPOINT RATHER THAN A FIELD ON /flight, AND THE REASON IS BUDGETS.
+# The two providers are billed in different currencies with very different
+# scarcity: AeroDataBox units are the scarce one, FR24 credits are not. Folding
+# the landing check into /flight would mean every five-minute check near an
+# arrival also spent an AeroDataBox unit -- roughly forty of them per flight --
+# so the constrained budget would be paying for the unconstrained one.
+#
+# IT ALSO MEANS FR24 CANNOT SLOW OR BREAK /flight. Schedules, gates, terminals
+# and route search are structurally out of reach of an FR24 outage, which is
+# the property that lets the whole thing degrade to yesterday's behaviour.
+#
+# NO SECRET AND NO WRITE. This is a read of a public-ish fact about a flight
+# number, exactly like /flight beside it, and it changes nothing on the server.
+@app.get("/landing/{flight_number}")
+def get_landing(flight_number: str, date: str | None = None, dest: str | None = None,
+                dep: str | None = None, reg: str | None = None):
+    """Whether Flightradar24 says this flight has landed, and when.
+
+    dest  destination IATA -- what separates the two legs of a tag flight.
+    dep   scheduled departure as an ISO instant. Optional and worth sending:
+          it narrows the search window from about two days to about one leg,
+          and FR24 bills per returned record.
+    reg   aircraft registration, used only to break a tie.
+    """
+    day, date_error = _validate_route_date(date)
+    if date_error is not None:
+        return {"error": date_error}
+    result = fr24.landing_for(
+        flight_number,
+        date=day,
+        destination_iata=dest,
+        departure_utc=dep,
+        registration=reg,
+    )
+    # THE OUTCOME TRAVELS VERBATIM, INCLUDING THE FAILURES. A caller has to be
+    # able to tell "asked and does not know" from "could not ask" -- the first
+    # lets AeroDataBox's own arrival stand and the second must not. Flattening
+    # an error into a null would hand the decision back to the provider this
+    # endpoint exists to overrule.
+    return result
+
+
 # Its own endpoint, deliberately, rather than a key on the route and flight
 # envelopes. Those answer "what is this search", and a cached one involves no
 # provider call at all — a units figure sitting in that payload would read as
@@ -142,7 +193,14 @@ def get_route(origin: str, destination: str, hours: int = 12, date: str | None =
 # Costs nothing: it reports what earlier calls already told us.
 @app.get("/quota")
 def get_quota():
-    return quota_status()
+    # FR24 TRAVELS ALONGSIDE IT RATHER THAN IN IT. The two are different
+    # currencies -- AeroDataBox reports units remaining on every response, FR24
+    # reports nothing and would have to be asked at the cost of a credit -- so
+    # this half is not a balance. It is whether the breaker is open, which is
+    # the question actually worth answering in an outage: a run of cards that
+    # stop reaching 'landed' looks identical to a quiet day until you can see
+    # that every call has been failing.
+    return {**quota_status(), "fr24": fr24.breaker_status()}
 
 
 TOOLS = [

@@ -1,0 +1,11 @@
+# The OurAirports snapshot, 12.7 MB, re-fetched automatically by run.py when it
+# is absent. NOT committed, and that is a departure from tools/dining, where the
+# scraped HTML IS kept.
+#
+# The difference is what the source is. Dining pages are one operator's site on
+# one day: they change without notice, they disappear, and without the raw copy
+# a surprising record cannot be checked against what was actually published.
+# OurAirports is a stable public-domain dataset at a permanent URL, and the one
+# thing generated from it -- airport_icao.py -- is itself committed. The
+# provenance is the URL, and the output is the artefact.
+airports.csv

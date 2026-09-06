@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -26,6 +26,13 @@ export type SavedFlightEndpoint = {
   baggage: string | null;
   actualSource: string | null;
   estimatedSource: string | null;
+  // WHEELS DOWN, WHICH IS NOT THE SAME AS THE GATE, and the DTO has carried it
+  // since the runway_iso pass while this file quietly dropped it.
+  //
+  // MEASURED AT FRANKFURT: LH909 touched down at 18:07 and reached its gate at
+  // 18:14. actualIso is the second of those and this is the first. Seven
+  // minutes apart there, and different again at every airport.
+  runwayIso: string | null;
 };
 
 export type SavedFlight = {
@@ -41,6 +48,40 @@ export type SavedFlight = {
   savedAt: number;
   updatedAt: number;
   landedAt: number | null;
+  // ── WHAT FLIGHTRADAR24 SAID, WHICH IS THE ONLY THING THAT DECIDES A LANDING ──
+  //
+  // WHY A SECOND SOURCE OWNS THIS. AeroDataBox lost the arrival on three
+  // flights out of three at Indian airports: one reported 3h24m late, one
+  // reported "Arrived" five hours EARLY with an actual time in the future, and
+  // one sat on "Approaching" for three and a half hours after touchdown. The
+  // same provider timed Frankfurt to the minute -- so the split is by job, not
+  // by trust, and this is the job that moved.
+  //
+  // A UTC INSTANT, NOT A ZONED ONE. Every other *Iso field on this record is
+  // local wall clock with a true offset, because it came from a provider that
+  // reports it that way and because the card prints it verbatim. FR24 reports
+  // UTC, there is nothing to preserve, and clockInZone renders it into the
+  // arrival airport's own time wherever it needs to be read. Inventing an
+  // offset here would be inventing information.
+  landedUtc: string | null;
+  // Which provider the landing came from. One value today; it exists so that
+  // replacing FR24 later is legible in the data rather than only in the code.
+  landingSource: string | null;
+  // THE FOUR OUTCOMES, KEPT APART ON PURPOSE:
+  //
+  //   'landed'  FR24 has a touchdown time. Authoritative.
+  //   'pending' FR24 knows this leg and it is still flying.
+  //   'unknown' FR24 was asked, answered cleanly, and has no landing.
+  //   'error'   FR24 could not be reached, or was never configured.
+  //   null      never asked -- a record from before this existed, or one
+  //             outside the arrival window where there is nothing to ask about.
+  //
+  // ONLY 'unknown' LETS AERODATABOX'S OWN ARRIVAL STAND. That distinction is
+  // the entire point of storing the outcome rather than just the answer:
+  // collapsing 'error' into 'unknown' would hand the decision straight back to
+  // the provider this was taken away from.
+  landingCheck: string | null;
+  landingCheckedAt: number | null;
   // WHEN THE USER ARCHIVED IT BY HAND, or null if they never did.
   //
   // The archive is otherwise derived: index.tsx calls a flight archived once its
@@ -161,6 +202,7 @@ function endpointFromApi(raw: any): SavedFlightEndpoint {
     baggage: raw?.baggage ?? null,
     actualSource: raw?.actual_source ?? null,
     estimatedSource: raw?.estimated_source ?? null,
+    runwayIso: raw?.runway_iso ?? null,
   };
 }
 
@@ -214,6 +256,14 @@ export function savedFlightFromApi(data: any): SavedFlight {
     savedAt: now,
     updatedAt: fetchedAt(data, now),
     landedAt: status === 'landed' ? now : null,
+    // A /flight response knows nothing about FR24 and must never claim to.
+    // These are carried forward by touchSavedFlight exactly as the user's own
+    // decisions are -- see the note there, which now covers two kinds of field
+    // rather than one.
+    landedUtc: null,
+    landingSource: null,
+    landingCheck: null,
+    landingCheckedAt: null,
     // A fresh lookup is never manually archived. touchSavedFlight carries the
     // stored value forward, so a refresh cannot silently un-archive anything.
     archivedAt: null,
@@ -355,6 +405,24 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
   // nobody owned a flight, because there was no way to.
   if (version < 11 && flight.tripId === undefined) {
     flight.tripId = null;
+    changed = true;
+  }
+
+  // v11 -> v12: the landing fields and the runway time.
+  //
+  // null IS CORRECT FOR EVERY EXISTING RECORD and it is not merely a safe
+  // default. null means "never asked", which is exactly true of every flight
+  // saved before this shipped -- and it is the value that lets AeroDataBox's
+  // stored status stand, so nothing that already reads 'landed' changes on
+  // upgrade. A flight still in its arrival window fills in on the next check.
+  if (version < 12) {
+    if (flight.landedUtc === undefined) flight.landedUtc = null;
+    if (flight.landingSource === undefined) flight.landingSource = null;
+    if (flight.landingCheck === undefined) flight.landingCheck = null;
+    if (flight.landingCheckedAt === undefined) flight.landingCheckedAt = null;
+    for (const ep of [flight.from, flight.to]) {
+      if (ep) ep.runwayIso = ep.runwayIso ?? null;
+    }
     changed = true;
   }
 
@@ -557,6 +625,57 @@ export async function setFlightArchived(
   return next;
 }
 
+// ── WHAT FR24 SAID ABOUT ONE FLIGHT ─────────────────────────────────────────
+//
+// Mirrors setFlightArchived in shape and deliberately so: one record, a small
+// set of fields, no opinion about what they mean. The rules that read them live
+// in saved.tsx, where effectiveStatus and landedInstant are.
+//
+// THE OUTCOME IS ALWAYS WRITTEN, EVEN WHEN THERE IS NO LANDING. "We asked and
+// FR24 does not know" is a fact worth storing -- it is the one that lets
+// AeroDataBox's arrival stand -- and it cannot be recovered later, because a
+// second attempt might return something different or might not run at all.
+//
+// A LANDING IS NEVER UNWRITTEN. Once landedUtc is set it stays set: touchdown
+// is immutable, and a later 'error' outcome from a provider having a bad
+// afternoon must not delete a fact we already have.
+export async function setFlightLanding(
+  email: string | null,
+  id: string,
+  landing: {
+    landedUtc?: string | null;
+    landingSource?: string | null;
+    landingCheck: string | null;
+  },
+): Promise<SavedFlight[]> {
+  const flights = await readKey(keyFor(email));
+  const idx = flights.findIndex(f => f.id === id);
+  if (idx < 0) return flights;
+  const prev = flights[idx];
+  const next = [...flights];
+  const landedUtc = landing.landedUtc ?? prev.landedUtc ?? null;
+  next[idx] = {
+    ...prev,
+    landedUtc,
+    landingSource: landing.landingSource ?? prev.landingSource ?? null,
+    landingCheck: landing.landingCheck,
+    landingCheckedAt: Date.now(),
+    // landedAt IS THE FLAG "a landing has been observed", and FR24 confirming
+    // one IS observing it. The card gates the belt pill and the ARRIVED label
+    // on this field, so a landing that set only landedUtc would change the
+    // status word and leave both of those switched off -- at exactly the
+    // airports where AeroDataBox publishes no arrival, which are the airports
+    // this whole path exists for.
+    //
+    // NOW, NOT THE TOUCHDOWN. It dates the observation, deliberately; when the
+    // landing HAPPENED is landedInstant's question and it reads landedUtc.
+    landedAt: prev.landedAt ?? (landedUtc !== null ? Date.now() : null),
+  };
+  await writeKey(keyFor(email), next);
+  return next;
+}
+
+
 // Turns reminders on or off for one flight. No-op if not saved.
 //
 // Mirrors setFlightArchived exactly, and deliberately: both write one
@@ -670,7 +789,13 @@ export async function touchSavedFlight(
   if (idx < 0) return null;
   const next = [...flights];
   const prev = flights[idx];
-  const landedAt = flight.status === 'landed'
+  // AND A LANDING FLIGHTRADAR24 CONFIRMED KEEPS ITS landedAt TOO. Without the
+  // second clause an ordinary /flight refresh -- which returns AeroDataBox's
+  // 'active', because that provider never noticed the arrival, which is the
+  // whole reason FR24 is here -- would null this field on every poll. The card
+  // reads it as the FLAG that a landing has been observed, so the belt pill and
+  // the ARRIVED label would appear and vanish once a minute.
+  const landedAt = (flight.status === 'landed' || prev.landedUtc != null)
     ? (prev.landedAt ?? flight.landedAt ?? Date.now())
     : null;
   // archivedAt, remindersSetAt and tripId join savedAt and landedAt as fields
@@ -678,6 +803,14 @@ export async function touchSavedFlight(
   // the flight's data, never the user's decision about it -- and tripId is the
   // costliest of the three to lose, since it is the only one that cannot be
   // reconstructed from anything else on the record.
+  //
+  // AND NOW A SECOND KIND OF FIELD IS CARRIED THE SAME WAY, for a different
+  // reason worth stating separately. The landing fields are not the user's
+  // decisions -- they are ANOTHER PROVIDER'S ANSWER, and `flight` here is built
+  // from an AeroDataBox response that has never heard of Flightradar24. Every
+  // one of them would be overwritten with null by an ordinary refresh, so a
+  // card that had correctly gone to 'landed' would silently revert to
+  // 'active' the next time the schedule was fetched.
   next[idx] = {
     ...flight,
     savedAt: prev.savedAt,
@@ -685,6 +818,10 @@ export async function touchSavedFlight(
     archivedAt: prev.archivedAt ?? null,
     remindersSetAt: prev.remindersSetAt ?? null,
     tripId: prev.tripId ?? null,
+    landedUtc: prev.landedUtc ?? null,
+    landingSource: prev.landingSource ?? null,
+    landingCheck: prev.landingCheck ?? null,
+    landingCheckedAt: prev.landingCheckedAt ?? null,
   };
   await writeKey(keyFor(email), next);
   return next;

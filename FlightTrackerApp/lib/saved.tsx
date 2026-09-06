@@ -39,6 +39,7 @@ import {
   setFlightArchived,
   setFlightReminders,
   setFlightTrip,
+  setFlightLanding,
   // THE MERGE'S WRITE. See its note in storage: one read, one map, one write,
   // because a merge is one act on several records and setFlightTrip is one act
   // on one.
@@ -58,6 +59,12 @@ import {
   reconcile,
 } from './reminders';
 import { registerWatch, deregisterWatch } from './watch';
+import {
+  checkLanding,
+  landedUtcToTs,
+  landingDue,
+  landingWindowClosed,
+} from './landing';
 
 export const API_BASE = 'https://flight-tracker-970706733452.asia-south1.run.app';
 
@@ -79,6 +86,17 @@ export function flightUrl(number: string, date: string | null, origin: string | 
 // These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
 const AUTO_REFRESH_MAX_FLIGHTS = 2;
+
+// ── HOW MANY LANDING CHECKS ONE SWEEP WILL MAKE ─────────────────────────────
+//
+// A DIFFERENT BUDGET FROM EVERY CAP ABOVE IT, which is the only reason it is
+// not the same number. Those protect AeroDataBox units, which are scarce. This
+// spends Flightradar24 credits, and one flight's entire arrival window -- at
+// most forty checks, five minutes apart -- costs at most eighty of the thirty
+// thousand a month. Four at a time is a burst limit, not a budget limit:
+// it stops a watchlist that all lands at once from firing twenty requests into
+// the same second, and the next tick is sixty seconds away.
+const LANDING_SWEEP_MAX = 4;
 
 // ── HOW MANY FLIGHTS ONE PULL WILL PAY FOR ──────────────────────────────────
 //
@@ -289,9 +307,37 @@ export function arrivalTs(f: SavedFlight): number | null {
 // reporting status Arrived with an actual arrival FIVE HOURS IN THE FUTURE while
 // still on the ground in Dubai. Accepting that would start a bag window before
 // the flight had taken off. Past-or-now, or it is not an arrival.
+// AND NOW THERE ARE THREE SOURCES, USED FOR WHAT EACH IS GOOD AT.
+//
+// FLIGHTRADAR24 DECIDES WHETHER AND WHEN -- but what it knows is TOUCHDOWN,
+// because it tracks the aircraft. AERODATABOX REPORTS THE GATE, which is the
+// moment this function is actually asked about: the bag window, the layover
+// rule and every "landed at" on a card mean the door, not the runway.
+//
+// SO ONCE FR24 HAS CONFIRMED A LANDING, AeroDataBox's gate time is PREFERRED
+// over an estimate derived from the touchdown -- a measurement beats a guess --
+// but only where the two agree that they are describing one arrival. See
+// TAXI_TO_GATE_MAX_MS.
+//
+// AND WHERE THERE IS NO GATE TIME, which is the Bombay failure exactly, the
+// touchdown plus a named taxi estimate is the best available and says so.
 export function landedInstant(f: SavedFlight, now: number): number | null {
-  const actual = zonedIsoToTs(f.to.actualIso, f.to.timezone);
-  if (actual !== null && actual <= now) return actual;
+  const gate = zonedIsoToTs(f.to.actualIso, f.to.timezone);
+  const touchdown = landedUtcToTs(f.landedUtc);
+
+  if (touchdown !== null && touchdown <= now) {
+    if (gate !== null && gate <= now
+      && gate >= touchdown && gate - touchdown <= TAXI_TO_GATE_MAX_MS) {
+      return gate;
+    }
+    return touchdown + TAXI_TO_GATE_MS;
+  }
+
+  // NO FR24 ANSWER. Unchanged from before this existed, including the refusal
+  // of a future "actual" -- EK502 reported one FIVE HOURS AHEAD while still on
+  // the ground in Dubai, and accepting it would start a bag window for a flight
+  // that had not taken off.
+  if (gate !== null && gate <= now) return gate;
   return f.landedAt;
 }
 
@@ -343,15 +389,39 @@ export function hasFlown(f: SavedFlight, now: number): boolean {
 // than the clock, and this is the same principle hasFlown states above, applied
 // to the word on the row instead of to the archive.
 //
-// THE CLOCK MAY DEMOTE A STATUS, NEVER PROMOTE IT, and the asymmetry is the
-// whole design.
+// THE CLOCK MAY DEMOTE A STATUS, NEVER PROMOTE IT. A SECOND SOURCE MAY PROMOTE.
 //
-// A TIME PASSING DOES NOT PROVE AN EVENT HAPPENED. A flight can sit an hour past
-// its scheduled departure still at the gate, and a scheduled arrival can come
-// and go while the aircraft is holding. Promoting on the clock would invent
-// departures and landings that never occurred, which is exactly the failure this
-// exists to correct, pointing the other way. So there is no promotion here at
-// all: nothing is ever moved to "active" or "landed" by the clock.
+// THAT SECOND CLAUSE IS NEW AND IT WEAKENS A RULE THIS FUNCTION USED TO STATE
+// ABSOLUTELY, so here is why, rather than an exception bolted onto the old
+// text.
+//
+// THE OLD RULE WAS ABOUT THE CLOCK, AND IT WAS RIGHT ABOUT THE CLOCK. A time
+// passing does not prove an event happened: a flight can sit an hour past its
+// scheduled departure still at the gate, and a scheduled arrival can come and go
+// while the aircraft is holding. Promoting on the clock would invent departures
+// and landings that never occurred -- the same failure this function exists to
+// correct, pointed the other way. Nothing below promotes on the clock, and
+// nothing ever should.
+//
+// BUT THE RULE WAS ALSO DOING A SECOND JOB IT WAS NEVER STATED TO DO. When
+// AeroDataBox was the only source, "never promote" also meant "never contradict
+// the provider upwards", because there was nothing to contradict it WITH. That
+// was not a principle, it was the shape of having one source -- and that source
+// lost the arrival on three flights out of three at Indian airports: 3h24m
+// late, five hours EARLY with a timestamp in the future, and one that sat on
+// "Approaching" for three and a half hours after touchdown.
+//
+// A MEASUREMENT IS NOT A CLOCK. Flightradar24 watching an aircraft transmit
+// from the ground is evidence of an event, not the passage of time, and it is
+// the kind of thing the old rule was protecting the record FROM the absence of.
+// So landedUtc promotes, and only landedUtc: it is the single field on this
+// record written by a source that observes the aircraft rather than reporting
+// what an airline filed.
+//
+// AND AERODATABOX MAY STILL LAND A FLIGHT, in one narrow case -- see
+// aeroDataBoxMayLand. Frankfurt timed LH909 to the minute, touchdown and gate
+// both, within thirteen minutes; throwing that away wherever FR24 happens to
+// have nothing would cost a working card for no gain.
 //
 // AN EVENT CANNOT HAVE HAPPENED BEFORE ITS OWN TIME. That is what makes
 // demotion sound. If the record says a flight has landed and names an arrival
@@ -372,8 +442,52 @@ export function hasFlown(f: SavedFlight, now: number): boolean {
 // DERIVED, NEVER STORED, exactly like hasFlown and isArchived. Nothing here
 // writes back; a record's stored status is what the provider last said and stays
 // that way.
+// ── WHEN AERODATABOX IS STILL ALLOWED TO SAY A FLIGHT LANDED ────────────────
+//
+// FR24 IS THE AUTHORITY, so while it has an opinion -- or while we are still
+// going to ask it for one -- AeroDataBox does not get to declare an arrival.
+// That is what stops EK502's "Arrived, five hours early" from ever reaching a
+// card again.
+//
+// THE EXEMPTION: a clean "does not know". FR24 asked, answered, has no landing.
+// There is no opinion to defer to, and AeroDataBox's own arrival is the best
+// thing left -- at Frankfurt it was right to the minute.
+//
+// AND THE SECOND EXEMPTION, WHICH IS BROADER THAN THE FIRST AND DELIBERATE:
+// once the check window has closed, no further check is coming, whatever the
+// last outcome was. Without this a record whose checks all ERRORED -- or one
+// that was never checked at all, which is every flight saved before this
+// shipped and every flight whose arrival passed while the app was closed --
+// would refuse a landing FOR EVER on the strength of an answer that will never
+// arrive. That is the stuck card this whole exemption exists to prevent, and it
+// would arrive through the back door.
+//
+// SO INSIDE THE WINDOW THE RULE IS STRICT: 'pending' and 'error' both refuse,
+// and an unreachable provider never silently restores the old behaviour.
+// OUTSIDE IT, AeroDataBox stands.
+function aeroDataBoxMayLand(f: SavedFlight, now: number): boolean {
+  if (f.landingCheck === 'unknown') return true;
+  return landingWindowClosed(arrivalTs(f), now);
+}
+
 export function effectiveStatus(f: SavedFlight, now: number): string {
-  const s = f.status.toLowerCase();
+  // ── THE ONE PROMOTION, AND IT COMES FIRST ──
+  //
+  // A CONFIRMED TOUCHDOWN OUTRANKS EVERY STORED WORD, including a stored
+  // 'active' from a provider still insisting the flight is approaching. The
+  // past-or-now test is the same one landedInstant applies and for the same
+  // reason: a landing in the future is not a landing.
+  const touchdown = landedUtcToTs(f.landedUtc);
+  if (touchdown !== null && touchdown <= now) return 'landed';
+
+  let s = f.status.toLowerCase();
+
+  // A STORED 'landed' AERODATABOX IS NO LONGER ENTITLED TO. Demoted to
+  // 'active', which is what FR24 is actually saying when it answers 'pending',
+  // and which the rules below then treat exactly as they treat any other
+  // flight in the air.
+  if (s === 'landed' && !aeroDataBoxMayLand(f, now)) s = 'active';
+
   if (s === 'landed') {
     // The same instant arrivalTs uses, so the row and the archive rule read one
     // arrival time rather than two.
@@ -565,6 +679,36 @@ export function sortSavedByRelevance(list: SavedFlight[], now: number): SavedFli
 // meaning "the bags are still worth showing" is worth more than two that agree
 // today and will not later.
 export const BAG_WINDOW_MS = 45 * 60 * 1000;
+
+// ── FROM WHEELS DOWN TO THE DOOR OPENING ────────────────────────────────────
+//
+// AN ESTIMATE, NOT A MEASUREMENT -- tune it once real journeys have been
+// watched, exactly as STALE_AFTER_ARRIVAL_MS below is waiting to be tuned.
+//
+// WHY IT HAS TO EXIST AT ALL. Flightradar24 reports TOUCHDOWN. It tracks the
+// aircraft, so that is the only arrival it can know. AeroDataBox reports the
+// GATE. Those are different moments and the bag window belongs to the second
+// one: bags do not start moving when the wheels touch, they start when the
+// aircraft is on stand. Feeding a touchdown into a window meant for a gate
+// arrival starts it early by the length of the taxi -- which is the SAME class
+// of bug as the landedAt one this window already had, where the clock was
+// started by when the app noticed rather than by when the flight arrived.
+//
+// TEN MINUTES, AND FRANKFURT MEASURED SEVEN. LH909 touched down at 18:07 and
+// was at its gate at 18:14. That is one taxi at one airport; Mumbai and
+// Bengaluru will differ, and a long taxi at a big field is longer still. Ten is
+// a deliberate round number sitting slightly above the one real observation.
+export const TAXI_TO_GATE_MS = 10 * 60 * 1000;
+
+// AND THE BOUND ON BELIEVING THE TWO ARE THE SAME ARRIVAL.
+//
+// landedInstant prefers AeroDataBox's gate time over the estimate above
+// whenever it has one -- a measurement beats a guess. But only when the two
+// sources are describing the same event: a gate time BEFORE the touchdown, or
+// an hour after it, is not a taxi, it is two records that do not agree, and the
+// estimate is the safer of the two. An hour is generous on purpose; the point
+// is to exclude nonsense, not to police long taxis.
+export const TAXI_TO_GATE_MAX_MS = 60 * 60 * 1000;
 
 // ── WHEN A FLIGHT STOPS BEING LIVE AND STARTS BEING LOST ────────────────────
 //
@@ -1302,6 +1446,61 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // the clock being READ — they are about a boundary being CROSSED. So the
   // reading stays private and the screen keeps its own interval for the value it
   // actually renders. See the note at the top of this file.
+  // ── ASKING FLIGHTRADAR24 WHETHER A FLIGHT HAS LANDED ───────────────────────
+  //
+  // ON THE MINUTE TICK THAT ALREADY EXISTS rather than a timer of its own. The
+  // cadence is not the tick's: landingDue holds every record to one check every
+  // five minutes and to the window around its own arrival, so this runs sixty
+  // times an hour and usually calls out zero times.
+  //
+  // IT IS NOT autoRefresh AND MUST NOT BE CONFUSED WITH IT. That one is switched
+  // off because it spends AeroDataBox units on flights nobody is looking at.
+  // This spends FR24 credits on the one question the app cannot answer without
+  // asking, during the ninety minutes a year per flight when the answer changes.
+  //
+  // THE OUTCOME IS WRITTEN EVERY TIME, INCLUDING THE FAILURES. 'error' is not a
+  // non-event: it is what stops AeroDataBox declaring a landing while FR24 is
+  // unreachable, and a check that wrote nothing on failure would look identical
+  // to one that never ran.
+  const landingSweepRef = useRef(false);
+  const landingSweep = useCallback(async (isCancelled: () => boolean) => {
+    // ONE SWEEP AT A TIME. A slow network makes ticks overlap, and two sweeps
+    // would ask the same questions and pay twice for them.
+    if (landingSweepRef.current) return;
+    landingSweepRef.current = true;
+    try {
+      const list = await getSavedFlights(email);
+      const now = Date.now();
+      const due = list
+        .filter(f => landingDue(f, arrivalTs(f), now))
+        .slice(0, LANDING_SWEEP_MAX);
+      if (due.length === 0) return;
+
+      let latest: SavedFlight[] | null = null;
+      for (const f of due) {
+        if (isCancelled()) return;
+        const result = await checkLanding(API_BASE, f);
+        if (isCancelled()) return;
+        latest = await setFlightLanding(email, f.id, {
+          // landedUtc is only ever non-null on a 'landed' outcome, and
+          // setFlightLanding will not unwrite one it already holds.
+          landedUtc: result.landedUtc,
+          landingSource: result.outcome === 'landed' ? 'fr24' : null,
+          landingCheck: result.outcome,
+        });
+      }
+      // ONE setState FOR THE WHOLE SWEEP. Each write returns the full list, so
+      // the last one is current; setting state per flight would re-render the
+      // watchlist up to four times for one pass.
+      if (latest !== null && !isCancelled()) setSavedFlights(latest);
+    } catch {
+      // Silent, like watch.ts. A landing check that fails changes nothing on
+      // screen -- the card keeps saying exactly what it said before.
+    } finally {
+      landingSweepRef.current = false;
+    }
+  }, [email]);
+
   useEffect(() => {
     let cancelled = false;
     const tick = () => {
@@ -1311,11 +1510,15 @@ export function SavedProvider({ children }: { children: ReactNode }) {
         dayRef.current = d;
         getSavedFlights(email).then(list => { if (!cancelled) setSavedFlights(list); });
       }
+      void landingSweep(() => cancelled);
     };
     tick(); // run immediately on mount, not only on the first 60s tick
     const id = setInterval(tick, 60000);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // tick() runs the sweep too, so a flight whose arrival window opened
+        // while the app was in the background is asked about immediately rather
+        // than up to a minute later.
         tick();
         // Cheap, and the only chance to correct a schedule that drifted while
         // the app was not running. Fire and forget: nothing on screen waits.
@@ -1330,7 +1533,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       sub.remove();
     };
-  }, [email]);
+  }, [email, landingSweep]);
 
   // ON OR OFF for one flight, and the single place the three things that have
   // to agree are put in order: the operating system's schedule, the stored
