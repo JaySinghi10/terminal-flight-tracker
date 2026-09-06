@@ -1591,6 +1591,20 @@ export default function Flights() {
   const toggleTrip = (legs: SavedFlight[]) => {
     const id = legs[0].tripId as string;
     const next = !isOpen(legs);
+    // ── A CLOSED FOLDER FORGETS WHICH LEG WAS TAPPED ──────────────────────
+    //
+    // THE OVERRIDE OUTLIVED THE FOLDER AND THAT IS THE BUG. Tapping SFO-FRA on a
+    // landed leg, shutting the folder and opening it again showed SFO-FRA again
+    // -- not the leg boarding now. Closing a folder is the clearest statement
+    // available that the user is done with it, so it is the right moment to hand
+    // focus back to the journey.
+    //
+    // AND IT IS CONDITIONAL, BECAUSE ONE VALUE SERVES EVERY FOLDER. focusOverride
+    // is a single leg id for the whole screen -- it works across trips only
+    // because ids are unique, so a folder that does not contain the leg simply
+    // misses. Clearing it unconditionally would mean shutting ANY folder
+    // discarded a decision made in a DIFFERENT one.
+    const ownsFocus = focusOverride !== null && legs.some(l => l.id === focusOverride);
     // ── THE CAROUSEL IS SINGLE-SELECT AND THE OTHER TWO ARE NOT ──
     //
     // A ROW OF STUBS WITH ONE BODY UNDER IT CAN ONLY SHOW ONE TRIP, so choosing a
@@ -1606,9 +1620,13 @@ export default function Flights() {
       const only: Record<string, boolean> = {};
       for (const t of current) only[t[0].tripId as string] = t[0].tripId === id;
       setOpenTrips(only);
+      // EVERY OTHER TRIP JUST CLOSED, without any of them being toggled. The
+      // override survives only if it names a leg in the one being opened.
+      if (focusOverride !== null && !ownsFocus) setFocusOverride(null);
       return;
     }
     setOpenTrips(prev => ({ ...prev, [id]: next }));
+    if (!next && ownsFocus) setFocusOverride(null);
   };
 
   // ── ONE TRIP'S LEGS, AND ITS OWN TWO INDICES ──────────────────────────────
