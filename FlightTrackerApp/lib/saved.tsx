@@ -266,6 +266,32 @@ export function arrivalTs(f: SavedFlight): number | null {
   return zonedIsoToTs(f.to.actualIso ?? f.to.estimatedIso ?? f.to.scheduledIso, f.to.timezone);
 }
 
+// ── WHEN A LEG ACTUALLY ARRIVED, WHICH IS NOT WHEN WE NOTICED ───────────────
+//
+// landedAt IS AN OBSERVATION TIMESTAMP AND IT WAS RUNNING THE BAG WINDOW. It is
+// written on the device clock at the moment a refresh first comes back saying
+// "landed", so it dates OUR KNOWLEDGE rather than the flight. LH455 touched down
+// at 10:14 and was not refreshed until 11:02, so landedAt read 34 minutes when
+// the aircraft had been down for 82 -- and the forty-five minute window it feeds
+// started 48 minutes late. Every passenger-facing thing measured from it was
+// wrong by however long the app took to look.
+//
+// THE ARRIVAL IS THE FLIGHT'S OWN CLOCK, so it is preferred wherever there is
+// one, and landedAt survives only as the fallback for a record that has landed
+// without the provider publishing an actual time.
+//
+// AND A FUTURE "ACTUAL" IS REFUSED, which is not a hypothetical. The provider
+// carries revisedTime as an estimate before a movement and an actual after it,
+// disambiguated only by a status that can be wrong -- EK502 was observed
+// reporting status Arrived with an actual arrival FIVE HOURS IN THE FUTURE while
+// still on the ground in Dubai. Accepting that would start a bag window before
+// the flight had taken off. Past-or-now, or it is not an arrival.
+export function landedInstant(f: SavedFlight, now: number): number | null {
+  const actual = zonedIsoToTs(f.to.actualIso, f.to.timezone);
+  if (actual !== null && actual <= now) return actual;
+  return f.landedAt;
+}
+
 // THE INSTANT A FLIGHT LEFT, or is expected to. arrivalTs's rule read from the
 // other end of the record, and the two are written together so the precedence
 // cannot come apart: actual first, then the estimate, then the schedule.

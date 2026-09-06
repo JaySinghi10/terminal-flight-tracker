@@ -50,6 +50,10 @@ import {
   // because the flight card reads the same number for the same reason. See its
   // note: it was sixty minutes here and is forty-five there now.
   BAG_WINDOW_MS,
+  // WHEN A LEG ARRIVED, which is not landedAt. Imported for the same reason
+  // BAG_WINDOW_MS is: the card runs the same window and the two must not come
+  // to disagree about which clock it starts on.
+  landedInstant,
   departureTs,
   OWN_MSG,
 } from '../lib/saved';
@@ -452,6 +456,21 @@ type LegState = 'landed' | 'distant' | 'next' | 'current';
 // gets booked, the gate gets assigned. Opening the card earlier would put a
 // full-height surface on the screen for a flight there is nothing to do about.
 const CURRENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// ── AND HOW LONG PAST ITS DEPARTURE A LEG CAN STILL BE THE CURRENT ONE ──────
+//
+// THE LOWER BOUND CURRENT_WINDOW_MS NEVER HAD. Its test is `t - now < WINDOW`,
+// and for a departure in the past that difference is NEGATIVE -- so every past
+// departure passed it, one from last week as readily as one from this morning.
+// The branch was written to mean "leg one leaves soon"; it also meant "leg one
+// left at some point", and a trip whose landing was never recorded opened its
+// first leg for ever with no way out.
+//
+// TWENTY-FOUR HOURS, because the longest scheduled flight in the world is about
+// nineteen. A leg whose departure is more than a day behind us with no landing
+// recorded is a stale record rather than a flight still in progress, and the
+// honest answer for it is that no leg is current.
+const STALE_AFTER_DEPARTURE_MS = 24 * 60 * 60 * 1000;
 // AND THREE DAYS IS WHERE THE FIRST LEG STOPS BEING NEXT -- the first leg, and
 // no other. Inside it a departure time is worth printing because it is nearly
 // settled; outside it the provider is quoting a timetable, and a time that will
@@ -499,7 +518,12 @@ const NEXT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 function currentLegIndex(legs: SavedFlight[], now: number): number {
   for (let i = 1; i < legs.length; i++) {
     if (legs[i].landedAt === null && legs[i - 1].landedAt !== null) {
-      const landed = legs[i - 1].landedAt as number;
+      // WHETHER IT HAS LANDED IS STILL landedAt; WHEN IT LANDED IS NOT.
+      // landedAt dates the refresh that noticed, so it ran this window late by
+      // however long the app took to look -- 48 minutes, measured. The flag and
+      // the instant are deliberately different reads: see landedInstant, which
+      // also refuses a "actual" arrival in the future.
+      const landed = landedInstant(legs[i - 1], now) as number;
       return now - landed < BAG_WINDOW_MS ? i - 1 : i;
     }
   }
@@ -507,10 +531,12 @@ function currentLegIndex(legs: SavedFlight[], now: number): number {
   // and needs an unlanded leg, so neither case reaches it.
   const last = legs.length - 1;
   if (last >= 0 && legs[last].landedAt !== null
-    && now - (legs[last].landedAt as number) < BAG_WINDOW_MS) return last;
+    && now - (landedInstant(legs[last], now) as number) < BAG_WINDOW_MS) return last;
   if (legs.length > 0 && legs[0].landedAt === null) {
     const t = departureTs(legs[0]);
-    if (t !== null && t - now < CURRENT_WINDOW_MS) return 0;
+    // BOUNDED AT BOTH ENDS NOW. See STALE_AFTER_DEPARTURE_MS: the upper test
+    // alone accepted every departure that has ever happened.
+    if (t !== null && t - now < CURRENT_WINDOW_MS && now - t < STALE_AFTER_DEPARTURE_MS) return 0;
   }
   return -1;
 }
@@ -661,7 +687,10 @@ function showsBelt(legs: SavedFlight[], i: number, now: number): boolean {
   const leg = legs[i];
   if (leg.to.baggage === null) return false;
   if (leg.landedAt === null) return false;
-  if (now - leg.landedAt >= BAG_WINDOW_MS) return false;
+  // THE FLIGHT'S CLOCK, NOT THE REFRESH'S. Same correction as currentLegIndex,
+  // and it has to be the same or a belt would outlive the leg that is open.
+  const landed = landedInstant(leg, now);
+  if (landed === null || now - landed >= BAG_WINDOW_MS) return false;
   return bagEligible(legs, i);
 }
 

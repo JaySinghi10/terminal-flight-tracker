@@ -76,7 +76,7 @@ import { zonedIsoToTs, clock24 } from '../lib/time';
 // BAG_WINDOW_MS JOINS THEM, and for the same reason: it is a RULE about a record
 // and a clock rather than any screen's state. app/flights reads the same constant
 // for the collapsed rows and for how long focus stays on a leg that has landed.
-import { effectiveStatus, isArchived, BAG_WINDOW_MS } from '../lib/saved';
+import { effectiveStatus, isArchived, BAG_WINDOW_MS, landedInstant } from '../lib/saved';
 import {
   getStatusColor,
   routeDateLabel,
@@ -2705,10 +2705,17 @@ export function FlightCard({
   // bagsClaimedHere IS STILL THE SAFETY HALF. A through-checked connection never
   // reaches the belt state at all, whatever the clock says -- see bagEligible.
   // The card cannot answer that question and does not try.
+  // landedAt IS THE FLAG; landedInstant IS THE CLOCK. The two are read
+  // separately on purpose. landedAt says a refresh has seen this flight land --
+  // the strict test the ARRIVED label below depends on -- while the window has
+  // to run from the arrival itself, because landedAt dates the observation and
+  // was starting this window up to 48 minutes late.
   const landedAt = flightRecord?.landedAt ?? null;
+  const landedTs = flightRecord ? landedInstant(flightRecord, now) : null;
   const beltState = bagsClaimedHere
     && landedAt !== null
-    && now - landedAt < BAG_WINDOW_MS;
+    && landedTs !== null
+    && now - landedTs < BAG_WINDOW_MS;
 
   // ── "ARRIVED", WHEN THE FLIGHT IS DOWN AND THE CLOCK IS ONLY AN ESTIMATE ──
   //
