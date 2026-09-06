@@ -1,6 +1,6 @@
 {
  "airport": "HKG",
- "scraped_at": "2026-09-06T13:09:42Z",
+ "scraped_at": "2026-09-06T13:40:24Z",
  "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
  "records": [
   {
@@ -26,7 +26,7 @@
    "lat": 22.313066405887156,
    "lon": 113.92684507491202,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -52,7 +52,7 @@
    "lat": 22.316958,
    "lon": 113.935401,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -78,7 +78,7 @@
    "lat": 22.317290554103966,
    "lon": 113.93369897689921,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -104,7 +104,7 @@
    "lat": 22.314090772902734,
    "lon": 113.9311587294926,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -130,7 +130,7 @@
    "lat": 22.317121642918583,
    "lon": 113.9349066258625,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -156,7 +156,7 @@
    "lat": 22.313154156988336,
    "lon": 113.92684626810778,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -182,7 +182,7 @@
    "lat": 22.310179038622838,
    "lon": 113.91806080213114,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -208,7 +208,7 @@
    "lat": 22.308258079096866,
    "lon": 113.91831736068451,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -234,7 +234,7 @@
    "lat": 22.3156534859126,
    "lon": 113.93710800315196,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -260,7 +260,7 @@
    "lat": 22.313283567453368,
    "lon": 113.92680033138338,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -286,7 +286,7 @@
    "lat": 22.315673,
    "lon": 113.933347,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -312,7 +312,7 @@
    "lat": 22.317351180461415,
    "lon": 113.93367724395749,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -338,7 +338,7 @@
    "lat": 22.31336271525789,
    "lon": 113.92660107466756,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -364,7 +364,7 @@
    "lat": 22.311820771889735,
    "lon": 113.91712487480923,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -390,7 +390,7 @@
    "lat": 22.317046168909084,
    "lon": 113.93030729678527,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -416,7 +416,7 @@
    "lat": 22.31517585386647,
    "lon": 113.93441634436462,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -442,7 +442,7 @@
    "lat": 22.311048,
    "lon": 113.926418,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -468,7 +468,7 @@
    "lat": 22.314137790553026,
    "lon": 113.93073182063046,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -494,7 +494,7 @@
    "lat": 22.314595303246843,
    "lon": 113.93273092898023,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -520,7 +520,7 @@
    "lat": 22.315572,
    "lon": 113.934324,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -546,7 +546,7 @@
    "lat": 22.315413,
    "lon": 113.934316,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -572,7 +572,7 @@
    "lat": 22.315480394173406,
    "lon": 113.93600702031944,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -598,7 +598,7 @@
    "lat": 22.315079977819696,
    "lon": 113.93302837730786,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -624,7 +624,7 @@
    "lat": 22.31247919856121,
    "lon": 113.92706137530948,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -650,7 +650,7 @@
    "lat": 22.315814067319973,
    "lon": 113.93544525213515,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -676,7 +676,7 @@
    "lat": 22.314583184020854,
    "lon": 113.93268564943685,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -702,7 +702,7 @@
    "lat": 22.31512,
    "lon": 113.934563,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -728,7 +728,7 @@
    "lat": 22.316565412667703,
    "lon": 113.9392028762619,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -754,7 +754,7 @@
    "lat": 22.312481951430023,
    "lon": 113.92706470868055,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -780,7 +780,7 @@
    "lat": 22.313198,
    "lon": 113.926839,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -806,7 +806,7 @@
    "lat": 22.315415305541162,
    "lon": 113.93393629260171,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -832,7 +832,7 @@
    "lat": 22.315365566831336,
    "lon": 113.9355912486277,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -858,7 +858,7 @@
    "lat": 22.312371451566484,
    "lon": 113.92713871217629,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -884,7 +884,7 @@
    "lat": 22.31536125718205,
    "lon": 113.93447311992685,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -910,7 +910,7 @@
    "lat": 22.31521338828529,
    "lon": 113.93176339730296,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -936,7 +936,7 @@
    "lat": 22.316645481424988,
    "lon": 113.93942454967979,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -962,7 +962,7 @@
    "lat": 22.31311203707422,
    "lon": 113.92685000281834,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -988,7 +988,7 @@
    "lat": 22.312582,
    "lon": 113.927022,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1014,7 +1014,7 @@
    "lat": 22.315946067177812,
    "lon": 113.93584330641855,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1040,7 +1040,7 @@
    "lat": 22.316727376195995,
    "lon": 113.9390578323589,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1066,7 +1066,7 @@
    "lat": 22.31258928799202,
    "lon": 113.92708974776913,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1092,7 +1092,7 @@
    "lat": 22.312701,
    "lon": 113.926924,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1118,7 +1118,7 @@
    "lat": 22.314259,
    "lon": 113.93417,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1144,7 +1144,7 @@
    "lat": 22.315309849439622,
    "lon": 113.93563889450276,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1170,7 +1170,7 @@
    "lat": 22.316960903960762,
    "lon": 113.93903753495806,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1196,7 +1196,7 @@
    "lat": 22.31302376666781,
    "lon": 113.92685182738931,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1222,7 +1222,7 @@
    "lat": 22.315761772359007,
    "lon": 113.93540389943051,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1248,7 +1248,7 @@
    "lat": 22.315327964946704,
    "lon": 113.93395358651948,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1274,7 +1274,7 @@
    "lat": 22.31412,
    "lon": 113.930684,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1300,7 +1300,7 @@
    "lat": 22.317013656267974,
    "lon": 113.93916504225449,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1326,7 +1326,7 @@
    "lat": 22.315310149283995,
    "lon": 113.93316351165788,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1352,7 +1352,7 @@
    "lat": 22.315791407295276,
    "lon": 113.93707693452998,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1378,7 +1378,7 @@
    "lat": 22.315311317214068,
    "lon": 113.93564597162452,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1404,7 +1404,7 @@
    "lat": 22.315570653659833,
    "lon": 113.93395871277704,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1430,7 +1430,7 @@
    "lat": 22.316931161597637,
    "lon": 113.9393261622583,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1456,7 +1456,7 @@
    "lat": 22.317046628790262,
    "lon": 113.93924635941192,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1482,7 +1482,7 @@
    "lat": 22.316848215202125,
    "lon": 113.93917896474017,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1508,7 +1508,7 @@
    "lat": 22.315852495894326,
    "lon": 113.9370529657047,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1534,7 +1534,7 @@
    "lat": 22.317003392499252,
    "lon": 113.9392944217653,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1560,7 +1560,7 @@
    "lat": 22.314963837884683,
    "lon": 113.93462275042558,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1586,7 +1586,7 @@
    "lat": 22.315371,
    "lon": 113.934481,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1612,7 +1612,7 @@
    "lat": 22.312524,
    "lon": 113.927046,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1638,7 +1638,7 @@
    "lat": 22.314109105059952,
    "lon": 113.93419798989696,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1664,7 +1664,7 @@
    "lat": 22.316633215969553,
    "lon": 113.93676253136391,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1690,7 +1690,7 @@
    "lat": 22.315925259280746,
    "lon": 113.93541055633759,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1716,7 +1716,7 @@
    "lat": 22.314671,
    "lon": 113.9337,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1742,7 +1742,7 @@
    "lat": 22.315123,
    "lon": 113.934088,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1768,7 +1768,7 @@
    "lat": 22.316702241290827,
    "lon": 113.93922960841246,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1794,7 +1794,7 @@
    "lat": 22.309660201470088,
    "lon": 113.91774882894158,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1820,7 +1820,7 @@
    "lat": 22.31508037371818,
    "lon": 113.9347628216064,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1846,7 +1846,7 @@
    "lat": 22.315853206383334,
    "lon": 113.93355844820121,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1872,7 +1872,7 @@
    "lat": 22.314437072308984,
    "lon": 113.93632315696713,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1898,7 +1898,7 @@
    "lat": 22.315350895899584,
    "lon": 113.93602593698841,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1924,7 +1924,7 @@
    "lat": 22.3145905555417,
    "lon": 113.93270841694417,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1950,7 +1950,7 @@
    "lat": 22.316092590198465,
    "lon": 113.93578054018272,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   },
   {
@@ -1976,7 +1976,7 @@
    "lat": 22.313917879193756,
    "lon": 113.93007826047099,
    "source_url": "https://www.hongkongairport.com/iwov-resources/custom/json/shops_en.json",
-   "scraped_at": "2026-09-06T13:09:42Z",
+   "scraped_at": "2026-09-06T13:40:24Z",
    "source_updated_at": "2026-09-04 17:27:48"
   }
  ]

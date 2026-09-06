@@ -152,7 +152,10 @@ def _brands(payload):
     for card in CARD_RE.split(html_blob)[1:]:
         m = NAME_RE.search(card)
         if m:
-            out[m.group(1).strip()] = card
+            # UNESCAPED, like the tags. The h4 holds raw HTML, so an apostrophe
+            # arrives as &#39; and "Foody's" was being stored -- and keyed -- as
+            # "Foody&#39;s".
+            out[_text(m.group(1))] = card
     return out
 
 
@@ -227,8 +230,15 @@ def parse(raw, scraped_at, entry=None):
                 out.append(Dining(
                     airport=AIRPORT,
                     name=name,
+                    # THE WHOLE ADDRESS, NOT A PREFIX OF IT. Truncating to 28
+                    # characters collapsed seven pairs of outlets at Mumbai:
+                    # "Level 3, Post Security Hold Area - Gate 41" and the same
+                    # string ending "Gate 45" share their first 28 characters, so
+                    # two real counters became one key and the diff went blind to
+                    # both. The runner said so on every run -- "CANNOT DIFF: 7
+                    # records share a key" -- and it was read past twice.
                     source_id="%s|%s|%s" % (name.lower().replace(" ", "-"),
-                                            terminal, re.sub(r"\W+", "", addr)[:28]),
+                                            terminal, re.sub(r"\W+", "", addr)),
                     terminal_raw=tab_label.strip(),
                     terminal=terminal,
                     level=("Level " + level.group(1)) if level else "",

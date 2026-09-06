@@ -735,24 +735,6 @@ const ICON_HOME_D = 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z';
 // `L3 15.5`, which puts every vertex on its mirror. Nothing else moved.
 const ICON_SAVED_D = 'M12 3c.9 0 1.5 1.2 1.5 3v3.2l7.5 4.3v2l-7.5-2.3v4.3l2.5 1.8v1.7L12 20l-4 1v-1.7l2.5-1.8v-4.3L3 15.5v-2l7.5-4.3V6c0-1.8.6-3 1.5-3z';
 
-// A BACKPACK, THREE STROKES: the body, the top handle, and one pocket line.
-// Three is what reads at 22pt; a zip or a strap buckle turns to mush.
-//
-// TRACED BEFORE SHIPPING, because a path that looks plausible is not one that
-// is. Every vertex mirrors about x=12 — body 7/17, 20/4, 17/7; handle 9/15;
-// pocket 4/20 — the body closes back on its start, and all four corner arcs are
-// r=3 with a chord of 4.2426, comfortably inside the 6.00 that a radius-3 arc
-// can span. The handle's arc is a chord of exactly 6.0000 on r=3: a true
-// semicircle rather than a nearly-one.
-//
-// The ink runs x 4..20 and y 3..21 — the 3 is the handle's apex, which is an
-// arc extreme rather than a vertex and is easy to miss when checking. With the
-// 1.75 stroke that is 3.125..20.875 and 2.125..21.875, inside the 24 box, and
-// centred on (12, 12).
-const ICON_BAG_BODY_D = 'M7 7 H17 A3 3 0 0 1 20 10 V18 A3 3 0 0 1 17 21 H7 A3 3 0 0 1 4 18 V10 A3 3 0 0 1 7 7 Z';
-const ICON_BAG_HANDLE_D = 'M9 7 V6 A3 3 0 0 1 15 6 V7';
-const ICON_BAG_POCKET_D = 'M4 15 H20';
-
 // A MAGNIFIER, TWO STROKES. It is the one glyph here with no mirror symmetry to
 // check, because it is a diagonal object; the checks that replace it are that
 // the circle is a circle and that the handle points at its centre.
@@ -766,6 +748,33 @@ const ICON_BAG_POCKET_D = 'M4 15 H20';
 //
 // Ink runs 4.5..19.5 on both axes, so it is centred on (12, 12) like the others,
 // and 3.625..20.375 with the stroke.
+// ── A DEPARTURES BOARD, THREE STROKES ──────────────────────────────────────
+//
+// THE DECK IS THE AIRPORT LAYER, so the glyph says AIRPORT rather than food.
+// Dining is what it holds today; a plate would name the content and be wrong the
+// first time anything else arrives.
+//
+// A SPLIT-FLAP BOARD: a frame with two rules inside it. The frame is symmetric
+// and the rules deliberately are NOT -- equal lengths read as a window or a
+// screen, unequal ones read as lines of listing, which is the whole idea.
+//
+// THREE PATHS, as the backpack it replaces had, and for the same reason: a frame
+// and its contents are different strokes, and one path with a subpath would
+// share a join.
+//
+// TRACED, as the others here are. The frame mirrors about x=12 -- 4/20 on the
+// top edge, 3/21 on the sides -- and its corner arcs are r=1 on a chord of
+// 1.4142, well inside the 2.0 a radius-1 arc can span. It runs y 5..19, which is
+// 7 either side of 12, so the frame is centred vertically as well as
+// horizontally. Row A is 6.5..17.5, symmetric; row B is 6.5..12.5 and is the one
+// asymmetry in the glyph. The rules sit at y 10 and 14, centred on the same 12.
+//
+// The ink runs x 3..21 and y 5..19; with the 1.75 stroke that is 2.125..21.875
+// and 4.125..19.875, inside the 24 box.
+const ICON_DECK_FRAME_D = 'M4 5 H20 A1 1 0 0 1 21 6 V18 A1 1 0 0 1 20 19 H4 A1 1 0 0 1 3 18 V6 A1 1 0 0 1 4 5 Z';
+const ICON_DECK_ROW_A_D = 'M6.5 10 H17.5';
+const ICON_DECK_ROW_B_D = 'M6.5 14 H12.5';
+
 const ICON_LENS_D = 'M4.5 10.5 A6 6 0 1 0 16.5 10.5 A6 6 0 1 0 4.5 10.5 Z';
 const ICON_LENS_HANDLE_D = 'M14.74 14.74 L19.5 19.5';
 
@@ -814,7 +823,7 @@ const ICON_CLOSE_B_D = 'M5 5l14 14';
 const ITEMS: { label: string; route: string; paths: string[] }[] = [
   { label: 'Home', route: 'index', paths: [ICON_HOME_D] },
   { label: 'My Flights', route: 'flights', paths: [ICON_SAVED_D] },
-  { label: 'Bookings', route: 'bookings', paths: [ICON_BAG_BODY_D, ICON_BAG_HANDLE_D, ICON_BAG_POCKET_D] },
+  { label: 'Deck', route: 'deck', paths: [ICON_DECK_FRAME_D, ICON_DECK_ROW_A_D, ICON_DECK_ROW_B_D] },
   { label: 'Search', route: 'search', paths: [ICON_LENS_D, ICON_LENS_HANDLE_D] },
 ];
 

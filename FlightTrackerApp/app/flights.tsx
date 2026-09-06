@@ -54,6 +54,13 @@ import {
   // BAG_WINDOW_MS is: the card runs the same window and the two must not come
   // to disagree about which clock it starts on.
   landedInstant,
+  // WHICH LEG THE JOURNEY IS ON. It lived here until the Deck needed the same
+  // answer -- which airport the traveller is actually at -- and a screen must
+  // never be the place another screen imports from. See its note in lib/saved.
+  //
+  // nextLegIndex AND legState STAYED, because they answer "which card is open on
+  // THIS screen", which is rendering rather than journey.
+  currentLegIndex,
   departureTs,
   OWN_MSG,
 } from '../lib/saved';
@@ -451,26 +458,6 @@ function MenuRow({ label, onPress }: { label: string; onPress: () => void }) {
 // any of this sees them, so "first" and "previous" mean what they say.
 type LegState = 'landed' | 'distant' | 'next' | 'current';
 
-// UNDER A DAY THE FIRST LEG IS THE THING YOU ARE DOING. That is the window in
-// which a trip stops being a plan and becomes a journey: bags get packed, a taxi
-// gets booked, the gate gets assigned. Opening the card earlier would put a
-// full-height surface on the screen for a flight there is nothing to do about.
-const CURRENT_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-// ── AND HOW LONG PAST ITS DEPARTURE A LEG CAN STILL BE THE CURRENT ONE ──────
-//
-// THE LOWER BOUND CURRENT_WINDOW_MS NEVER HAD. Its test is `t - now < WINDOW`,
-// and for a departure in the past that difference is NEGATIVE -- so every past
-// departure passed it, one from last week as readily as one from this morning.
-// The branch was written to mean "leg one leaves soon"; it also meant "leg one
-// left at some point", and a trip whose landing was never recorded opened its
-// first leg for ever with no way out.
-//
-// TWENTY-FOUR HOURS, because the longest scheduled flight in the world is about
-// nineteen. A leg whose departure is more than a day behind us with no landing
-// recorded is a stale record rather than a flight still in progress, and the
-// honest answer for it is that no leg is current.
-const STALE_AFTER_DEPARTURE_MS = 24 * 60 * 60 * 1000;
 // AND THREE DAYS IS WHERE THE FIRST LEG STOPS BEING NEXT -- the first leg, and
 // no other. Inside it a departure time is worth printing because it is nearly
 // settled; outside it the provider is quoting a timetable, and a time that will
@@ -481,65 +468,6 @@ const STALE_AFTER_DEPARTURE_MS = 24 * 60 * 60 * 1000;
 // applied to every leg they made NEXT mean "departs within three days", which on
 // a four-leg journey is most of the journey. See nextLegIndex.
 const NEXT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-
-// WHICH LEG OPENS, BY THE JOURNEY'S OWN RECKONING, or -1 for none.
-//
-// TWO RULES, AND THE FIRST ONE WINS. A leg whose PREVIOUS leg has landed is the
-// one the traveller has arrived for, whatever the clock says -- that is the
-// handover from one flight to the next and it is a fact rather than a threshold.
-// Only when no such leg exists does the window apply, and it applies to the
-// FIRST leg alone: a middle leg does not open early just because its departure
-// is near, because the leg before it has not put the traveller there yet.
-//
-// -1 IS A REAL ANSWER. A trip five days out has no open card at all, and neither
-// does one whose every leg has landed. Both are correct: there is nothing to be
-// at an airport for, and a screen that always opens something would be opening
-// it for the sake of the layout.
-// ── AND THE HANDOVER WAITS FOR THE BAGS ───────────────────────────────────
-//
-// A LEG THAT HAS JUST LANDED KEEPS FOCUS FOR BAG_WINDOW_MS BEFORE THE NEXT ONE
-// TAKES IT. Without that clause the moment leg one touched down, focus moved to
-// leg two -- and the open card's landed layout, which exists to put a carousel
-// number in front of somebody who has just walked off an aircraft, was a state
-// almost nothing could reach. It rendered only if the user went back and tapped
-// the leg they had just flown.
-//
-// THE LAST LEG IS THE CASE THE LOOP CANNOT SEE, and it needs its own clause. The
-// loop looks for an UNLANDED leg whose predecessor has landed; when the final leg
-// lands there is no such leg, so a finished journey opened nothing at exactly the
-// moment its bags were coming out. It now holds that leg for the same window and
-// closes afterwards, which is the -1 a completed trip should settle to.
-//
-// IT IS THE CLOCK, NOT THE BELT. This asks only how long ago the aircraft landed;
-// whether there is a carousel number yet, and whether the bags are even claimed
-// at this airport, are the card's and bagEligible's questions. Holding focus on a
-// through-checked leg for forty-five minutes costs one card being open; deciding
-// it here would mean this function taking a trip-position rule it does not have.
-function currentLegIndex(legs: SavedFlight[], now: number): number {
-  for (let i = 1; i < legs.length; i++) {
-    if (legs[i].landedAt === null && legs[i - 1].landedAt !== null) {
-      // WHETHER IT HAS LANDED IS STILL landedAt; WHEN IT LANDED IS NOT.
-      // landedAt dates the refresh that noticed, so it ran this window late by
-      // however long the app took to look -- 48 minutes, measured. The flag and
-      // the instant are deliberately different reads: see landedInstant, which
-      // also refuses a "actual" arrival in the future.
-      const landed = landedInstant(legs[i - 1], now) as number;
-      return now - landed < BAG_WINDOW_MS ? i - 1 : i;
-    }
-  }
-  // EVERY LEG HAS FLOWN, OR THERE IS ONLY ONE AND IT HAS. The loop starts at 1
-  // and needs an unlanded leg, so neither case reaches it.
-  const last = legs.length - 1;
-  if (last >= 0 && legs[last].landedAt !== null
-    && now - (landedInstant(legs[last], now) as number) < BAG_WINDOW_MS) return last;
-  if (legs.length > 0 && legs[0].landedAt === null) {
-    const t = departureTs(legs[0]);
-    // BOUNDED AT BOTH ENDS NOW. See STALE_AFTER_DEPARTURE_MS: the upper test
-    // alone accepted every departure that has ever happened.
-    if (t !== null && t - now < CURRENT_WINDOW_MS && now - t < STALE_AFTER_DEPARTURE_MS) return 0;
-  }
-  return -1;
-}
 
 // WHICH LEG IS NEXT, AND IT IS A POSITION RATHER THAN A DURATION.
 //
