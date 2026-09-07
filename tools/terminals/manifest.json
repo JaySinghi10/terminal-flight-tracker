@@ -2,17 +2,39 @@
   "_comment": [
     "Terminal geometry, per airport, from OpenStreetMap via Overpass.",
     "",
-    "aliases FIX WHAT OSM GETS WRONG, and they are not tidiness. JFK carries a",
-    "polygon named 'Terminl 8' -- a misspelling of Terminal 8 with its own",
-    "outline and seventeen of that terminal's gates. Without the alias, Terminal 8",
-    "draws twice and its gates halve.",
+    "aliases FIX WHAT terminal_key CANNOT KNOW. That function reads a name and",
+    "resolves 'Heathrow Terminal 5', 'T2 (International)' and 'T5, Pier F' on its",
+    "own. What it deliberately refuses to guess is which TERMINAL a pier or a",
+    "concourse belongs to -- 'Pier 6' is not Terminal 6 and 'Flugsteig G' is not",
+    "Terminal G -- because that is an airport-specific fact. Those live here.",
     "",
-    "exclude DROPS BUILDINGS THAT ARE NOT A TERMINAL YOU CAN STAND IN. 'New",
-    "Terminal 1' at JFK is under construction, has no gates, and overlaps the",
-    "existing Terminal 1 -- drawn, it is a ghost building on top of a real one.",
+    "EVERY ALIAS BELOW WAS CHECKED GEOGRAPHICALLY, not assumed. FRA's Flugsteig",
+    "G, H and J sit within 740m of each other and 1.7-2.0km from Terminal 1, so",
+    "they are their own building -- Terminal 3, which is what FRA's dining rows",
+    "call it. LHR's 'T3IB' is 506m from 'Terminal 3, Pier 6' and further from",
+    "everything else.",
     "",
-    "expect_terminals IS THE SAME TRIPWIRE tools/dining USES. If OSM is edited and",
-    "a terminal disappears, the run is refused and the previous map is kept."
+    "exclude DROPS BUILDINGS THAT ARE NOT A TERMINAL YOU CAN STAND IN AND EAT IN.",
+    "General aviation terminals, private suites, a railway station and a first",
+    "class lounge are all tagged aeroway=terminal in OSM and none of them belongs",
+    "on a departures-board schematic. 'New Terminal 1' at JFK is under",
+    "construction, has no gates, and overlaps the existing Terminal 1 -- drawn, it",
+    "is a ghost building on top of a real one.",
+    "",
+    "expect_terminals AND min_gates ARE THE TRIPWIRE. If OSM is edited and a",
+    "terminal disappears or its gates are retagged, the run is REFUSED and the",
+    "previous map is kept. A quiet empty map is worse than no map.",
+    "",
+    "KNOWN GAPS, RECORDED RATHER THAN PAPERED OVER:",
+    "  EWR  OSM has only Terminal A as a named passenger terminal. B and C are",
+    "       absent, so two thirds of Newark cannot be drawn at all.",
+    "  LGA  Terminal C is absent from OSM. Terminal B is present as its Eastern",
+    "       and Western Concourses.",
+    "  HKG  Terminal 2 genuinely has no gates -- it is check-in and ground",
+    "       transport only -- so a zero there is correct, not a fetch failure.",
+    "  FRA, LHR, EWR  have terminal geometry but NO dining coordinates and no",
+    "       gate hints, so their maps can show the building and the gates and no",
+    "       food at all. The screen has to say so."
   ],
   "airports": [
     {
@@ -24,7 +46,103 @@
       "exclude": ["New Terminal 1"],
       "guardrails": {
         "expect_terminals": ["T1", "T4", "T5", "T8"],
-        "min_gates": 90
+        "min_gates": 100
+      }
+    },
+    {
+      "code": "BOM",
+      "lat": 19.0887,
+      "lon": 72.8679,
+      "radius_m": 5000,
+      "aliases": {},
+      "exclude": ["General Aviation Terminal", "ONGC Terminal"],
+      "guardrails": {
+        "expect_terminals": ["T1", "T2"],
+        "min_gates": 30
+      }
+    },
+    {
+      "code": "FRA",
+      "lat": 50.0267,
+      "lon": 8.5584,
+      "radius_m": 6000,
+      "aliases": {
+        "Flugsteig G": "T3",
+        "Flugsteig H": "T3",
+        "Flugsteig J": "T3"
+      },
+      "exclude": [
+        "AIRail Terminal",
+        "General Aviation Terminal",
+        "Lufthansa FirstClass Terminal"
+      ],
+      "guardrails": {
+        "expect_terminals": ["T1", "T3"],
+        "min_gates": 45
+      }
+    },
+    {
+      "code": "LHR",
+      "lat": 51.47,
+      "lon": -0.4543,
+      "radius_m": 6000,
+      "aliases": { "T3IB": "T3" },
+      "exclude": ["Royal Suite"],
+      "guardrails": {
+        "expect_terminals": ["T2", "T3", "T4", "T5"],
+        "min_gates": 100
+      }
+    },
+    {
+      "code": "HKG",
+      "lat": 22.308,
+      "lon": 113.9185,
+      "radius_m": 6000,
+      "aliases": {},
+      "exclude": ["香港商用航空中心 Hong Kong Business Aviation Centre"],
+      "guardrails": {
+        "expect_terminals": ["T1", "T2"],
+        "min_gates": 70
+      }
+    },
+    {
+      "code": "EWR",
+      "lat": 40.6895,
+      "lon": -74.1745,
+      "radius_m": 5000,
+      "aliases": {},
+      "exclude": ["Former Terminal A"],
+      "guardrails": {
+        "expect_terminals": ["TA"],
+        "min_gates": 20
+      }
+    },
+    {
+      "code": "LGA",
+      "lat": 40.7769,
+      "lon": -73.874,
+      "radius_m": 4000,
+      "aliases": {
+        "Eastern Concourse": "TB",
+        "Western Concourse": "TB",
+        "Marine Air Terminal": "TA"
+      },
+      "exclude": [],
+      "guardrails": {
+        "expect_terminals": ["TA", "TB"],
+        "min_gates": 20
+      }
+    },
+    {
+      "code": "ARN",
+      "lat": 59.6519,
+      "lon": 17.9186,
+      "radius_m": 6000,
+      "aliases": {},
+      "exclude": ["Skycity"],
+      "guardrails": {
+        "expect_terminals": ["T2", "T3", "T4", "T5"],
+        "min_gates": 45
       }
     }
   ]

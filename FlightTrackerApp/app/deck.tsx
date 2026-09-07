@@ -32,7 +32,11 @@ import { airportByCode, findAirports, Airport } from '../lib/airports';
 // same reason airports.ts is separate from both: it is a different source with a
 // different licence, and it is absent for most airports.
 import { terminalOf, terminalsAt, Gate } from '../lib/terminals';
-import TerminalMap, { placeDining, Placed } from '../components/TerminalMap';
+import TerminalMap, { MapPick } from '../components/TerminalMap';
+// THE JOIN AND THE ARITHMETIC MOVED OUT OF THE COMPONENT. Where a restaurant is
+// is a fact about the data, not about a view, and the map is now the third
+// thing that wants it -- see lib/terminalgeo.
+import { placeDining, Placed, metresBetween, walkMinutes } from '../lib/terminalgeo';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
@@ -383,6 +387,31 @@ export default function Deck() {
   const [searching, setSearching] = useState(false);
   const [term, setTerm] = useState('');
 
+  // ── WHERE THE TRAVELLER SAYS THEY ARE ─────────────────────────────────────
+  //
+  // TAPPED, BECAUSE WE CANNOT DETECT IT. There is no indoor position here: GPS
+  // does not work through a terminal roof and we have no beacons. Asking is the
+  // honest mechanism, and it is one tap.
+  //
+  // NOT PERSISTED, AND THAT IS DELIBERATE. It is true for as long as somebody
+  // is standing still and false the moment they walk off. Storing it would mean
+  // reopening the Deck tomorrow to a pin in yesterday's concourse.
+  // ── KEYED TO THE TERMINAL, NOT RESET BY AN EFFECT ────────────────────────
+  //
+  // A PIN BELONGS TO ONE BUILDING, and the obvious way to enforce that is an
+  // effect that nulls it when the terminal changes. That is a setState inside
+  // an effect: it renders once with the OLD pin against the NEW terminal --
+  // one frame of distances measured from a spot in a concourse nobody is in --
+  // and only then corrects itself.
+  //
+  // CARRYING THE TERMINAL'S OWN KEY REMOVES THE WINDOW ENTIRELY. A pin whose
+  // key does not match what is on screen is not this terminal's pin, and it
+  // reads as absent in the same render rather than a frame later.
+  const [hereAt, setHereAt] = useState<
+    { key: string; lon: number; lat: number } | null>(null);
+  const [selectedAt, setSelectedAt] = useState<{ key: string; id: string } | null>(null);
+
+
   const airport = picked ?? where.airport;
   const following = picked === null && where.airport !== null;
   const meta = airport === null ? null : airportByCode(airport);
@@ -422,6 +451,17 @@ export default function Deck() {
     return terminalOf(airport, hereTerminal);
   }, [airport, hereTerminal]);
 
+  // See the note on hereAt: the pin is this terminal's or it is nobody's.
+  const mapKey = mapFor === null ? '' : `${mapFor.airport}|${mapFor.key}`;
+  // MEMOISED BECAUSE IT IS AN OBJECT. A fresh {lon,lat} every render would make
+  // the sort below re-run on every tick for a value that has not changed.
+  const here = useMemo(
+    () => (hereAt !== null && hereAt.key === mapKey && mapKey !== ''
+      ? { lon: hereAt.lon, lat: hereAt.lat } : null),
+    [hereAt, mapKey]);
+  const selected = selectedAt !== null && selectedAt.key === mapKey && mapKey !== ''
+    ? selectedAt.id : null;
+
   // THE TWO GATES THAT MATTER, matched by ref against the geometry. A record's
   // gate is the provider's string and the geometry's is OpenStreetMap's, so the
   // match can miss -- and a miss draws no mark rather than a mark in the wrong
@@ -445,6 +485,14 @@ export default function Deck() {
     return placeDining(rows.filter(d => d.terminal.toUpperCase() === mapFor.key), mapFor);
   }, [rows, mapFor]);
 
+  // Every outlet we have a position for, by id, so the list can measure from
+  // the pin without redoing the join.
+  const posById = useMemo(() => {
+    const m = new Map<string, { lon: number; lat: number }>();
+    for (const p of onMap.placed) m.set(p.d.sourceId, { lon: p.lon, lat: p.lat });
+    return m;
+  }, [onMap]);
+
   const grouped = useMemo(() => {
     const by = new Map<Dining['zone'], Dining[]>();
     for (const z of ZONE_ORDER) by.set(z, []);
@@ -452,11 +500,30 @@ export default function Deck() {
     for (const [, list] of by) {
       list.sort((a, b) => {
         // SAME TERMINAL FIRST -- a different terminal is a different
-        // proposition, and it is the only ordering we can justify without a
-        // walking time we do not have.
+        // proposition, and it outranks distance: sixty metres away through a
+        // security check and a train is not sixty metres away.
         const at = hereTerminal !== null && a.terminal.toUpperCase() === hereTerminal ? 0 : 1;
         const bt = hereTerminal !== null && b.terminal.toUpperCase() === hereTerminal ? 0 : 1;
         if (at !== bt) return at - bt;
+
+        // ── AND THEN BY HOW FAR, ONCE THERE IS A POINT TO MEASURE FROM ──
+        //
+        // ONLY WHEN THE TRAVELLER HAS SAID WHERE THEY ARE. Without a pin there
+        // is nothing to be near, and ordering by distance from the middle of a
+        // building would be arithmetic dressed as help.
+        //
+        // AN OUTLET WE CANNOT PLACE SORTS AFTER EVERY ONE WE CAN, rather than
+        // being given a distance it does not have.
+        if (here !== null) {
+          const ap = posById.get(a.sourceId);
+          const bp = posById.get(b.sourceId);
+          if ((ap === undefined) !== (bp === undefined)) return ap === undefined ? 1 : -1;
+          if (ap !== undefined && bp !== undefined) {
+            const d = metresBetween(here, ap) - metresBetween(here, bp);
+            if (Math.abs(d) > 1) return d;
+          }
+        }
+
         // Then by how fast they can feed you, where anybody says.
         const as = a.serveMinutes ?? 9999;
         const bs = b.serveMinutes ?? 9999;
@@ -465,7 +532,7 @@ export default function Deck() {
       });
     }
     return by;
-  }, [rows, hereTerminal]);
+  }, [rows, hereTerminal, here, posById]);
 
   // OPEN BY DEFAULT ONLY WHERE THE TRAVELLER CAN GO. Airside always; the other
   // two only when there is no layover to be respectful of.
@@ -487,6 +554,17 @@ export default function Deck() {
     const set = new Set(covered);
     return findAirports(term, 20).filter(a => set.has(a.iata)).slice(0, 8);
   }, [term, covered]);
+
+  // The tapped outlet, and how far it is from the pin. Both null until there
+  // is something to say.
+  const selectedRow = useMemo(
+    () => (selected === null ? null : rows.find(d => d.sourceId === selected) ?? null),
+    [selected, rows]);
+  const hereMetres = useMemo(() => {
+    if (here === null || selected === null) return null;
+    const p = posById.get(selected);
+    return p === undefined ? null : metresBetween(here, p);
+  }, [here, selected, posById]);
 
   const tight = budget !== null && budget.usableMin < TIGHT_MIN;
 
@@ -602,12 +680,46 @@ export default function Deck() {
 
         {/* ── THE SCHEMATIC, WHEN WE HAVE THE SHAPE AND SHE IS IN IT ── */}
         {mapFor !== null && (
-          <TerminalMap
-            terminal={mapFor}
-            placed={onMap.placed}
-            arrival={gates.arrival}
-            departure={gates.departure}
-          />
+          <>
+            <TerminalMap
+              terminal={mapFor}
+              placed={onMap.placed}
+              unplacedCount={onMap.unplaced.length}
+              arrival={gates.arrival}
+              departure={gates.departure}
+              here={here}
+              onPick={(p: MapPick) => {
+                if (p.kind === 'here') {
+                  setHereAt({ key: mapKey, lon: p.lon, lat: p.lat });
+                  return;
+                }
+                setSelectedAt(p.id === selected ? null : { key: mapKey, id: p.id });
+              }}
+            />
+            {/* ── WHAT WAS TAPPED, AND HOW FAR IT IS ────────────────────────
+                THE DISTANCE ONLY APPEARS ONCE THERE IS A PIN, and it is a
+                STRAIGHT LINE inside a building -- a lower bound on the walk,
+                never a route. Said as "about", because it is. */}
+            {selectedRow !== null && (
+              <View style={st.pickWrap}>
+                <Text style={st.pickName}>{selectedRow.name}</Text>
+                <Text style={st.pickMeta}>
+                  {[
+                    selectedRow.terminal,
+                    categoryWords(selectedRow) || null,
+                    hereMetres === null ? null
+                      : `about ${walkMinutes(hereMetres)} min away`,
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+            )}
+            {here === null && onMap.placed.length > 0 && (
+              <Text style={st.pickHint}>
+                {'Tap the map to mark where you are, and the list below sorts by how '
+                  + 'close things are.'}
+              </Text>
+            )}
+          </>
         )}
 
         {/* ── THE LIST, OR THE HONEST ABSENCE OF ONE ── */}
@@ -858,6 +970,12 @@ const st = StyleSheet.create({
   coveredWrap: { marginTop: 16 },
   coveredLabel: { fontFamily: MONO, fontSize: 10, color: DIMMER, letterSpacing: 1 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginTop: 8 },
+  pickWrap: { marginHorizontal: 16, marginTop: 10, padding: 12,
+    backgroundColor: SURFACE_2, borderRadius: CARD_RADIUS },
+  pickName: { fontFamily: SANS_SEMI, fontSize: 15, color: INK },
+  pickMeta: { fontFamily: MONO, fontSize: 11, color: DIM, marginTop: 3 },
+  pickHint: { fontFamily: SANS, fontSize: 11, color: DIMMER,
+    paddingHorizontal: 16, marginTop: 8, lineHeight: 16 },
   // TEMPORARY, with devTerminal. Amber because it is scaffolding: nothing else
   // on this screen is that colour except a warning, which is what it is.
   devWrap: { marginTop: CARD_GAP, paddingHorizontal: CARD_PAD },
