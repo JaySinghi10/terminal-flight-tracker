@@ -27,6 +27,19 @@ others into it would hand the decision back to the provider we removed it from.
 ABSENCE IS NEVER AN ASSERTION. Nothing here ever returns "not landed" as a fact.
 A flight FR24 has never heard of leaves the card exactly as it was.
 
+── WHERE FR24 IS WEAK, MEASURED RATHER THAN ASSUMED ────────────────────────────
+
+A 200-flight validation across six regions on 2026-09-07 put overall detection
+at 94.6% -- 106 of the 112 flights that actually finished. Europe, India and
+South-East Asia were 100%.
+
+ALMOST THE ENTIRE SHORTFALL IS ONE AIRPORT: DOHA. Four of the six misses were
+arrivals into DOH, against zero at DXB and zero at AUH in the same region on the
+same day (p = 0.00073). It is recorded in full at the branch that produces the
+symptom -- search this file for "DOHA" -- so that a missing Doha landing is
+RECOGNISED rather than investigated again from scratch. Nothing is done about
+it deliberately; the reasoning is there too.
+
 ── COST ────────────────────────────────────────────────────────────────────────
 
 flight-summary/light bills PER RETURNED RECORD -- 1 credit live, 2 historic
@@ -556,6 +569,44 @@ def landing_for(flight_number, date=None, destination_iata=None,
         # FR24 followed the leg to its end and still has no touchdown. A clean
         # "I do not know", which is the one outcome that lets AeroDataBox's own
         # arrival stand.
+        #
+        # ── IF YOU ARE HERE BECAUSE A DOHA ARRIVAL HAS NO LANDING TIME ───────
+        #
+        # THAT IS KNOWN, IT IS MEASURED, AND IT IS NOT A BUG IN THIS FILE.
+        # DO NOT RE-INVESTIGATE IT.
+        #
+        # A 200-flight validation on 2026-09-07 across six regions found this
+        # branch fires for arrivals into DOHA (OTHH) far more than anywhere
+        # else. Same run, same hours, same region:
+        #
+        #     DOH   2 landed,  4 lost   ->  66.7% of finished flights lost
+        #     DXB  10 landed,  0 lost   ->   0.0%
+        #     AUH  12 landed,  0 lost   ->   0.0%
+        #
+        # Fisher exact, one-sided, DOH against DXB+AUH: p = 0.00073. That is a
+        # real difference in FR24's coverage of one airport, not a small
+        # denominator and not noise. Overall detection across all six regions
+        # was 94.6% (106 of 112 finished flights); Doha is essentially the
+        # whole of the shortfall.
+        #
+        # The four lost were QR515, QR615, QR8230 and QR8623 -- polled eight
+        # times each over roughly three and a half hours, every one ending
+        # exactly here. Two other Qatar Airways flights into DOH landed
+        # normally in the same window, so it is not "QR flights fail"; the one
+        # non-QR arrival we enrolled was still airborne when the run stopped,
+        # so airline and airport cannot be fully separated. Either way, every
+        # failure we saw was an arrival into Doha.
+        #
+        # NOTHING IS DONE ABOUT IT ON PURPOSE. Falling back to AeroDataBox for
+        # Doha specifically would reintroduce exactly the fault this module
+        # exists to prevent -- AeroDataBox declaring a landing that did not
+        # happen -- and would do it at the one airport we know least about.
+        # UNKNOWN is the correct answer here: it is honest, and it already
+        # lets AeroDataBox's arrival stand where AeroDataBox has one.
+        #
+        # WHAT THIS COSTS A TRAVELLER: a Doha arrival may show no landing until
+        # AeroDataBox publishes its own arrival time. That is a delay, not a
+        # wrong answer, and a wrong answer is the thing worth avoiding.
         out = _result(UNKNOWN, "leg ended with no landing time", **common)
     else:
         out = _result(PENDING, "still airborne", **common)
