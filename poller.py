@@ -17,7 +17,8 @@ every flight every two minutes would spend the month's units in three days;
 polling everything every hour would tell somebody their gate changed after they
 had walked to the old one.
 
-  FAR       > 6h to departure      once every 6 hours
+  DISTANT   > 48h to departure     once every 12 hours
+  FAR       6h .. 48h               once every 6 hours
   DAY       6h .. 90m              every 30 minutes
   NEAR      90m before departure   every 5 minutes
   AIRBORNE  departed, not landed   every 15 minutes  (FR24 only, see below)
@@ -61,6 +62,7 @@ from mcp_server import fetch_flight_full
 logger = logging.getLogger("poller")
 
 # ── THE TIERS ───────────────────────────────────────────────────────────────
+DISTANT = "distant"
 FAR = "far"
 DAY = "day"
 NEAR = "near"
@@ -69,6 +71,7 @@ ARRIVAL = "arrival"
 DONE = "done"
 
 TIER_INTERVAL = {
+    DISTANT: timedelta(hours=12),
     FAR: timedelta(hours=6),
     DAY: timedelta(minutes=30),
     NEAR: timedelta(minutes=5),
@@ -85,7 +88,23 @@ ESSENTIAL_TIERS = {ARRIVAL, AIRBORNE}
 
 NEAR_BEFORE_DEPARTURE = timedelta(minutes=90)
 DAY_BEFORE_DEPARTURE = timedelta(hours=6)
+DISTANT_BEFORE_DEPARTURE = timedelta(hours=48)
 ARRIVAL_BEFORE_ARRIVAL = timedelta(minutes=30)
+
+# ── A NUMBER THE PROVIDER CANNOT RESOLVE MUST NOT BE ASKED FOR EVER ─────────
+#
+# A FLIGHT WITH NO STORED DTO IS TIERED NEAR, and a number that never resolves
+# never gets a DTO -- so without this it stays NEAR permanently and is polled
+# every five minutes for the rest of time. THAT IS 288 UNITS A DAY, PER FLIGHT.
+# The live watchlist has four such numbers on it; they alone would have spent a
+# 5,000-unit month in four days, and with the past-dated flights, in one.
+#
+# SO CONSECUTIVE MISSES DOUBLE THE INTERVAL, up to a cap. A wrong number settles
+# at four calls a day instead of 288, and ONE SUCCESS RESETS IT -- which is why
+# this is a backoff and not a giving-up. A flight three weeks out that the
+# provider does not carry yet is indistinguishable from a typo today, and will
+# resolve on its own nearer the day.
+MISS_BACKOFF_CAP = timedelta(hours=6)
 
 # HOW LONG AFTER A SCHEDULED ARRIVAL WE KEEP ASKING. A flight that never reports
 # a landing -- diverted, or simply not covered -- would otherwise be polled at
@@ -143,21 +162,23 @@ def _movement_time(dto, movement):
 
 # ── WHAT TIER IS THIS FLIGHT IN ─────────────────────────────────────────────
 
-def tier_for(doc, now=None):
+def tier_for(doc, now=None, day=None):
     """Which tier a flight is in, from the state we already hold.
 
     NO PROVIDER IS CALLED TO ANSWER THIS. It reads the stored DTO, so deciding
     that a flight is not due costs nothing at all -- which is what makes a
-    two-minute poke over four hundred flights affordable.
+    two-minute poke over a whole watchlist affordable.
 
-    A flight we have never fetched has no DTO and no times. It gets NEAR, not
-    FAR: the first fetch is what tells us which tier it really belongs in, and
-    guessing FAR would leave a flight departing in an hour unpolled for six.
+    day is THE DATE THE WATCH WAS REGISTERED FOR, and it is what lets this
+    answer sensibly before any DTO exists. Without it every unresolved flight
+    looks identical -- a typo, a flight three weeks out and a flight boarding in
+    an hour are all just "no data" -- and all three would be polled at the
+    five-minute rate.
     """
     now = now or _now()
     dto = (doc or {}).get("dto")
     if not dto:
-        return NEAR
+        return _tier_without_data(day, now)
 
     landing = (doc or {}).get("landing") or {}
     landed = landing.get("outcome") == fr24.LANDED
@@ -194,27 +215,63 @@ def tier_for(doc, now=None):
         return AIRBORNE
 
     if departure_at is None:
-        return NEAR
+        return _tier_without_data(day, now)
     until = departure_at - now
     if until <= NEAR_BEFORE_DEPARTURE:
         return NEAR
     if until <= DAY_BEFORE_DEPARTURE:
         return DAY
-    return FAR
+    if until <= DISTANT_BEFORE_DEPARTURE:
+        return FAR
+    return DISTANT
 
 
-def _due(doc, tier, now, last_key):
+def _tier_without_data(day, now):
+    """The tier for a flight we hold no usable DTO for, decided on its date.
+
+    THE PAST CASE IS THE EXPENSIVE ONE. Nine of the eighteen flights on the live
+    watchlist are dated before today, and a provider that no longer carries a
+    two-day-old flight returns nothing for ever. Tiered NEAR, each would be
+    asked every five minutes indefinitely -- for a flight that has already
+    landed and that nobody is waiting on.
+    """
+    if not day:
+        # No date at all: assume it is imminent rather than assume it is not.
+        return NEAR
+    try:
+        d = datetime.strptime(str(day)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return NEAR
+    # A day behind us, with nothing stored, is not going to arrive.
+    if d.date() < now.date():
+        return DONE
+    ahead = d - now
+    if ahead > DISTANT_BEFORE_DEPARTURE:
+        return DISTANT
+    if ahead > DAY_BEFORE_DEPARTURE:
+        return DAY
+    return NEAR
+
+
+def _due(doc, tier, now, last_key, misses=0):
     """Has this flight's tier interval elapsed since that provider was asked?
 
     PER PROVIDER, because they are asked on different schedules. FR24 is not
     asked at all until the aircraft is up, so the AeroDataBox clock would say
     "due" on a flight FR24 has never been asked about and vice versa.
+
+    misses STRETCHES THE INTERVAL -- see MISS_BACKOFF_CAP. Doubling per
+    consecutive empty answer, so a number that cannot be resolved costs four
+    calls a day rather than 288, and one success puts it straight back on its
+    tier's own schedule.
     """
     if tier == DONE:
         return False
     interval = TIER_INTERVAL.get(tier)
     if interval is None:
         return False
+    if misses > 0:
+        interval = min(MISS_BACKOFF_CAP, interval * (2 ** min(misses, 10)))
     last = _parse((doc or {}).get(last_key))
     return last is None or (now - last) >= interval
 
@@ -279,10 +336,13 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     now = now or _now()
     spend = spend if spend is not None else {}
     doc, _gen = pollstate.read_state(number, day)
-    tier = tier_for(doc, now)
+    tier = tier_for(doc, now, day=day)
+    misses = int((doc or {}).get("adb_misses") or 0)
 
     record = {"flight": number, "date": day, "tier": tier,
               "adb": False, "fr24": False, "changes": []}
+    if misses:
+        record["misses"] = misses
 
     if tier == DONE:
         return record
@@ -293,7 +353,10 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
         record["skipped"] = "budget floor"
         return record
 
-    want_adb = _due(doc, tier, now, "last_adb_at")
+    want_adb = _due(doc, tier, now, "last_adb_at", misses)
+    # FR24 IS NOT BACKED OFF ON AERODATABOX'S MISSES. They are different
+    # providers with different coverage, and a flight one cannot resolve is
+    # exactly the case where the other's answer is worth having.
     want_fr24 = tier in FR24_TIERS and _due(doc, tier, now, "last_fr24_at")
 
     if want_adb and spend.get("adb", 0) >= MAX_ADB_CALLS_PER_RUN:
@@ -351,12 +414,19 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
             d["dto"] = new_dto
             d["last_adb_at"] = pollstate._iso(now)
             d["adb_polls"] = int(d.get("adb_polls") or 0) + 1
+
         elif want_adb:
             # THE ATTEMPT IS RECORDED EVEN THOUGH IT FAILED. Without this a
             # provider outage would leave last_adb_at untouched, every flight
             # would stay permanently due, and the next poke would retry all of
             # them -- turning one outage into a spend spike.
             d["last_adb_at"] = pollstate._iso(now)
+            d["adb_misses"] = int(d.get("adb_misses") or 0) + 1
+        if new_dto:
+            # ONE GOOD ANSWER CLEARS THE BACKOFF ENTIRELY. A flight the provider
+            # did not carry last week and does carry today goes straight back to
+            # its tier's own interval.
+            d["adb_misses"] = 0
         if landing is not None:
             d["landing"] = landing
         if want_fr24:
@@ -426,6 +496,13 @@ def run_once(now=None):
     for r in records:
         tiers[r.get("tier", "?")] = tiers.get(r.get("tier", "?"), 0) + 1
 
+    # FLIGHTS THE PROVIDER KEEPS NOT ANSWERING FOR, NAMED. A number that never
+    # resolves is now cheap rather than ruinous, but it is still a watch that
+    # will never do anything, and it should be visible rather than merely
+    # affordable.
+    stale = sorted((r["flight"], r["date"], r["misses"]) for r in records
+                   if r.get("misses", 0) >= 3)
+
     out = {
         "ok": True,
         "at": pollstate._iso(started),
@@ -436,6 +513,8 @@ def run_once(now=None):
         "fr24_calls": spend["fr24"],
         "flights_changed": changed,
         "budget": budget,
+        "unresolved": [{"flight": n, "date": d, "misses": m}
+                       for n, d, m in stale],
         # THE CHANGES THEMSELVES, so a poke can be read without opening GCS.
         # This is the only way to see what the poller is doing until dispatch
         # exists, and it is the thing to watch before letting it send anything.

@@ -295,6 +295,95 @@ check("the attempt is still recorded", doc.get("last_adb_at") is not None, doc)
 check("and no DTO was invented", doc.get("dto") is None, doc)
 
 print()
+print("-- a flight we have no data for --")
+
+# ── THE CASE THAT WOULD HAVE EMPTIED THE MONTH ──
+#
+# Nine of the eighteen flights on the live watchlist are dated before today.
+# A provider that no longer carries a two-day-old flight returns nothing for
+# ever; tiered NEAR, each would be asked every five minutes indefinitely.
+check("a past-dated flight with no data is DONE, not NEAR",
+      poller.tier_for(None, NOW, day="2026-09-05") == poller.DONE,
+      poller.tier_for(None, NOW, day="2026-09-05"))
+check("yesterday too",
+      poller.tier_for(None, NOW, day="2026-09-06") == poller.DONE)
+check("today with no data is NEAR -- it may be about to happen",
+      poller.tier_for(None, NOW, day="2026-09-07") == poller.NEAR)
+check("two days out is DAY",
+      poller.tier_for(None, NOW, day="2026-09-09") == poller.DAY)
+check("nineteen days out is DISTANT",
+      poller.tier_for(None, NOW, day="2026-09-26") == poller.DISTANT)
+check("no date at all falls back to NEAR",
+      poller.tier_for(None, NOW, day=None) == poller.NEAR)
+check("an unparseable date does too, rather than being dropped",
+      poller.tier_for(None, NOW, day="not-a-date") == poller.NEAR)
+
+# A flight far enough out that its own DTO says DISTANT.
+check("a DTO three weeks out is DISTANT as well",
+      poller.tier_for(state(dto=dto(dep_sched=iso(NOW + timedelta(days=19)),
+                                    arr_sched=iso(NOW + timedelta(days=19, hours=3)))),
+                      NOW) == poller.DISTANT)
+
+print()
+print("-- backing off a number that never resolves --")
+
+near = state(dto=None, last_adb_at=iso(NOW - timedelta(minutes=6)))
+check("with no misses, a NEAR flight is due after 5 minutes",
+      poller._due(near, poller.NEAR, NOW, "last_adb_at", 0))
+check("after 3 misses it is not -- the interval is now 40 minutes",
+      not poller._due(near, poller.NEAR, NOW, "last_adb_at", 3))
+check("after 3 misses it IS due once 40 minutes have passed",
+      poller._due(state(last_adb_at=iso(NOW - timedelta(minutes=41))),
+                  poller.NEAR, NOW, "last_adb_at", 3))
+# THE CAP IS WHAT STOPS A LONG-DEAD WATCH DRIFTING TO NEVER.
+check("the backoff caps at six hours however many misses",
+      poller._due(state(last_adb_at=iso(NOW - timedelta(hours=6, minutes=1))),
+                  poller.NEAR, NOW, "last_adb_at", 40))
+check("and not before",
+      not poller._due(state(last_adb_at=iso(NOW - timedelta(hours=5))),
+                      poller.NEAR, NOW, "last_adb_at", 40))
+
+# End to end: a number the provider does not know.
+pollstate.forget_local()
+misses = {"n": 0}
+
+
+def never_found(number, date=None, origin=None, max_age=None):
+    misses["n"] += 1
+    return ("No flight found.", None)
+
+
+poller.fetch_flight_full = never_found
+t = NOW
+for _ in range(30):
+    poller.poll_one("MOK645", "2026-09-07", now=t)
+    t += timedelta(minutes=5)
+# Thirty five-minute ticks is two and a half hours. Unbacked-off that is 30
+# calls; backed off it is a handful.
+check("30 five-minute ticks on a dead number cost far fewer than 30 calls",
+      misses["n"] <= 8, misses["n"])
+doc, _ = pollstate.read_state("MOK645", "2026-09-07")
+# FOUR CALLS IN TWO AND A HALF HOURS: at 0, +10, +30, +70 minutes as the
+# interval doubles past the five-minute tier. Unbacked-off it would be thirty.
+check("and the misses are counted", doc.get("adb_misses", 0) == 4, doc.get("adb_misses"))
+
+# ── AND IT IS A BACKOFF, NOT A GIVING-UP ──
+FOUND = dto(dep_sched=iso(NOW + timedelta(hours=2)),
+            arr_sched=iso(NOW + timedelta(hours=5)))
+
+
+def found_now(number, date=None, origin=None, max_age=None):
+    return ("text", FOUND)
+
+
+poller.fetch_flight_full = found_now
+poller.poll_one("MOK645", "2026-09-07", now=t + timedelta(hours=7))
+doc, _ = pollstate.read_state("MOK645", "2026-09-07")
+check("one good answer clears the backoff completely",
+      doc.get("adb_misses") == 0 and doc.get("dto") is not None,
+      doc.get("adb_misses"))
+
+print()
 print("-- a whole pass --")
 
 pollstate.forget_local()
