@@ -1553,12 +1553,35 @@ function hasWord(s: string, q: string): boolean {
 // Substring matching is last so a short term can never outrank a real name.
 function rankOf(a: Airport, s: string, q: string): number {
   const city = a.city.toLowerCase();
-  if (city === q) return 0;
-  if (hasWord(s, q)) return 1;
-  if (city.startsWith(q)) return 2;
-  if (a.name.toLowerCase().startsWith(q)) return 3;
-  if (s.startsWith(q) || s.includes(` ${q}`)) return 4;
-  if (s.includes(q)) return 5;
+  // AN AIRPORT'S OWN CODE OUTRANKS EVERYTHING, AND IT WAS NOT CHECKED AT ALL.
+  //
+  // THE HAYSTACK IS NAMES AND CITIES. Every test below reads a.city, a.name or
+  // the generated search string, and none of them contains the IATA code -- so
+  // typing an airport's code did not find that airport. Measured across the
+  // whole dataset: the code ranked its own airport first for 176 of 1,223.
+  // JFK, LHR, HKG, EWR and DXB returned NOTHING; FRA and DEL matched only as
+  // accidental substrings of unrelated cities and ranked second and sixth.
+  //
+  // WHAT IT COSTS THE EXISTING ORDER: nothing. Measured over all 1,223 codes,
+  // every changed result is exactly "this airport to the front, the rest
+  // untouched" -- no pair of other results swaps -- and thirteen ordinary
+  // word queries come back byte-identical. It inserts; it does not reshuffle.
+  //
+  // THE RANKS BELOW ALL SHIFTED BY ONE to make room. They are ordering only,
+  // and scoreAll's rank >= 0 test is what decides inclusion, so the shift
+  // changes no membership.
+  //
+  // ONE QUERY IS UNAFFECTED AND SHOULD BE: "GOA" still returns Goa's two
+  // airports rather than Genoa, because findAirports consults the curated
+  // CITY_AIRPORTS map before it scores anything. That is the curation doing
+  // its job, not this rule failing.
+  if (a.iata.toLowerCase() === q) return 0;
+  if (city === q) return 1;
+  if (hasWord(s, q)) return 2;
+  if (city.startsWith(q)) return 3;
+  if (a.name.toLowerCase().startsWith(q)) return 4;
+  if (s.startsWith(q) || s.includes(` ${q}`)) return 5;
+  if (s.includes(q)) return 6;
   return -1;
 }
 

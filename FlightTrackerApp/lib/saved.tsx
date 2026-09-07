@@ -338,6 +338,26 @@ export function landedInstant(f: SavedFlight, now: number): number | null {
   // the ground in Dubai, and accepting it would start a bag window for a flight
   // that had not taken off.
   if (gate !== null && gate <= now) return gate;
+
+  // ── AND landedAt IS NOT EVIDENCE ON A FLIGHT THAT HAS NOT ARRIVED ─────────
+  //
+  // A PAST-OR-NOW TEST ON landedAt WOULD BE A NO-OP, which is why the guard is
+  // not written that way. landedAt is stamped with Date.now() the moment a
+  // refresh first reports a landing, so it is ALWAYS in the past. It is not
+  // wrong about WHEN; it is wrong about WHETHER.
+  //
+  // MEASURED: a leg with landedAt 05:44Z whose arrival is 11:53Z -- six hours
+  // in the future. AeroDataBox had reported a landing that had not happened,
+  // touchSavedFlight stamped it, and nothing since had cleared it. This
+  // function then handed that instant to whereAmI, which opened a layover six
+  // hours before the aircraft was due, and the Deck measured a connection from
+  // it. effectiveStatus was refusing the same claim at the same moment -- two
+  // places answering one question and disagreeing.
+  //
+  // SO THE TEST IS AGAINST THE RECORD'S OWN ARRIVAL. If the flight says it
+  // arrives later than now, it has not arrived, whatever we once observed.
+  const arr = arrivalTs(f);
+  if (arr !== null && arr > now) return null;
   return f.landedAt;
 }
 
@@ -826,15 +846,24 @@ export function currentLegIndex(legs: SavedFlight[], now: number): number {
       // however long the app took to look -- 48 minutes, measured. The flag and
       // the instant are deliberately different reads: see landedInstant, which
       // also refuses a "actual" arrival in the future.
-      const landed = landedInstant(legs[i - 1], now) as number;
+      // NO CAST. landedInstant CAN NOW RETURN null even where landedAt is set:
+      // it refuses to speak for a leg whose own arrival is still in the future,
+      // which is exactly the record that caused the Deck to open a layover six
+      // hours early. `now - null` would coerce to a very large number and
+      // happen to give the right answer here -- the bag window would not open
+      // -- but a cast that asserts something untrue is how the NEXT reader gets
+      // it wrong.
+      const landed = landedInstant(legs[i - 1], now);
+      if (landed === null) return i;
       return now - landed < BAG_WINDOW_MS ? i - 1 : i;
     }
   }
   // EVERY LEG HAS FLOWN, OR THERE IS ONLY ONE AND IT HAS. The loop starts at 1
   // and needs an unlanded leg, so neither case reaches it.
   const last = legs.length - 1;
+  const lastLanded = last >= 0 ? landedInstant(legs[last], now) : null;
   if (last >= 0 && legs[last].landedAt !== null
-    && now - (landedInstant(legs[last], now) as number) < BAG_WINDOW_MS) return last;
+    && lastLanded !== null && now - lastLanded < BAG_WINDOW_MS) return last;
   if (legs.length > 0 && legs[0].landedAt === null) {
     const t = departureTs(legs[0]);
     // BOUNDED AT BOTH ENDS NOW. See STALE_AFTER_DEPARTURE_MS: the upper test

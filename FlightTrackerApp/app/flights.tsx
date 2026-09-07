@@ -17,7 +17,7 @@
 // the app's own notification schedule printed as if it were content. The card
 // knows the gate, the belt, the times, the delay and the progress; this screen
 // decides which flights get one and what a swipe on it does.
-import { useState, useEffect, useMemo, useRef, Fragment, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment, type ReactNode } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
   Modal, Animated, RefreshControl,
@@ -26,7 +26,7 @@ import {
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import {
   SavedFlight, savedFlightFromApi, ISO_DAY_RE, MAX_MAP_ROUTES,
@@ -523,9 +523,25 @@ function nextLegIndex(legs: SavedFlight[], now: number, openIdx: number): number
 // DISTANT IS THE DEFAULT AND ASKS NOTHING. It no longer reads a clock at all:
 // everything that is not open, not landed and not the one after the open leg is
 // distant, whatever its departure time.
-function legState(leg: SavedFlight, i: number, openIdx: number, nextIdx: number): LegState {
+//
+// AND LANDED IS effectiveStatus'S ANSWER, NOT landedAt.
+//
+// THIS READ leg.landedAt !== null AND THAT IS A DIFFERENT QUESTION. landedAt is
+// an OBSERVATION flag -- it records that some refresh once reported a landing --
+// and a wrong report sticks it on a leg that has not arrived. effectiveStatus
+// refuses such a claim; this did not, so one leg rendered as a compact LANDED
+// row while collapsed and as SCHEDULED, departing 16:15, the moment it was
+// opened. Same leg, same instant, two answers, because the collapsed row and
+// the expanded card were asking different functions.
+//
+// IT ALSO INHERITS EVERYTHING effectiveStatus KNOWS and this row never did:
+// Flightradar24's touchdown outranking a stored status, an arrival still in the
+// future being refused, and an estimate an hour stale demoting to 'stale'
+// rather than passing as landed.
+function legState(leg: SavedFlight, i: number, openIdx: number, nextIdx: number,
+                  now: number): LegState {
   if (i === openIdx) return 'current';
-  if (leg.landedAt !== null) return 'landed';
+  if (effectiveStatus(leg, now) === 'landed') return 'landed';
   return i === nextIdx ? 'next' : 'distant';
 }
 
@@ -1509,6 +1525,32 @@ export default function Flights() {
     if (!showing) setFocusOverride(null);
   }, [current, focusOverride]);
 
+  // ── AND IT ENDS WHEN YOU LOOK AWAY ────────────────────────────────────────
+  //
+  // A LOOK, NOT A SETTING. Tapping a leg is somebody asking to see that one
+  // now; it is not a preference about which leg this screen shows from here on.
+  // Leaving the tab and coming back to leg 2 still open reads as a state the
+  // screen has been put into, and there is nothing on screen saying so or
+  // offering to undo it.
+  //
+  // ON BLUR, AND NOT ON A TIMER. Any interval is a number nobody can defend,
+  // and its failure is the worst available: the card changes WHILE IT IS BEING
+  // READ. Blur cannot fire while somebody is looking.
+  //
+  // AND NOT ON "THE RULE WOULD NOW PICK A DIFFERENT LEG" EITHER, which sounds
+  // right and is not. It would not have fixed this -- leaving the tab does not
+  // move the rule -- and while the screen IS open it is actively wrong: tap leg
+  // 2 to read it, let leg 1 land, and it would pull you somewhere else
+  // mid-sentence. That is the timer's fault with extra steps.
+  //
+  // BACKGROUNDING IS NOT LEAVING. useFocusEffect does not fire when the app is
+  // backgrounded, which is the behaviour we want: minimising and coming back
+  // has not left this screen, and losing your place for it would be a surprise.
+  //
+  // THE CLEANUP IS THE WHOLE THING, which is the same shape app/search.tsx uses
+  // for its card: the effect does nothing on focus and everything on blur.
+  useFocusEffect(useCallback(() => () => setFocusOverride(null), []));
+
   // TAPPING A COLLAPSED LEG OPENS IT, AND TAPPING THE ONE THE JOURNEY WOULD
   // HAVE CHOSEN ANYWAY GIVES CONTROL BACK.
   //
@@ -1618,7 +1660,7 @@ export default function Flights() {
       // its own first two conditions are a belt number and a landing,
       // so it is already false on every state but landed. Gating it
       // here would be the same rule written twice.
-      const state = legState(leg, i, oIdx, nIdx);
+      const state = legState(leg, i, oIdx, nIdx, now);
       const card = state !== 'current' ? (
           <CollapsedLeg
             leg={leg}

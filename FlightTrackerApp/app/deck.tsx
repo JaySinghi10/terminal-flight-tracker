@@ -18,7 +18,10 @@ import { diningAt, allDining, Dining, HoursWindow } from '../lib/dining';
 // app/flights.tsx for this screen -- see its note in lib/saved.tsx. Nothing
 // about which leg a traveller is on is computed twice.
 import {
-  useSaved, tripsOf, isArchived, currentLegIndex, departureTs, landedInstant,
+  useSaved, tripsOf, isArchived, currentLegIndex, departureTs,
+  // WHETHER A LEG HAS LANDED, AND WHEN IT ARRIVED. whereAmI asks the first and
+  // budgetFor the second; neither is computed here any more.
+  effectiveStatus, arrivalTs,
 } from '../lib/saved';
 // THE RECORD ITSELF comes from storage, which is where it is declared -- saved
 // re-exports nothing and a type imported from the wrong file is a second name
@@ -28,7 +31,7 @@ import { airportByCode, findAirports, Airport } from '../lib/airports';
 // THE SCHEMATIC. Terminal geometry is a separate dataset from dining for the
 // same reason airports.ts is separate from both: it is a different source with a
 // different licence, and it is absent for most airports.
-import { terminalOf, Gate } from '../lib/terminals';
+import { terminalOf, terminalsAt, Gate } from '../lib/terminals';
 import TerminalMap, { placeDining, Placed } from '../components/TerminalMap';
 
 const MONO = 'JetBrainsMono_400Regular';
@@ -121,8 +124,19 @@ function whereAmI(list: SavedFlight[], now: number): Where {
   if (i < 0) return none;
 
   const leg = legs[i];
-  const landed = landedInstant(leg, now);
-  const hasLanded = landed !== null && landed <= now;
+  // ── ONE PLACE DECIDES WHETHER A FLIGHT HAS LANDED, AND IT IS NOT THIS ONE ──
+  //
+  // THIS USED TO ASK landedInstant AND IT WAS THE WRONG QUESTION. That function
+  // answers WHEN a flight arrived, for the bag window; whether it arrived at all
+  // is effectiveStatus's job, and effectiveStatus already knows things this did
+  // not -- FR24's touchdown outranks a stored status, an arrival in the future
+  // is refused, an estimate an hour stale demotes to 'stale'.
+  //
+  // THE DRIFT WAS REAL AND VISIBLE. On a leg with a spurious landedAt,
+  // effectiveStatus said 'scheduled' while this said "landed" in the same
+  // render, and the Deck opened a layover six hours before the flight was due.
+  // Two answers to one question is how that happens.
+  const hasLanded = effectiveStatus(leg, now) === 'landed';
   const after = i + 1 < legs.length ? legs[i + 1] : null;
   const before = i > 0 ? legs[i - 1] : null;
 
@@ -131,7 +145,14 @@ function whereAmI(list: SavedFlight[], now: number): Where {
     // right when the two legs are in different zones, which a connection
     // usually is. Null when either end cannot be read, or when they contradict
     // each other; neither is a duration and printing one would invent it.
-    const a = landedInstant(arrived, now);
+    //
+    // arrivalTs, NOT landedInstant, AND THAT IS THE SAME ANCHOR app/flights.tsx
+    // USES. The two screens printed different layovers for one connection --
+    // 10h 44m here against 4h 36m there -- because this measured from
+    // landedInstant, which had fallen through to a landedAt belonging to a leg
+    // still in the air. A layover is a property of the itinerary; it must not
+    // depend on when a device happened to notice something.
+    const a = arrivalTs(arrived);
     const dep = departureTs(next);
     const gap = a !== null && dep !== null && dep >= a ? dep - a : null;
     return {
@@ -157,9 +178,8 @@ function whereAmI(list: SavedFlight[], now: number): Where {
     // In the air: the airport that matters is the one being flown to.
     return { ...none, airport: (leg.to.iata || '').toUpperCase() || null, kind: 'airborne' };
   }
-  if (before !== null) {
-    const b = landedInstant(before, now);
-    if (b !== null && b <= now) return layover(before, leg);
+  if (before !== null && effectiveStatus(before, now) === 'landed') {
+    return layover(before, leg);
   }
   // The first leg of the journey, not yet gone: the airport is where it starts.
   return { ...none, airport: (leg.from.iata || '').toUpperCase() || null, kind: 'departing' };
@@ -181,11 +201,26 @@ function budgetFor(w: Where, now: number): Budget | null {
   if (w.kind !== 'layover' || w.layoverMs === null || w.arrived === null || w.next === null) {
     return null;
   }
-  // FROM NOW, NOT FROM THE ARRIVAL. The traveller is reading this in the middle
-  // of the layover, not at the moment the wheels touched; a budget that starts
-  // at the arrival would hand them time they have already spent.
+  // ── FROM WHICHEVER IS LATER: NOW, OR THE ARRIVAL ──────────────────────────
+  //
+  // NEITHER ONE ALONE IS RIGHT, and each is wrong in the opposite direction.
+  //
+  // FROM NOW ALONE hands the traveller the whole gap before they have landed --
+  // it printed "10h 37m until boarding" on a 4h 36m connection, because the
+  // screen had opened a layover six hours early and then measured from the
+  // clock.
+  //
+  // FROM THE ARRIVAL ALONE keeps saying the full layover after they are down:
+  // three hours into a four-hour connection it would still promise four hours.
+  //
+  // max() IS BOTH READINGS AT ONCE. Before the wheels touch it is the whole
+  // layover, which is what somebody planning the connection wants; after, it is
+  // what is actually left. They are the same number at the moment of arrival,
+  // so nothing jumps.
+  const arr = arrivalTs(w.arrived);
+  const anchor = arr === null ? now : Math.max(now, arr);
   const dep = departureTs(w.next);
-  const remainingMs = dep === null ? w.layoverMs : Math.max(0, dep - now);
+  const remainingMs = dep === null ? (w.layoverMs ?? 0) : Math.max(0, dep - anchor);
   const layoverMin = Math.round(remainingMs / 60000);
 
   const arrT = (w.arrived.to.terminal || '').trim();
@@ -334,6 +369,7 @@ export default function Deck() {
   }, []);
 
   const where = useMemo(() => whereAmI(savedFlights, now), [savedFlights, now]);
+
   const budget = useMemo(() => budgetFor(where, now), [where, now]);
   const covered = useMemo(() => coveredAirports(), []);
 
@@ -352,13 +388,29 @@ export default function Deck() {
   const meta = airport === null ? null : airportByCode(airport);
   const rows = useMemo(() => (airport === null ? [] : diningAt(airport)), [airport]);
 
+  // ── TEMPORARY. DELETE WITH THE REST OF THE devTerminal CODE. ──────────────
+  //
+  // WHY IT EXISTS: the map draws only when hereTerminal resolves, and that needs
+  // a live layover whose arrival record carries a terminal. There is no way to
+  // look at the schematic at all without being mid-journey at JFK, so it has
+  // never been seen on a device.
+  //
+  // THIS IS NOT THE TERMINAL SELECTOR. The real rule has four states --
+  // following a journey, browsing an airport, a manual pick, and no answer --
+  // and none of them is "a developer tapped a chip". This forces one value so
+  // the drawing can be judged, and comes out when that rule is built.
+  const [devTerminal, setDevTerminal] = useState<string | null>(null);
+
   // The terminal the traveller is standing in, when the journey says so and the
   // screen is showing that airport. Never guessed from anything else.
   const hereTerminal = useMemo(() => {
+    // The override, first and only in a development build. __DEV__ is false in
+    // any release bundle, so this branch is compiled out and cannot ship.
+    if (__DEV__ && devTerminal !== null) return devTerminal;
     if (!following || where.kind !== 'layover' || where.arrived === null) return null;
     const t = (where.arrived.to.terminal || '').trim();
     return t === '' ? null : ('T' + t).toUpperCase();
-  }, [following, where]);
+  }, [following, where, devTerminal]);
 
   // ── THE MAP, WHEN THERE IS ONE ────────────────────────────────────────────
   //
@@ -514,27 +566,37 @@ export default function Deck() {
             <Text style={[st.budgetBig, tight && { color: AMBER }]}>
               {budget.usableMin <= 0 ? 'Go to your gate' : `${minutesWord(budget.usableMin)} to eat`}
             </Text>
-            {/* THE SUBTRACTION IS SHOWN, NOT HIDDEN. Every term is an estimate
-                and the traveller is entitled to see which ones were charged. */}
-            <Text style={st.budgetLine}>
-              {`${minutesWord(budget.layoverMin)} until boarding · `}
-              {`${budget.reserveMin}m held back`}
-            </Text>
-            <Text style={st.budgetWhy}>
-              {[
-                `${RESERVE_BOARDING_MIN}m boarding`,
-                `${RESERVE_TO_GATE_MIN}m to the gate`,
-                budget.terminalChange ? `${RESERVE_TERMINAL_CHANGE_MIN}m terminal change` : null,
-                budget.international ? `${RESERVE_INTERNATIONAL_MIN}m immigration` : null,
-              ].filter(Boolean).join(' · ')}
-            </Text>
-            {/* THE TERMINALS, SAID PLAINLY AND WITHOUT A WALKING TIME. We do not
-                have one and will not imply one. */}
-            {budget.terminalChange && where.arrived !== null && where.next !== null && (
-              <Text style={st.budgetWhy}>
-                {`You arrive at T${where.arrived.to.terminal} and depart from T${where.next.from.terminal}.`}
-              </Text>
-            )}
+            {/* ── AND NOTHING ELSE. ────────────────────────────────────────
+                THE SUBTRACTION WAS ON SCREEN AND IT WAS INTERNAL REASONING.
+                "40m held back · 25m boarding · 15m to the gate" is how the
+                number was reached, not what the traveller needs: they need one
+                answer, and showing the working invites them to audit an
+                estimate rather than trust it or ignore it.
+
+                THE RESERVES STILL APPLY -- see budgetFor. They shape the
+                number; they have simply stopped narrating it. */}
+          </View>
+        )}
+
+        {/* ── TEMPORARY DEV CONTROL. Delete with devTerminal. ──────────────
+            Lists whatever terminals the geometry actually holds for the airport
+            on screen rather than a hardcoded JFK row, because a chip for a
+            terminal we have no polygon for would draw nothing and read as a
+            broken map rather than as missing data. */}
+        {__DEV__ && airport !== null && terminalsAt(airport).length > 0 && (
+          <View style={st.devWrap}>
+            <Text style={st.devLabel}>DEV ONLY · FORCE TERMINAL</Text>
+            <View style={st.chips}>
+              {terminalsAt(airport).map(t => (
+                <Pressable
+                  key={t.key}
+                  onPress={() => setDevTerminal(devTerminal === t.key ? null : t.key)}
+                  style={[st.chip, devTerminal === t.key && st.devChipOn]}
+                >
+                  <Text style={st.chipCode}>{t.key}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
 
@@ -550,7 +612,7 @@ export default function Deck() {
 
         {/* ── THE LIST, OR THE HONEST ABSENCE OF ONE ── */}
         {airport === null ? (
-          <NoAirport covered={covered} />
+          <NoAirport covered={covered} onPick={setPicked} />
         ) : rows.length === 0 ? (
           <NoData airport={airport} meta={meta} covered={covered} onPick={setPicked} />
         ) : (
@@ -648,7 +710,15 @@ function Row({ d, tz, hereTerminal, usableMin }: {
 }
 
 // ── NOTHING CHOSEN ──────────────────────────────────────────────────────────
-function NoAirport({ covered }: { covered: string[] }) {
+// onPick IS NOT OPTIONAL HERE, AND ITS ABSENCE WAS A DEAD END. Covered
+// disables its chips when no handler is given, so this state showed eight
+// airports and responded to none of them -- and the only other way in, the
+// search box, could not find an airport by its own code either. With no trip
+// saved there was no route to any airport at all.
+function NoAirport({ covered, onPick }: {
+  covered: string[];
+  onPick: (code: string) => void;
+}) {
   return (
     <View style={st.empty}>
       <Text style={st.emptyTitle}>{'No trip on the go'}</Text>
@@ -656,7 +726,7 @@ function NoAirport({ covered }: { covered: string[] }) {
         {'The Deck follows your journey and shows what you can eat where you are. '
           + 'With no trip saved, pick an airport above.'}
       </Text>
-      <Covered covered={covered} />
+      <Covered covered={covered} onPick={onPick} />
     </View>
   );
 }
@@ -753,8 +823,6 @@ const st = StyleSheet.create({
   },
   budgetTight: { borderWidth: 1, borderColor: 'rgba(251,191,36,0.35)' },
   budgetBig: { fontFamily: SANS_SEMI, fontSize: 17, color: INK },
-  budgetLine: { fontFamily: MONO, fontSize: 12, color: DIM, marginTop: 4 },
-  budgetWhy: { fontFamily: MONO, fontSize: 11, color: DIMMER, marginTop: 2 },
 
   // ── zones ──
   zone: { marginTop: 18 },
@@ -790,6 +858,11 @@ const st = StyleSheet.create({
   coveredWrap: { marginTop: 16 },
   coveredLabel: { fontFamily: MONO, fontSize: 10, color: DIMMER, letterSpacing: 1 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginTop: 8 },
+  // TEMPORARY, with devTerminal. Amber because it is scaffolding: nothing else
+  // on this screen is that colour except a warning, which is what it is.
+  devWrap: { marginTop: CARD_GAP, paddingHorizontal: CARD_PAD },
+  devLabel: { fontFamily: MONO, fontSize: 10, color: AMBER, letterSpacing: 1 },
+  devChipOn: { borderColor: AMBER },
   chip: {
     backgroundColor: SURFACE_2, borderRadius: 8,
     paddingVertical: 6, paddingHorizontal: 10, minWidth: 74,
