@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mapbox indoor probe</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!--
+  DOES MAPBOX HAVE INDOOR DATA FOR OUR AIRPORTS?
+
+  A PROBE, NOT A PROTOTYPE. It answers one question -- is there indoor floor
+  plan data at these ten airports -- and nothing else. Nothing here is meant to
+  survive into the app.
+
+  THE TOKEN IS NEVER STORED. It comes from ?token=... in the URL, or a prompt if
+  that is absent, and it is held in a variable for the life of the page. It is
+  not written to localStorage, not put in the URL by this page, and not sent
+  anywhere but Mapbox.
+
+  WHAT THE API ACTUALLY IS, checked against the docs rather than assumed:
+    * Mapbox GL JS v3 -- pinned to v3.21.0, the version the indoor guide uses
+    * config: { basemap: { showIndoor: true } } on the Map constructor
+    * showIndoorLabels for POIs and room names inside the building
+    * mapboxgl.IndoorControl() -- the floor selector
+    * "Buildings that have indoor map data will render their indoor floor plans
+      at appropriate zoom levels 16+", so the camera opens at 17.
+-->
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.21.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.21.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0b0b0c; color: #e2e2e2;
+    font: 13px -apple-system, system-ui, sans-serif; }
+  #map { position: absolute; inset: 0 0 0 250px; }
+  #side { position: absolute; left: 0; top: 0; bottom: 0; width: 250px;
+    overflow-y: auto; padding: 12px; box-sizing: border-box;
+    border-right: 1px solid rgba(226,226,226,0.12); }
+  h1 { font-size: 13px; letter-spacing: 1px; margin: 0 0 4px; }
+  .hint { color: rgba(226,226,226,0.45); font-size: 11px; line-height: 1.45;
+    margin: 0 0 12px; }
+  .apt { margin-bottom: 10px; }
+  .apt > b { display: block; font: 12px ui-monospace, monospace; letter-spacing: 1px;
+    color: rgba(226,226,226,0.55); margin-bottom: 4px; }
+  button { font: 11px ui-monospace, monospace; color: #e2e2e2; cursor: pointer;
+    background: rgba(255,255,255,0.06); border: 1px solid transparent;
+    border-radius: 6px; padding: 5px 8px; margin: 0 4px 4px 0; }
+  button:hover { background: rgba(255,255,255,0.12); }
+  button.on { border-color: #4ade80; color: #4ade80; }
+  #status { position: absolute; right: 10px; top: 10px; z-index: 5;
+    background: rgba(11,11,12,0.85); border: 1px solid rgba(226,226,226,0.15);
+    border-radius: 8px; padding: 8px 10px; font: 11px ui-monospace, monospace;
+    max-width: 340px; line-height: 1.5; }
+  #status b { color: #4ade80; }
+  .warn { color: #fbbf24; }
+  label { display: block; margin: 8px 0 4px; font-size: 11px;
+    color: rgba(226,226,226,0.45); }
+</style>
+</head>
+<body>
+<div id="side">
+  <h1>MAPBOX INDOOR PROBE</h1>
+  <p class="hint">
+    Indoor floor plans render at zoom 16+. Each button flies to a real terminal
+    centroid taken from our own OpenStreetMap data, so you land on a building
+    rather than the middle of the airfield.
+  </p>
+  <div id="list"></div>
+  <label><input type="checkbox" id="labels" checked> indoor labels &amp; POIs</label>
+  <label><input type="checkbox" id="pitch"> tilt the camera</label>
+</div>
+<div id="map"></div>
+<div id="status">starting…</div>
+
+<script>
+// ── THE TOKEN, HELD AND NOT KEPT ───────────────────────────────────────────
+var token = new URLSearchParams(location.search).get('token');
+if (!token) token = window.prompt('Mapbox public token (pk...)');
+if (!token) {
+  document.getElementById('status').innerHTML =
+    '<span class="warn">No token. Reload with ?token=pk...</span>';
+  throw new Error('no token');
+}
+
+// Terminal centroids from FlightTrackerApp/lib/terminals.ts, which came from
+// OpenStreetMap. All ten airports now have real terminals: DEL and BLR were
+// added to the manifest rather than left on an airport reference point, because
+// a reference point is the middle of the airfield and landing there shows no
+// building at all -- which reads as "no indoor data" when it is only a camera
+// pointed at grass.
+//
+// BLR HAS TERMINAL 1 ONLY. Terminal 2 opened in 2022 and OpenStreetMap does not
+// carry it, so there is no pill for it and it has to be found by panning.
+var AIRPORTS = {
+  JFK: [["T1",-73.79135,40.64266],["T4",-73.78089,40.64066],["T5",-73.7756,40.64631],["T8",-73.79262,40.64867]],
+  LHR: [["T2",-0.44712,51.47125],["T3",-0.45714,51.47106],["T4",-0.44561,51.46002],["T5",-0.48232,51.47139]],
+  FRA: [["T1",8.56942,50.04761],["T3",8.5783,50.03211]],
+  HKG: [["T1",113.92651,22.31272],["T2",113.93851,22.31655]],
+  EWR: [["TA",-74.18553,40.68397]],
+  LGA: [["TA",-73.88493,40.77353],["TB",-73.87109,40.7739]],
+  ARN: [["T2",17.92816,59.64419],["T3",17.92403,59.64563],["T4",17.92621,59.64749],["T5",17.93197,59.65279]],
+  BOM: [["T1",72.85465,19.0928],["T2",72.87394,19.09691]],
+  DEL: [["T1",77.11761,28.56397],["T3",77.08444,28.55566]],
+  BLR: [["T1",77.711,13.20049]]
+};
+
+mapboxgl.accessToken = token;
+
+var map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/standard',
+  center: [-73.78089, 40.64066],
+  zoom: 17,
+  pitch: 0,
+  // THE ONE LINE THE WHOLE PROBE IS ABOUT.
+  config: { basemap: { showIndoor: true, showIndoorLabels: true } }
+});
+
+var status = document.getElementById('status');
+function say(html) { status.innerHTML = html; }
+
+map.on('error', function (e) {
+  var m = (e && e.error && e.error.message) || 'unknown';
+  say('<span class="warn">map error: ' + m + '</span>');
+});
+
+map.on('load', function () {
+  // The floor selector. It appears only where the building underneath actually
+  // HAS floors, which is itself a signal worth watching for.
+  try { map.addControl(new mapboxgl.IndoorControl()); }
+  catch (err) { say('<span class="warn">IndoorControl unavailable: ' + err.message + '</span>'); }
+  map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+  report();
+});
+
+map.on('moveend', report);
+
+// ── WHAT COUNTS AS "INDOOR DATA IS HERE" ───────────────────────────────────
+//
+// Not a judgement -- a count. The Standard style is bundled, so its layers are
+// not enumerable the way a classic style's are, but querying rendered features
+// under the centre of the screen tells us what is actually being drawn there.
+function report() {
+  var c = map.getCenter();
+  var z = map.getZoom();
+  var lines = [];
+  lines.push('zoom <b>' + z.toFixed(1) + '</b>' + (z < 16 ? ' <span class="warn">(indoor needs 16+)</span>' : ''));
+  lines.push(c.lat.toFixed(5) + ', ' + c.lng.toFixed(5));
+  try {
+    var box = [[window.innerWidth / 2 - 130, window.innerHeight / 2 - 130],
+               [window.innerWidth / 2 + 130, window.innerHeight / 2 + 130]];
+    var feats = map.queryRenderedFeatures(box);
+    var byLayer = {};
+    var indoorish = 0;
+    for (var i = 0; i < feats.length; i++) {
+      var id = (feats[i].layer && feats[i].layer.id) || '?';
+      byLayer[id] = (byLayer[id] || 0) + 1;
+      if (/indoor|room|floor|poi/i.test(id)) indoorish += 1;
+    }
+    var names = Object.keys(byLayer).sort();
+    lines.push('rendered features: <b>' + feats.length + '</b> in ' + names.length + ' layers');
+    var hits = names.filter(function (n) { return /indoor|room|floor/i.test(n); });
+    lines.push(hits.length
+      ? 'indoor layers: <b>' + hits.join(', ') + '</b>'
+      : '<span class="warn">no layer with "indoor" in its name here</span>');
+  } catch (err) {
+    lines.push('<span class="warn">query failed: ' + err.message + '</span>');
+  }
+  say(lines.join('<br>'));
+}
+
+// ── THE BUTTONS ────────────────────────────────────────────────────────────
+var list = document.getElementById('list');
+var current = null;
+Object.keys(AIRPORTS).forEach(function (code) {
+  var wrap = document.createElement('div');
+  wrap.className = 'apt';
+  var head = document.createElement('b');
+  head.textContent = code;
+  wrap.appendChild(head);
+  AIRPORTS[code].forEach(function (t) {
+    var b = document.createElement('button');
+    b.textContent = t[0];
+    b.onclick = function () {
+      if (current) current.classList.remove('on');
+      b.classList.add('on');
+      current = b;
+      map.flyTo({
+        center: [t[1], t[2]], zoom: 17.2,
+        pitch: document.getElementById('pitch').checked ? 50 : 0,
+        duration: 900
+      });
+    };
+    wrap.appendChild(b);
+  });
+  list.appendChild(wrap);
+});
+
+document.getElementById('labels').onchange = function (e) {
+  map.setConfigProperty('basemap', 'showIndoorLabels', e.target.checked);
+};
+document.getElementById('pitch').onchange = function (e) {
+  map.easeTo({ pitch: e.target.checked ? 50 : 0, duration: 400 });
+};
+</script>
+</body>
+</html>

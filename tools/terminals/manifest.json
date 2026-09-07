@@ -34,7 +34,15 @@
     "       transport only -- so a zero there is correct, not a fetch failure.",
     "  FRA, LHR, EWR  have terminal geometry but NO dining coordinates and no",
     "       gate hints, so their maps can show the building and the gates and no",
-    "       food at all. The screen has to say so."
+    "       food at all. The screen has to say so.",
+    "  DEL, BLR  are here for the CAMERA, not for our own drawing. Neither has a",
+    "       single dining row in lib/dining.ts. They earn terminal pills so the",
+    "       indoor view opens on a building instead of the middle of the airfield,",
+    "       which is the whole difference between seeing floor plans and",
+    "       concluding there are none.",
+    "  BLR  OSM has Terminal 1 only. Terminal 2 opened in 2022 and is absent, and",
+    "       fourteen gates -- including C1, C2, C3 -- sit further than 100m from",
+    "       any terminal footprint and are dropped as remote stands."
   ],
   "airports": [
     {
@@ -131,6 +139,35 @@
       "guardrails": {
         "expect_terminals": ["TA", "TB"],
         "min_gates": 20
+      }
+    },
+    {
+      "code": "DEL",
+      "lat": 28.5562,
+      "lon": 77.1,
+      "radius_m": 6000,
+      "aliases": {},
+      "exclude": ["Freight Terminal"],
+      "guardrails": {
+        "expect_terminals": ["T1", "T3"],
+        "min_gates": 60
+      }
+    },
+    {
+      "code": "BLR",
+      "lat": 13.1986,
+      "lon": 77.7066,
+      "radius_m": 6000,
+      "aliases": {},
+      "exclude": [
+        "Domestic Cargo Terminal",
+        "KIAL VIP Terminal",
+        "Menzies Aviation Bobba Cargo Terminal",
+        "Worldwide Freight Services"
+      ],
+      "guardrails": {
+        "expect_terminals": ["T1"],
+        "min_gates": 10
       }
     },
     {
