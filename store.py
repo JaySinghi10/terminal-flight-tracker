@@ -1,8 +1,10 @@
 """Everything the alerts feature keeps in Google Cloud Storage.
 
-NOTHING ELSE IN THIS CODEBASE TOUCHES A BUCKET. api.py calls these functions and
-mcp_server.py does not know this file exists — provider code and storage code
-stay apart, so a change to one cannot break the other.
+api.py calls these functions and mcp_server.py does not know this file exists —
+provider code and storage code stay apart, so a change to one cannot break the
+other. pollstate.py is the other module that holds a bucket; it keeps what each
+watched flight LOOKED LIKE, where this keeps WHO IS WATCHING WHAT, and they are
+separate objects so a registration and a poll cannot contend for one file.
 
 AUTHENTICATION IS THE RUNTIME SERVICE ACCOUNT'S. storage.Client() picks up
 Application Default Credentials, which on Cloud Run is the service's own
@@ -13,7 +15,8 @@ later.
 UNCONFIGURED IS A VALID STATE. If ALERTS_BUCKET is unset this module still
 imports and every operation returns an error dict rather than raising, so the
 service boots and /flight, /route, /quota, /chat and /parse are untouched by a
-feature they know nothing about.
+feature they know nothing about. THE SDK ITSELF IS LOADED LAZILY, via gcs.py,
+for the same reason and one layer down -- see the note in that file.
 """
 import json
 import os
@@ -23,8 +26,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from google.api_core import exceptions as gcs_exceptions
-from google.cloud import storage
+import gcs
 
 ALERTS_BUCKET = (os.getenv("ALERTS_BUCKET") or "").strip()
 
@@ -120,6 +122,9 @@ def _bucket():
     """The bucket handle, or None when the feature is not configured."""
     global _client
     if not ALERTS_BUCKET:
+        return None
+    storage = gcs.sdk()
+    if storage is None:
         return None
     if _client is None:
         _client = storage.Client()
@@ -261,7 +266,7 @@ def _mutate_watches(apply_fn):
     for attempt in range(WRITE_ATTEMPTS):
         try:
             rows, generation = _read_watches(bucket)
-        except gcs_exceptions.GoogleAPIError:
+        except gcs.errors().GoogleAPIError:
             return {"ok": False, "error": ERR_READ}
         except (ValueError, UnicodeDecodeError):
             return {"ok": False, "error": ERR_READ}
@@ -287,17 +292,70 @@ def _mutate_watches(apply_fn):
                 if_generation_match=generation,
             )
             return result
-        except gcs_exceptions.PreconditionFailed:
+        except gcs.errors().PreconditionFailed:
             # Somebody else wrote between our read and our write. Re-read and
             # reapply; the backoff is randomised so a collision does not repeat
             # on the same schedule.
             delay = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * (2 ** attempt))
             time.sleep(delay * (0.5 + random.random()))
             continue
-        except gcs_exceptions.GoogleAPIError:
+        except gcs.errors().GoogleAPIError:
             return {"ok": False, "error": ERR_WRITE}
 
     return {"ok": False, "error": ERR_CONTENTION}
+
+
+def watched_flights():
+    """Every distinct flight instance somebody is watching, newest date first.
+
+    ONE ROW PER FLIGHT, NOT PER DEVICE, and that is the whole reason this exists
+    rather than the poller reading watches.json itself. Four people watching
+    EK500 is one flight to ask the provider about; returning four rows would
+    invite four calls for one answer, and the provider bills per call.
+
+    THE DEVICES COME BACK WITH IT because dispatch will need them, and finding
+    them later would mean reading this object a second time. Dispatch does not
+    exist yet -- see pollstate.py -- so nothing reads the field today.
+
+    Read-only: no pruning, no write, no generation. A poll is the most frequent
+    thing that touches this store and it should never be able to damage it.
+
+    RETURNS None WHEN THE STORE CANNOT BE READ, and [] when it can be read and is
+    empty. THE TWO ARE NOT THE SAME and collapsing them is how a poller ends up
+    doing nothing for ever without a single error in the log: an unreadable
+    object would read as "nobody is watching anything". This module does not
+    raise -- see the note at the top of the file -- so the distinction is carried
+    in the return value and the caller is expected to check it.
+    """
+    bucket = _bucket()
+    if bucket is None:
+        return []
+    try:
+        rows, _ = _read_watches(bucket)
+    except (ValueError, UnicodeDecodeError, gcs.errors().GoogleAPIError):
+        return None
+
+    by_flight = {}
+    for r in rows or []:
+        num = str((r or {}).get("flight_number") or "").strip().upper()
+        day = str((r or {}).get("flight_date") or "").strip()
+        if not num or not _ISO_DAY_RE.match(day):
+            continue
+        entry = by_flight.setdefault((num, day), {
+            "flight_number": num,
+            "flight_date": day,
+            "devices": [],
+        })
+        tok = r.get("push_token")
+        entry["devices"].append({
+            "device_id": r.get("device_id"),
+            "push_token": tok,
+            "platform": r.get("platform"),
+        })
+
+    return sorted(by_flight.values(),
+                  key=lambda f: (f["flight_date"], f["flight_number"]),
+                  reverse=True)
 
 
 def register_watch(device_id, push_token, platform, flight_number, flight_date):
@@ -653,7 +711,7 @@ def record_delivery(delivery: dict) -> dict:
             json.dumps(delivery, separators=(",", ":")),
             content_type="application/json",
         )
-    except gcs_exceptions.GoogleAPIError:
+    except gcs.errors().GoogleAPIError:
         return {"ok": False, "error": ERR_WRITE}
     return {"ok": True, "key": key, "error": None}
 
@@ -708,7 +766,7 @@ def list_deliveries(day=None, limit=DEFAULT_LIST_LIMIT) -> dict:
 
     try:
         names = [b.name for b in bucket.list_blobs(prefix=_delivery_prefix(resolved))]
-    except gcs_exceptions.GoogleAPIError:
+    except gcs.errors().GoogleAPIError:
         return {"ok": False, "error": ERR_READ}
 
     # NEWEST FIRST BY NAME. The key begins with epoch milliseconds, which is
@@ -721,7 +779,7 @@ def list_deliveries(day=None, limit=DEFAULT_LIST_LIMIT) -> dict:
     for name in names[:capped]:
         try:
             items.append(_summary(json.loads(bucket.blob(name).download_as_bytes().decode("utf-8"))))
-        except (gcs_exceptions.GoogleAPIError, ValueError, UnicodeDecodeError):
+        except (gcs.errors().GoogleAPIError, ValueError, UnicodeDecodeError):
             # One unreadable object must not hide the rest of the day.
             continue
     return {"ok": True, "day": resolved, "count": count, "deliveries": items, "error": None}
@@ -750,7 +808,7 @@ def get_delivery(delivery_id, day=None) -> dict:
         if match is None:
             return {"ok": False, "error": ERR_NOT_FOUND}
         doc = json.loads(bucket.blob(match).download_as_bytes().decode("utf-8"))
-    except gcs_exceptions.GoogleAPIError:
+    except gcs.errors().GoogleAPIError:
         return {"ok": False, "error": ERR_READ}
     except (ValueError, UnicodeDecodeError):
         return {"ok": False, "error": ERR_READ}

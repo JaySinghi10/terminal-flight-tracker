@@ -23,6 +23,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import poller
+import pollstate
 import store
 from mcp_server import (
     fetch_flight_full,
@@ -926,3 +928,54 @@ def unwatch(req: UnwatchRequest, x_watch_secret: str | None = Header(default=Non
     # Removing nothing is a success: unsave is fire-and-forget on the device, so
     # a retry must be indistinguishable from a first attempt.
     return {"ok": True, "removed": result.get("removed")}
+
+
+# ──────────────────────────────────────────────
+# THE POLLER
+# ──────────────────────────────────────────────
+#
+# Cloud Scheduler pokes this every two minutes. It does not decide anything --
+# poller.run_once() does -- and it sends nothing to anybody. See poller.py.
+#
+# ITS OWN SECRET, NOT WATCH_SECRET. WATCH_SECRET is compiled into a shipped
+# mobile app and anyone who unpacks the binary has it; that is an acceptable
+# gate on "register this flight" and an unacceptable one on "spend units now".
+# A stranger with the app's secret could otherwise poke this in a loop and empty
+# the month's allowance.
+POLL_SECRET = os.getenv("POLL_SECRET")
+POLL_SECRET_HEADER = "X-Poll-Secret"
+
+# ONE POLL AT A TIME, AND THE LOCK IS IN THE BUCKET rather than in this process,
+# because Cloud Run may be running several. Two overlapping passes would each
+# read the same state, each decide the same flights were due, and each pay for
+# them.
+POLL_LOCK_KEY = "runtime/poll.lock"
+POLL_LOCK_TTL_SECONDS = 300
+
+
+@app.post("/poll")
+def poll(x_poll_secret: str | None = Header(default=None)):
+    # Default None rather than required, and a 404 rather than a 403, for the
+    # reasons spelled out at _alert_not_found and /watch above.
+    if not _secret_ok(x_poll_secret, POLL_SECRET):
+        logger.warning("poll rejected: bad or missing %s", POLL_SECRET_HEADER)
+        return _alert_not_found()
+
+    lock = pollstate.take_lock(POLL_LOCK_KEY, POLL_LOCK_TTL_SECONDS)
+    if not lock:
+        # NOT AN ERROR. A poke arriving while the previous one is still working
+        # is the system behaving exactly as intended under a slow provider, and
+        # a 500 here would have Cloud Scheduler retry it -- which is the one
+        # thing that must not happen.
+        logger.info("poll skipped: another pass is already running")
+        return {"ok": True, "skipped": "already running"}
+
+    try:
+        return poller.run_once()
+    except Exception:
+        # The client gets a fixed string, as everywhere else in this file. The
+        # traceback goes to the log.
+        logger.exception("poll failed")
+        return JSONResponse(status_code=500, content={"error": "Poll failed."})
+    finally:
+        pollstate.release_lock(POLL_LOCK_KEY)

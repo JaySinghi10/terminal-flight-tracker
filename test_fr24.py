@@ -47,7 +47,7 @@ def leg(dest="VOBL", landed="2026-09-06T11:43:00", ended=True,
 
 def with_fetch(legs, reason=None):
     """Replace the network with a fixed answer."""
-    fr24._CACHE.clear()
+    fr24.forget_cached()
     fr24._note_success()
     fr24.FR24_API_TOKEN = "test-token-not-real"
     fr24._fetch = lambda params: (legs, reason)
@@ -184,7 +184,7 @@ check("arriving where it was going is not a diversion", r["diverted_to"] is None
 
 print()
 print("-- configuration and input --")
-fr24._CACHE.clear()
+fr24.forget_cached()
 saved_token = fr24.FR24_API_TOKEN
 fr24.FR24_API_TOKEN = ""
 r = fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
@@ -203,11 +203,11 @@ with_fetch(None, "http 500")
 now = datetime.now(timezone.utc)
 fr24._note_success()
 for _ in range(fr24.BREAKER_THRESHOLD):
-    fr24._CACHE.clear()
+    fr24.forget_cached()
     fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
 check("it opens after the threshold", fr24.breaker_status()["open_until"] is not None,
       fr24.breaker_status())
-fr24._CACHE.clear()
+fr24.forget_cached()
 calls = []
 fr24._fetch = lambda p: (calls.append(1), (None, "http 500"))[1]
 r = fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
@@ -221,11 +221,40 @@ fr24._note_success()
 print()
 print("-- the cache --")
 calls = []
-fr24._CACHE.clear()
+fr24.forget_cached()
 fr24._fetch = lambda p: (calls.append(1), ([leg()], None))[1]
 fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
 fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
 check("a known landing is not paid for twice", len(calls) == 1, len(calls))
+
+# ── THE HALF THAT SURVIVES A COLD START ──
+#
+# THIS IS THE WHOLE REASON THE CACHE MOVED. Cloud Run scales to zero between
+# two-minute polls, so the process cache is empty on nearly every poll. Emptying
+# _CACHE alone is what a cold start looks like from in here; the landing must
+# still be there, and must still cost nothing.
+fr24._CACHE.clear()
+fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+check("and survives the process dying, which is the point", len(calls) == 1, len(calls))
+
+# A PENDING ANSWER MUST NOT BE SHARED. It is a fact about one minute. If it were
+# promoted, a flight seen mid-air once would read as mid-air for twelve hours.
+fr24.forget_cached()
+calls = []
+fr24._fetch = lambda p: (calls.append(1), ([leg(landed=None, ended=False)], None))[1]
+fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+fr24._CACHE.clear()
+fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+check("a pending answer is NOT kept across a cold start", len(calls) == 2, len(calls))
+
+fr24.forget_cached()
+calls = []
+fr24._fetch = lambda p: (calls.append(1), ([leg()], None))[1]
+fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+fr24._CACHE.clear()
+fr24.forget_cached("6E5071")
+fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+check("forgetting one flight clears both halves", len(calls) == 2, len(calls))
 
 print()
 print("FAILURES: %d" % len(FAILURES))

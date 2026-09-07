@@ -598,7 +598,8 @@ def _with_data_age(fetched_at: datetime, result: tuple) -> tuple:
 
 
 def fetch_flight_full(flight_number: str, date: str | None = None,
-                      origin: str | None = None) -> tuple[str, dict | None]:
+                      origin: str | None = None,
+                      max_age: timedelta | None = None) -> tuple[str, dict | None]:
     """One flight, optionally on a specific local departure date and from a
     specific airport.
 
@@ -614,6 +615,22 @@ def fetch_flight_full(flight_number: str, date: str | None = None,
     behaviour before this existed and is still correct where the caller genuinely
     does not know — a flight number typed into the search box names no airport.
     It costs no extra units: it filters a response that was fetched anyway.
+
+    max_age IS HOW THE POLLER REFUSES STALE DATA. The cache holds an answer for
+    five minutes, which is right for a person opening the app and wrong for a
+    poll running every two: the two-minute tier exists precisely to notice a
+    change quickly, and serving it a four-minute-old answer would make that tier
+    cost units and buy nothing. Passing a shorter max_age makes the poll miss
+    and fetch.
+
+    IT IS AN AGE, NOT A BOOLEAN "fresh". A flag meaning "ignore the cache" would
+    also throw away the answer fetched ten seconds ago for the SAME flight
+    earlier in the same pass -- two watchers on one flight would be two units.
+    An age keeps that sharing and still refuses genuinely old data.
+
+    NOTE IT CANNOT BE LONGER THAN THE TTL, only shorter: entries are evicted on
+    read against whichever bound is tighter, so this can never resurrect an
+    answer the cache would otherwise have dropped.
     """
     number = re.sub(r"\s+", "", str(flight_number or "")).upper()
     day = str(date).strip() if date is not None and str(date).strip() else None
@@ -640,10 +657,11 @@ def fetch_flight_full(flight_number: str, date: str | None = None,
     # filter ever runs on it. An origin outside the key would mean the first
     # caller to ask for a number picks the leg every later caller is given.
     key = (number, day, org)
+    ttl = FLIGHT_CACHE_TTL if max_age is None else min(FLIGHT_CACHE_TTL, max_age)
     cached = _FLIGHT_CACHE.get(key)
     if cached is not None:
         cached_at, cached_result = cached
-        if datetime.now(timezone.utc) - cached_at < FLIGHT_CACHE_TTL:
+        if datetime.now(timezone.utc) - cached_at < ttl:
             return _with_data_age(cached_at, cached_result)
 
     # Departure, not Both, on the dated form. The board defines a row's day by

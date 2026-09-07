@@ -43,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+import pollstate
 from airport_icao import icao_for
 
 logger = logging.getLogger("flight-tracker")
@@ -104,12 +105,25 @@ RESULT_LIMIT = 8
 # IT FAILS OPEN, NOT CLOSED. When it trips, callers get ERROR -- which is
 # explicitly the outcome that does NOT let AeroDataBox claim a landing. A broken
 # FR24 must not silently restore the behaviour this module exists to replace.
+#
+# ── AND IT LIVES IN CLOUD STORAGE, NOT IN THIS PROCESS ──────────────────────
+#
+# IT USED TO BE A MODULE GLOBAL AND THAT MADE IT USELESS UNDER THE POLLER. Cloud
+# Run scales to zero between two-minute pokes, so every poll began in a fresh
+# process with a closed breaker and a zeroed count -- a rotated or exhausted
+# token would be retried every two minutes for ever, which is the exact
+# behaviour a breaker exists to prevent. A breaker that resets on every cold
+# start is not a breaker.
+#
+# IT IS ALSO SHARED, which the in-process one never was: several instances can
+# be serving at once and each was learning the outage separately.
+#
+# THE LOCK STAYS for the threads inside one instance; the object's generation
+# precondition is what settles a race between instances.
 BREAKER_THRESHOLD = 4
 BREAKER_COOLDOWN = timedelta(minutes=10)
 
 _lock = threading.Lock()
-_consecutive_failures = 0
-_breaker_until = None
 
 # ── CACHE ───────────────────────────────────────────────────────────────────
 #
@@ -118,9 +132,13 @@ _breaker_until = None
 # stops a client retry, a double-mounted screen or two Cloud Run requests
 # landing together from paying twice for one answer.
 #
-# PROCESS-LOCAL AND THAT IS UNDERSTOOD. Cloud Run scales to zero and runs
-# several instances, so this is a latency and duplicate-call guard, not a budget
-# guarantee. The credit sizing assumes every call is a miss.
+# SHARED, SO ONE INSTANCE'S ANSWER IS EVERY INSTANCE'S. A landing is immutable,
+# so once any instance has one nothing should ever pay for it again -- which a
+# process-local cache could not deliver on a service that scales to zero.
+#
+# ONLY LANDINGS ARE SHARED. A 'pending' or 'unknown' is a fact about a moment
+# and is worth nothing to another instance a minute later; those stay in process
+# memory with a short life, where they still stop a double-call inside one poll.
 LANDED_CACHE_TTL = timedelta(hours=12)
 SHORT_CACHE_TTL = timedelta(seconds=60)
 _CACHE = {}
@@ -249,46 +267,97 @@ def _window(date, departure_utc):
     return start.strftime(fmt), end.strftime(fmt)
 
 
+def _breaker_read():
+    doc, _ = pollstate.read_runtime()
+    b = doc.get("breaker") or {}
+    until = _parse_instant(b.get("open_until"))
+    return int(b.get("failures") or 0), until
+
+
 def _breaker_open(now):
-    global _consecutive_failures, _breaker_until
-    with _lock:
-        if _breaker_until is None:
-            return False
-        if now < _breaker_until:
-            return True
-        # Cooled off: half-open. One caller gets to try, and a single success
-        # clears the count entirely.
-        _breaker_until = None
-        _consecutive_failures = 0
-        return False
+    """Is the breaker holding calls back right now?
+
+    THE HALF-OPEN CLEAR IS A WRITE AND IT IS DELIBERATELY NOT DONE HERE. Once
+    the cooldown has passed this simply reports closed; the next success clears
+    the count. Writing on a read would have every instance racing to clear the
+    same object at the same moment for no gain.
+    """
+    _, until = _breaker_read()
+    return until is not None and now < until
 
 
 def _note_failure(now):
-    global _consecutive_failures, _breaker_until
-    with _lock:
-        _consecutive_failures += 1
-        if _consecutive_failures >= BREAKER_THRESHOLD and _breaker_until is None:
-            _breaker_until = now + BREAKER_COOLDOWN
+    def apply(doc):
+        b = doc.setdefault("breaker", {})
+        n = int(b.get("failures") or 0) + 1
+        b["failures"] = n
+        if n >= BREAKER_THRESHOLD:
+            b["open_until"] = (now + BREAKER_COOLDOWN).isoformat()
             logger.warning(
                 "fr24 circuit breaker open after %d consecutive failures; "
                 "no calls for %d minutes",
-                _consecutive_failures, int(BREAKER_COOLDOWN.total_seconds() // 60))
+                n, int(BREAKER_COOLDOWN.total_seconds() // 60))
+        return doc
+    with _lock:
+        pollstate.mutate_runtime(apply)
 
 
 def _note_success():
-    global _consecutive_failures, _breaker_until
+    """Clear the count -- but only if there is something to clear.
+
+    A WRITE PER SUCCESSFUL CALL WOULD BE A GCS WRITE PER FLIGHT PER POLL. The
+    common case is a closed breaker at zero failures, and that needs no write at
+    all; the read is already cached for the length of a poll.
+    """
+    failures, until = _breaker_read()
+    if failures == 0 and until is None:
+        return
+
+    def apply(doc):
+        doc["breaker"] = {"failures": 0, "open_until": None}
+        return doc
     with _lock:
-        _consecutive_failures = 0
-        _breaker_until = None
+        pollstate.mutate_runtime(apply)
+
+
+def forget_cached(number=None):
+    """Drop what we remember about a landing -- BOTH halves of the cache.
+
+    THE CACHE HAS TWO HALVES AND CLEARING ONE IS A TRAP. _CACHE lives in this
+    process; the landings in Cloud Storage are shared and immutable. Anything
+    that wants a fresh answer -- a test, a support question, an operator who
+    thinks a landing was recorded wrongly -- has to clear both, so there is one
+    call that does it rather than two that have to be remembered together.
+
+    number None forgets everything.
+    """
+    if number is None:
+        _CACHE.clear()
+    else:
+        n = str(number).strip().upper()
+        for k in [k for k in _CACHE if k[0] == n]:
+            _CACHE.pop(k, None)
+
+    def apply(doc):
+        lands = doc.get("landings") or {}
+        drop = list(lands) if number is None else             [k for k in lands if k.split("|")[0] == str(number).strip().upper()]
+        if not drop:
+            return None
+        for k in drop:
+            lands.pop(k, None)
+        doc["landings"] = lands
+        return doc
+    pollstate.mutate_runtime(apply)
 
 
 def breaker_status() -> dict:
-    with _lock:
-        return {
-            "configured": configured(),
-            "consecutive_failures": _consecutive_failures,
-            "open_until": _breaker_until.isoformat() if _breaker_until else None,
-        }
+    failures, until = _breaker_read()
+    return {
+        "configured": configured(),
+        "shared": pollstate.configured(),
+        "consecutive_failures": failures,
+        "open_until": until.isoformat() if until else None,
+    }
 
 
 def _fetch(params):
@@ -395,7 +464,17 @@ def landing_for(flight_number, date=None, destination_iata=None,
         return _result(ERROR, "no usable date or departure time")
 
     key = (number, window[0], window[1], want_icao or dest)
+    skey = "|".join(key)
     now = datetime.now(timezone.utc)
+
+    # THE SHARED LANDING FIRST. It is immutable, so a hit here is final and
+    # costs nothing -- and unlike the process cache it survives the cold start
+    # between two polls.
+    shared, _ = pollstate.read_runtime()
+    got = (shared.get("landings") or {}).get(skey)
+    if isinstance(got, dict) and got.get("result"):
+        return dict(got["result"], cached="shared")
+
     hit = _CACHE.get(key)
     if hit is not None:
         cached_at, cached = hit
@@ -482,4 +561,14 @@ def landing_for(flight_number, date=None, destination_iata=None,
         out = _result(PENDING, "still airborne", **common)
 
     _CACHE[key] = (now, out)
+    # ONLY A LANDING IS PROMOTED TO THE SHARED STORE. Everything else is a fact
+    # about this minute and would be a write per flight per poll for nothing.
+    if out["outcome"] == LANDED:
+        def apply(doc):
+            lands = doc.setdefault("landings", {})
+            if skey in lands:
+                return None
+            lands[skey] = {"day": str(date or "")[:10] or window[0][:10], "result": out}
+            return doc
+        pollstate.mutate_runtime(apply)
     return out
