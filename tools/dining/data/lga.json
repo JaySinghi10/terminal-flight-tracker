@@ -1,6 +1,6 @@
 {
  "airport": "LGA",
- "scraped_at": "2026-09-06T13:40:24Z",
+ "scraped_at": "2026-09-07T10:30:48Z",
  "source_url": "https://www.laguardiaairport.com/api/graphql",
  "records": [
   {
@@ -26,7 +26,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -52,7 +52,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -78,7 +78,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -104,7 +104,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -130,7 +130,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -156,7 +156,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -182,7 +182,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -208,7 +208,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -234,7 +234,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -260,7 +260,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -286,7 +286,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -312,7 +312,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -338,7 +338,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -349,7 +349,7 @@
    "terminal": "TC",
    "level": "Departures",
    "area": "Gate C61",
-   "gate_hint": "",
+   "gate_hint": "C61",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -364,7 +364,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -390,7 +390,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -416,7 +416,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -442,7 +442,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -468,7 +468,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -494,7 +494,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -520,7 +520,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -546,7 +546,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -572,7 +572,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -598,7 +598,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -624,7 +624,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -650,7 +650,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -676,7 +676,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -702,7 +702,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -728,7 +728,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -754,7 +754,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -780,7 +780,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -806,7 +806,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -832,7 +832,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -858,7 +858,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -884,7 +884,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -910,7 +910,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -936,7 +936,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -962,7 +962,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -988,7 +988,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1014,7 +1014,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1040,7 +1040,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1066,7 +1066,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1092,7 +1092,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1118,7 +1118,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1144,7 +1144,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1170,7 +1170,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1196,7 +1196,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1222,7 +1222,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1248,7 +1248,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1274,7 +1274,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1300,7 +1300,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1326,7 +1326,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1352,7 +1352,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1378,7 +1378,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1404,7 +1404,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1430,7 +1430,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1456,7 +1456,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1482,7 +1482,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1508,7 +1508,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1534,7 +1534,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1560,7 +1560,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1586,7 +1586,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1612,7 +1612,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1638,7 +1638,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1664,7 +1664,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1690,7 +1690,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1716,7 +1716,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1742,7 +1742,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1768,7 +1768,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1794,7 +1794,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1820,7 +1820,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1846,7 +1846,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1872,7 +1872,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.laguardiaairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   }
  ]

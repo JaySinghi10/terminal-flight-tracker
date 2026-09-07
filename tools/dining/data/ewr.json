@@ -1,6 +1,6 @@
 {
  "airport": "EWR",
- "scraped_at": "2026-09-06T13:40:24Z",
+ "scraped_at": "2026-09-07T10:30:48Z",
  "source_url": "https://www.newarkairport.com/api/graphql",
  "records": [
   {
@@ -11,7 +11,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C71",
-   "gate_hint": "",
+   "gate_hint": "C71",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -26,7 +26,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -37,7 +37,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A27",
-   "gate_hint": "",
+   "gate_hint": "A27",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -52,7 +52,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -63,7 +63,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C80",
-   "gate_hint": "",
+   "gate_hint": "C80",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -78,7 +78,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -89,7 +89,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C80",
-   "gate_hint": "",
+   "gate_hint": "C80",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -104,7 +104,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -115,7 +115,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A27",
-   "gate_hint": "",
+   "gate_hint": "A27",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -130,7 +130,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -141,7 +141,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A5",
-   "gate_hint": "",
+   "gate_hint": "A5",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -156,7 +156,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -182,7 +182,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -208,7 +208,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -219,7 +219,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A27",
-   "gate_hint": "",
+   "gate_hint": "A27",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -234,7 +234,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -245,7 +245,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C120",
-   "gate_hint": "",
+   "gate_hint": "C120",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -260,7 +260,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -271,7 +271,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A16",
-   "gate_hint": "",
+   "gate_hint": "A16",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -286,7 +286,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -312,7 +312,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -323,7 +323,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A26",
-   "gate_hint": "",
+   "gate_hint": "A26",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -338,7 +338,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -349,7 +349,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C90",
-   "gate_hint": "",
+   "gate_hint": "C90",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -364,7 +364,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -390,7 +390,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -401,7 +401,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C73",
-   "gate_hint": "",
+   "gate_hint": "C73",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -416,7 +416,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -427,7 +427,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C110",
-   "gate_hint": "",
+   "gate_hint": "C110",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -442,7 +442,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -453,7 +453,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A24",
-   "gate_hint": "",
+   "gate_hint": "A24",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -468,7 +468,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -494,7 +494,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -505,7 +505,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C74",
-   "gate_hint": "",
+   "gate_hint": "C74",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -520,7 +520,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -531,7 +531,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A15",
-   "gate_hint": "",
+   "gate_hint": "A15",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -546,7 +546,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -557,7 +557,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B60",
-   "gate_hint": "",
+   "gate_hint": "B60",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -572,7 +572,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -583,7 +583,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B51",
-   "gate_hint": "",
+   "gate_hint": "B51",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -598,7 +598,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -609,7 +609,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B47",
-   "gate_hint": "",
+   "gate_hint": "B47",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -624,7 +624,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -635,7 +635,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Concourse to Gates B40-49",
-   "gate_hint": "",
+   "gate_hint": "B40-49",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -650,7 +650,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -661,7 +661,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A7 / A8",
-   "gate_hint": "",
+   "gate_hint": "A7",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -676,7 +676,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -687,7 +687,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "B1 Concourse to Gates B40-49",
-   "gate_hint": "",
+   "gate_hint": "B40-49",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -702,7 +702,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -713,7 +713,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C133",
-   "gate_hint": "",
+   "gate_hint": "C133",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -728,7 +728,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -754,7 +754,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -765,7 +765,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C120",
-   "gate_hint": "",
+   "gate_hint": "C120",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -780,7 +780,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -791,7 +791,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C107",
-   "gate_hint": "",
+   "gate_hint": "C107",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -806,7 +806,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -817,7 +817,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A22",
-   "gate_hint": "",
+   "gate_hint": "A22",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -832,7 +832,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -843,7 +843,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C132",
-   "gate_hint": "",
+   "gate_hint": "C132",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -858,7 +858,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -884,7 +884,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -895,7 +895,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B51",
-   "gate_hint": "",
+   "gate_hint": "B51",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -910,7 +910,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -936,7 +936,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -947,7 +947,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C107",
-   "gate_hint": "",
+   "gate_hint": "C107",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -962,7 +962,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -973,7 +973,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C90",
-   "gate_hint": "",
+   "gate_hint": "C90",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -988,7 +988,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -999,7 +999,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B51",
-   "gate_hint": "",
+   "gate_hint": "B51",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1014,7 +1014,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1025,7 +1025,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Concourse to Gates B40-B49",
-   "gate_hint": "",
+   "gate_hint": "B40-B49",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1040,7 +1040,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1051,7 +1051,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B51",
-   "gate_hint": "",
+   "gate_hint": "B51",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1066,7 +1066,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1077,7 +1077,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Concourse to Gates B50-57",
-   "gate_hint": "",
+   "gate_hint": "B50-57",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1092,7 +1092,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1103,7 +1103,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A8",
-   "gate_hint": "",
+   "gate_hint": "A8",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1118,7 +1118,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1144,7 +1144,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1170,7 +1170,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1181,7 +1181,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B66",
-   "gate_hint": "",
+   "gate_hint": "B66",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1196,7 +1196,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1207,7 +1207,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Food Court Gate C74",
-   "gate_hint": "",
+   "gate_hint": "C74",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1222,7 +1222,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1233,7 +1233,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A22",
-   "gate_hint": "",
+   "gate_hint": "A22",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1248,7 +1248,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1274,7 +1274,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1285,7 +1285,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C103",
-   "gate_hint": "",
+   "gate_hint": "C103",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1300,7 +1300,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1311,7 +1311,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C75",
-   "gate_hint": "",
+   "gate_hint": "C75",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1326,7 +1326,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1337,7 +1337,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "B1 Concourse to Gates B40-B49",
-   "gate_hint": "",
+   "gate_hint": "B40-B49",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1352,7 +1352,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1363,7 +1363,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "B1 Concourse to Gates B40-B49",
-   "gate_hint": "",
+   "gate_hint": "B40-B49",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1378,7 +1378,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1404,7 +1404,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1430,7 +1430,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1456,7 +1456,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1482,7 +1482,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1493,7 +1493,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C90",
-   "gate_hint": "",
+   "gate_hint": "C90",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1508,7 +1508,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1534,7 +1534,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1545,7 +1545,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C74",
-   "gate_hint": "",
+   "gate_hint": "C74",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1560,7 +1560,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1571,7 +1571,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B68",
-   "gate_hint": "",
+   "gate_hint": "B68",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1586,7 +1586,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1612,7 +1612,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1638,7 +1638,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1649,7 +1649,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C101",
-   "gate_hint": "",
+   "gate_hint": "C101",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1664,7 +1664,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1675,7 +1675,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C83",
-   "gate_hint": "",
+   "gate_hint": "C83",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1690,7 +1690,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1701,7 +1701,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C74",
-   "gate_hint": "",
+   "gate_hint": "C74",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1716,7 +1716,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1727,7 +1727,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C120",
-   "gate_hint": "",
+   "gate_hint": "C120",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1742,7 +1742,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1753,7 +1753,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A6",
-   "gate_hint": "",
+   "gate_hint": "A6",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1768,7 +1768,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1779,7 +1779,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A27",
-   "gate_hint": "",
+   "gate_hint": "A27",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1794,7 +1794,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1820,7 +1820,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1831,7 +1831,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C120",
-   "gate_hint": "",
+   "gate_hint": "C120",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1846,7 +1846,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1857,7 +1857,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C94",
-   "gate_hint": "",
+   "gate_hint": "C94",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1872,7 +1872,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1883,7 +1883,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C84",
-   "gate_hint": "",
+   "gate_hint": "C84",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1898,7 +1898,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1909,7 +1909,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B40",
-   "gate_hint": "",
+   "gate_hint": "B40",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1924,7 +1924,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1935,7 +1935,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A28",
-   "gate_hint": "",
+   "gate_hint": "A28",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1950,7 +1950,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1961,7 +1961,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C132",
-   "gate_hint": "",
+   "gate_hint": "C132",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1976,7 +1976,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1987,7 +1987,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B51",
-   "gate_hint": "",
+   "gate_hint": "B51",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2002,7 +2002,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2013,7 +2013,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B60",
-   "gate_hint": "",
+   "gate_hint": "B60",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2028,7 +2028,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2039,7 +2039,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C74",
-   "gate_hint": "",
+   "gate_hint": "C74",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2054,7 +2054,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2065,7 +2065,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C81",
-   "gate_hint": "",
+   "gate_hint": "C81",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2080,7 +2080,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2091,7 +2091,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C133",
-   "gate_hint": "",
+   "gate_hint": "C133",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2106,7 +2106,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2117,7 +2117,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A7",
-   "gate_hint": "",
+   "gate_hint": "A7",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2132,7 +2132,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2143,7 +2143,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A7",
-   "gate_hint": "",
+   "gate_hint": "A7",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2158,7 +2158,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2169,7 +2169,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A28",
-   "gate_hint": "",
+   "gate_hint": "A28",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2184,7 +2184,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2195,7 +2195,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A7",
-   "gate_hint": "",
+   "gate_hint": "A7",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2210,7 +2210,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2236,7 +2236,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2262,7 +2262,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2288,7 +2288,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2299,7 +2299,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C101",
-   "gate_hint": "",
+   "gate_hint": "C101",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2314,7 +2314,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2325,7 +2325,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C82",
-   "gate_hint": "",
+   "gate_hint": "C82",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2340,7 +2340,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2351,7 +2351,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C132",
-   "gate_hint": "",
+   "gate_hint": "C132",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2366,7 +2366,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2377,7 +2377,7 @@
    "terminal": "TB",
    "level": "Departures Level",
    "area": "Gate B60",
-   "gate_hint": "",
+   "gate_hint": "B60",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2392,7 +2392,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2403,7 +2403,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A30",
-   "gate_hint": "",
+   "gate_hint": "A30",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2418,7 +2418,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2429,7 +2429,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C92",
-   "gate_hint": "",
+   "gate_hint": "C92",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2444,7 +2444,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2455,7 +2455,7 @@
    "terminal": "TC",
    "level": "Mezzanine",
    "area": "Gate C112",
-   "gate_hint": "",
+   "gate_hint": "C112",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2470,7 +2470,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2496,7 +2496,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2522,7 +2522,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2533,7 +2533,7 @@
    "terminal": "TA",
    "level": "Concourse",
    "area": "Gate A8",
-   "gate_hint": "",
+   "gate_hint": "A8",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2548,7 +2548,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2574,7 +2574,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2600,7 +2600,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2626,7 +2626,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2652,7 +2652,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2678,7 +2678,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2704,7 +2704,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2730,7 +2730,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2756,7 +2756,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2782,7 +2782,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2808,7 +2808,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2834,7 +2834,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2860,7 +2860,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2886,7 +2886,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2912,7 +2912,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2938,7 +2938,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2964,7 +2964,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2990,7 +2990,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3016,7 +3016,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3042,7 +3042,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3068,7 +3068,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.newarkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   }
  ]

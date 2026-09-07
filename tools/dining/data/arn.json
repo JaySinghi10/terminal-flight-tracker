@@ -1,6 +1,6 @@
 {
  "airport": "ARN",
- "scraped_at": "2026-09-06T13:40:24Z",
+ "scraped_at": "2026-09-07T10:30:48Z",
  "source_url": "https://www.swedavia.com/services/rfb/{block-id}/en",
  "records": [
   {
@@ -33,7 +33,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -59,7 +59,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -92,7 +92,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -118,7 +118,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -144,7 +144,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -177,7 +177,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -210,7 +210,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -243,7 +243,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -276,7 +276,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -302,7 +302,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -328,7 +328,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -354,7 +354,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -380,7 +380,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -406,7 +406,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -432,7 +432,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -458,7 +458,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -484,7 +484,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -510,7 +510,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -536,7 +536,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -562,7 +562,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -588,7 +588,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -614,7 +614,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -640,7 +640,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -666,7 +666,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -692,7 +692,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -718,7 +718,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -744,7 +744,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -770,7 +770,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -796,7 +796,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -822,7 +822,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -855,7 +855,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -888,7 +888,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -921,7 +921,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -947,7 +947,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -973,7 +973,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1006,7 +1006,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1039,7 +1039,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1072,7 +1072,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1105,7 +1105,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1138,7 +1138,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1171,7 +1171,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1204,7 +1204,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1237,7 +1237,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1270,7 +1270,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1303,7 +1303,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1336,7 +1336,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1369,7 +1369,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1402,7 +1402,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1435,7 +1435,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1468,7 +1468,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1501,7 +1501,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1534,7 +1534,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1560,7 +1560,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1593,7 +1593,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1626,7 +1626,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1652,7 +1652,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1685,7 +1685,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1718,7 +1718,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1744,7 +1744,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1770,7 +1770,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1796,7 +1796,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1829,7 +1829,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1868,7 +1868,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1894,7 +1894,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1927,7 +1927,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.swedavia.com/services/rfb/3147487/en",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   }
  ]

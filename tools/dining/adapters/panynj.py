@@ -227,7 +227,26 @@ def parse(raw, scraped_at, entry=None):
                     unmapped.add(c)
 
             landmark = str(poi.get("nearbyLandmark") or "")
-            gate = re.search(r"Gates?\s+([0-9]+(?:\s*(?:and|-|–|to)\s*[0-9]+)?)", landmark, re.I)
+            # ── THE GATE LETTER IS NOT OPTIONAL DECORATION ──────────────────
+            #
+            # THIS READ [0-9]+ AND NEWARK'S GATES ARE ALL LETTER-PREFIXED --
+            # "Gate B62", "Gate C120", "Gate A27" -- so not one of them matched.
+            # nearbyLandmark is populated on 159 of 159 Newark POIs and we were
+            # storing a gate for ONE of them. JFK's gates are bare numbers,
+            # which is why the same line worked there and Newark looked like an
+            # airport that publishes no positions at all.
+            #
+            # MEASURED, AND THESE ARE THE NUMBERS IN data/*.json rather than a
+            # raw match count, so they can be checked against what is committed:
+            # records carrying a gate_hint went EWR 1 -> 75, JFK 52 -> 73,
+            # LGA 48 -> 49. Ninety-six gates recovered, no record lost, and no
+            # new requests -- the bodies were already fetched and cached.
+            #
+            # WHAT STILL DOES NOT MATCH IS RIGHT NOT TO: "Food Court",
+            # "Baggage Claim", "Central Plaza" name a place, not a gate.
+            gate = re.search(
+                r"Gates?\s+([A-Z]?[0-9]+(?:\s*(?:and|-|–|to)\s*[A-Z]?[0-9]+)?)",
+                landmark, re.I)
 
             out.append(Dining(
                 airport=cfg["code"],

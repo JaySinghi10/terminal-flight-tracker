@@ -1,6 +1,6 @@
 {
  "airport": "JFK",
- "scraped_at": "2026-09-06T13:40:24Z",
+ "scraped_at": "2026-09-07T10:30:48Z",
  "source_url": "https://www.jfkairport.com/api/graphql",
  "records": [
   {
@@ -26,7 +26,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -52,7 +52,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -78,7 +78,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -104,7 +104,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -115,7 +115,7 @@
    "terminal": "T4",
    "level": "Level 1",
    "area": "Gate A11",
-   "gate_hint": "",
+   "gate_hint": "A11",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -130,7 +130,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -141,7 +141,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B25",
-   "gate_hint": "",
+   "gate_hint": "B25",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -156,7 +156,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -182,7 +182,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -208,7 +208,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -234,7 +234,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -245,7 +245,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gates A3 & A5",
-   "gate_hint": "",
+   "gate_hint": "A3",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -260,7 +260,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -286,7 +286,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -297,7 +297,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B34",
-   "gate_hint": "",
+   "gate_hint": "B34",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -312,7 +312,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -338,7 +338,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -349,7 +349,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B28",
-   "gate_hint": "",
+   "gate_hint": "B28",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -364,7 +364,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -375,7 +375,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B26",
-   "gate_hint": "",
+   "gate_hint": "B26",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -390,7 +390,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -416,7 +416,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -442,7 +442,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -468,7 +468,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -494,7 +494,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -520,7 +520,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -546,7 +546,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -572,7 +572,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -598,7 +598,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -624,7 +624,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -650,7 +650,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -676,7 +676,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -687,7 +687,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B34",
-   "gate_hint": "",
+   "gate_hint": "B34",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -702,7 +702,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -728,7 +728,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -739,7 +739,7 @@
    "terminal": "T4",
    "level": "Level 2",
    "area": "Gate B46",
-   "gate_hint": "",
+   "gate_hint": "B46",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -754,7 +754,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -780,7 +780,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -806,7 +806,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -832,7 +832,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -843,7 +843,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B32",
-   "gate_hint": "",
+   "gate_hint": "B32",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -858,7 +858,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -884,7 +884,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -910,7 +910,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -936,7 +936,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -962,7 +962,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -988,7 +988,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1014,7 +1014,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1040,7 +1040,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1066,7 +1066,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1092,7 +1092,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1118,7 +1118,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1129,7 +1129,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B36",
-   "gate_hint": "",
+   "gate_hint": "B36",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1144,7 +1144,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1170,7 +1170,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1196,7 +1196,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1222,7 +1222,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1248,7 +1248,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1259,7 +1259,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B27",
-   "gate_hint": "",
+   "gate_hint": "B27",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1274,7 +1274,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1300,7 +1300,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1326,7 +1326,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1352,7 +1352,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1378,7 +1378,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1404,7 +1404,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1430,7 +1430,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1456,7 +1456,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1467,7 +1467,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B22",
-   "gate_hint": "",
+   "gate_hint": "B22",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1482,7 +1482,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1508,7 +1508,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1534,7 +1534,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1560,7 +1560,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1586,7 +1586,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1612,7 +1612,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1638,7 +1638,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1664,7 +1664,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1690,7 +1690,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1716,7 +1716,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1742,7 +1742,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1753,7 +1753,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B24",
-   "gate_hint": "",
+   "gate_hint": "B24",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1768,7 +1768,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1794,7 +1794,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1820,7 +1820,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1831,7 +1831,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B29",
-   "gate_hint": "",
+   "gate_hint": "B29",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1846,7 +1846,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1857,7 +1857,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B29",
-   "gate_hint": "",
+   "gate_hint": "B29",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -1872,7 +1872,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1898,7 +1898,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1924,7 +1924,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1950,7 +1950,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -1976,7 +1976,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2002,7 +2002,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2013,7 +2013,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B22",
-   "gate_hint": "",
+   "gate_hint": "B22",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2028,7 +2028,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2054,7 +2054,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2080,7 +2080,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2106,7 +2106,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2132,7 +2132,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2158,7 +2158,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2169,7 +2169,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B26",
-   "gate_hint": "",
+   "gate_hint": "B26",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2184,7 +2184,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2195,7 +2195,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate A2",
-   "gate_hint": "",
+   "gate_hint": "A2",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2210,7 +2210,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2236,7 +2236,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2262,7 +2262,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2288,7 +2288,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2314,7 +2314,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2340,7 +2340,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2366,7 +2366,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2392,7 +2392,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2403,7 +2403,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate A2",
-   "gate_hint": "",
+   "gate_hint": "A2",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2418,7 +2418,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2444,7 +2444,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2470,7 +2470,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2496,7 +2496,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2522,7 +2522,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2548,7 +2548,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2559,7 +2559,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B38",
-   "gate_hint": "",
+   "gate_hint": "B38",
    "is_airside": true,
    "zone": "departures_airside",
    "security_raw": "After Security",
@@ -2574,7 +2574,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2600,7 +2600,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2626,7 +2626,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2652,7 +2652,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2678,7 +2678,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2704,7 +2704,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2730,7 +2730,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2756,7 +2756,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2782,7 +2782,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2808,7 +2808,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2834,7 +2834,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2860,7 +2860,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2886,7 +2886,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2912,7 +2912,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2938,7 +2938,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2964,7 +2964,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -2990,7 +2990,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3016,7 +3016,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3042,7 +3042,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3068,7 +3068,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3094,7 +3094,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3120,7 +3120,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3146,7 +3146,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3172,7 +3172,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3198,7 +3198,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3224,7 +3224,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3235,7 +3235,7 @@
    "terminal": "T4",
    "level": "Level 3",
    "area": "Gate B34",
-   "gate_hint": "",
+   "gate_hint": "B34",
    "is_airside": false,
    "zone": "departures_landside",
    "security_raw": "Before Security",
@@ -3250,7 +3250,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3276,7 +3276,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3302,7 +3302,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3328,7 +3328,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3354,7 +3354,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3380,7 +3380,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3406,7 +3406,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3432,7 +3432,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3458,7 +3458,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3484,7 +3484,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3510,7 +3510,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3536,7 +3536,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3562,7 +3562,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3588,7 +3588,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   },
   {
@@ -3614,7 +3614,7 @@
    "lat": null,
    "lon": null,
    "source_url": "https://www.jfkairport.com/api/graphql",
-   "scraped_at": "2026-09-06T13:40:24Z",
+   "scraped_at": "2026-09-07T10:30:48Z",
    "source_updated_at": ""
   }
  ]
