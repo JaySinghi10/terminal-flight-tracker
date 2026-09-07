@@ -173,7 +173,16 @@ def mutate_state(number, day, apply_fn):
 
     Returning None from apply_fn writes nothing, which is how a poll that
     decides a flight is not due costs no write at all.
+
+    A KEY THAT CANNOT BE BUILT FAILS AT ONCE rather than after four retries.
+    state_key refuses anything that is not a flight number and a date, and that
+    refusal is permanent -- retrying it would sleep three seconds per bad row
+    inside a request that has a timeout, turning one malformed watch into a
+    poll that never finishes.
     """
+    if state_key(number, day) is None:
+        logger.warning("pollstate: refusing a state key for %r / %r", number, day)
+        return False
     for attempt in range(WRITE_ATTEMPTS):
         doc, gen = read_state(number, day)
         new = apply_fn(doc)
