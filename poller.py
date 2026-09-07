@@ -207,7 +207,7 @@ def tier_for(doc, now=None, day=None):
         return DONE
 
     departure_at = _movement_time(dto, "departure")
-    departed = bool((dto.get("departure") or {}).get("actual_iso"))
+    departed = _has_departed(dto, now)
 
     if departed or status in ("enroute", "en route", "airborne"):
         if arrival_at is not None and now >= arrival_at - ARRIVAL_BEFORE_ARRIVAL:
@@ -224,6 +224,38 @@ def tier_for(doc, now=None, day=None):
     if until <= DISTANT_BEFORE_DEPARTURE:
         return FAR
     return DISTANT
+
+
+def _has_departed(dto, now):
+    """Has this aircraft actually left the ground?
+
+    AN actual_iso IN THE FUTURE IS NOT AN ACTUAL, AND AERODATABOX PUBLISHES
+    THEM. Observed live on 6E6188 BOM->BLR: status "EnRoute", delay 0, and
+    departure.actual_iso set to 21:30 local -- two hours and twenty minutes
+    AFTER the moment we read it, with actual_source "revised". The flight was
+    sitting at gate 87A.
+
+    THE COST OF BELIEVING IT was not academic. It put a flight that had not
+    taken off into the AIRBORNE tier, which is a tier that asks FR24 whether it
+    has landed, and FR24 answered with the PREVIOUS DAY'S rotation of the same
+    number. A flight still on the ground was recorded as landed.
+
+    So a claimed actual has to be in the past to count, which is the same guard
+    lib/saved.tsx already applies to arrivals for the same reason.
+    """
+    dep = (dto or {}).get("departure") or {}
+    actual = _parse(dep.get("actual_iso"))
+    if actual is not None and actual <= now:
+        return True
+    # The provider's word for it, but only once the scheduled time has passed --
+    # "EnRoute" on a flight not due out for two hours is the same claim in
+    # different clothes.
+    status = str((dto or {}).get("status") or "").lower()
+    raw = str((dto or {}).get("raw_status") or "").lower()
+    if status in ("enroute", "en route", "airborne") or raw in ("enroute", "en route"):
+        sched = _parse(dep.get("scheduled_iso"))
+        return sched is not None and sched <= now
+    return False
 
 
 def _tier_without_data(day, now):
@@ -387,11 +419,27 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     if want_fr24:
         spend["fr24"] = spend.get("fr24", 0) + 1
         record["fr24"] = True
-        dest = None
         source = new_dto or (doc or {}).get("dto") or {}
         dest = ((source.get("arrival") or {}).get("iata")) or None
+        # ── THE DEPARTURE TIME IS NOT OPTIONAL, WHATEVER THE SIGNATURE SAYS ──
+        #
+        # WITHOUT IT fr24 SEARCHES A TWO-DAY WINDOW AROUND THE DATE -- twelve
+        # hours back and thirty-six forward -- because a "date" is a LOCAL
+        # departure date and the UTC day it falls on is not knowable without a
+        # timezone. THE PREVIOUS DAY'S ROTATION OF A DAILY FLIGHT NUMBER SITS
+        # INSIDE THAT WINDOW.
+        #
+        # That is not hypothetical: 6E6188 on 2026-09-07 came back with
+        # yesterday's leg, takeoff 09-06 16:29Z and touchdown 09-06 17:45Z, one
+        # record, matched on destination -- and was recorded as today's landing
+        # on a flight that had not yet left Mumbai.
+        #
+        # WE ALWAYS KNOW THIS. It is on the DTO we just fetched. The app has
+        # always sent it; this caller was the only one that did not.
+        dep_iso = ((source.get("departure") or {}).get("scheduled_iso")) or None
         try:
-            landing = fr24.landing_for(number, date=day, destination_iata=dest)
+            landing = fr24.landing_for(number, date=day, destination_iata=dest,
+                                       departure_utc=dep_iso)
         except Exception as exc:  # noqa: BLE001
             logger.warning("poll: fr24 failed for %s/%s: %s", number, day, exc)
             record["fr24_error"] = str(exc)[:200]

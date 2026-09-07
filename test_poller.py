@@ -295,6 +295,82 @@ check("the attempt is still recorded", doc.get("last_adb_at") is not None, doc)
 check("and no DTO was invented", doc.get("dto") is None, doc)
 
 print()
+print("-- a departure that has not happened yet --")
+
+# ── STRAIGHT FROM THE FIRST LIVE POLL ──
+#
+# 6E6188 BOM->BLR: AeroDataBox returned status EnRoute, delay 0, and
+# departure.actual_iso set to a time TWO HOURS AND TWENTY MINUTES IN THE
+# FUTURE, source "revised". The aircraft was at gate 87A. Believing that
+# actual put it in the AIRBORNE tier, which asks FR24 whether it has landed.
+future_actual = dto(dep_sched=iso(NOW + timedelta(hours=2, minutes=20)),
+                    dep_actual=iso(NOW + timedelta(hours=2, minutes=20)),
+                    arr_sched=iso(NOW + timedelta(hours=4, minutes=15)),
+                    status="active")
+check("an actual departure in the future does not mean departed",
+      not poller._has_departed(future_actual, NOW))
+# Two hours and twenty minutes out, so DAY. The point is that it is not
+# AIRBORNE, which is the tier that spends an FR24 credit asking whether a
+# flight sitting at its gate has landed.
+check("so the flight is not in a tier that asks FR24",
+      poller.tier_for(state(dto=future_actual), NOW) not in poller.FR24_TIERS,
+      poller.tier_for(state(dto=future_actual), NOW))
+check("it is DAY -- 2h20m to departure",
+      poller.tier_for(state(dto=future_actual), NOW) == poller.DAY)
+
+check("an actual departure in the past does mean departed",
+      poller._has_departed(dto(dep_actual=iso(NOW - timedelta(minutes=5))), NOW))
+
+# "EnRoute" is the same claim in different clothes when the flight is not due
+# out for two hours.
+enroute_early = dto(dep_sched=iso(NOW + timedelta(hours=2)),
+                    arr_sched=iso(NOW + timedelta(hours=5)), status="enroute")
+check("EnRoute before the scheduled departure is not believed either",
+      not poller._has_departed(enroute_early, NOW))
+enroute_late = dto(dep_sched=iso(NOW - timedelta(minutes=30)),
+                   arr_sched=iso(NOW + timedelta(hours=2)), status="enroute")
+check("EnRoute after the scheduled time is believed",
+      poller._has_departed(enroute_late, NOW))
+
+# ── AND THE CONSEQUENCE THAT MATTERED ──
+pollstate.forget_local()
+asked = {"n": 0}
+poller.fetch_flight_full = lambda number, date=None, origin=None, max_age=None: ("t", future_actual)
+fr24.landing_for = lambda *a, **k: (asked.__setitem__("n", asked["n"] + 1),
+                                    {"outcome": fr24.LANDED,
+                                     "landed_utc": "2026-09-06T17:45:37"})[1]
+r = poller.poll_one("6E6188", "2026-09-07", now=NOW)
+check("FR24 is never asked about a flight still on the ground",
+      asked["n"] == 0, asked)
+check("so no landing can be recorded for it",
+      not any(c["field"] == "landed" for c in r["changes"]), r["changes"])
+
+print()
+print("-- the departure time is passed to FR24 --")
+
+# WITHOUT IT fr24 searches a two-day window and can return yesterday's leg.
+pollstate.forget_local()
+seen = {}
+flown = dto(dep_sched=iso(NOW - timedelta(hours=3)),
+            dep_actual=iso(NOW - timedelta(hours=3)),
+            arr_sched=iso(NOW + timedelta(minutes=20)))
+poller.fetch_flight_full = lambda number, date=None, origin=None, max_age=None: ("t", flown)
+def capture(number, date=None, destination_iata=None, departure_utc=None, **k):
+    seen.update({"date": date, "dest": destination_iata, "dep": departure_utc})
+    return {"outcome": fr24.PENDING}
+fr24.landing_for = capture
+# SEEDED, BECAUSE THE TIER IS READ FROM STORED STATE BEFORE ANYTHING IS
+# FETCHED. On a flight's very first poll there is no DTO, so it is NEAR and
+# FR24 is not asked -- which is exactly what the first live poll did (9
+# AeroDataBox calls, 0 FR24) before the second one found it airborne.
+pollstate.write_state("6E6188", "2026-09-07", state(dto=flown), None)
+poller.poll_one("6E6188", "2026-09-07", now=NOW + timedelta(minutes=3))
+check("the poller sends departure_utc, which narrows the window to one leg",
+      seen.get("dep") == iso(NOW - timedelta(hours=3)), seen)
+check("and the destination, which separates the legs of a tag flight",
+      seen.get("dest") == "BLR", seen)
+
+print()
 print("-- a flight we have no data for --")
 
 # ── THE CASE THAT WOULD HAVE EMPTIED THE MONTH ──

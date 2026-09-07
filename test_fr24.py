@@ -198,6 +198,50 @@ check("6E5071 is accepted -- a digit-leading IATA code is the awkward one",
       fr24._FLIGHT_RE.match("6E5071") is not None)
 
 print()
+print("-- the previous day's rotation of the same number --")
+
+# ── THE FIRST LIVE POLL RECORDED A FALSE LANDING, AND THIS IS IT ──
+#
+# 6E6188 BOM->BLR, asked for 2026-09-07. FR24 returned ONE record: takeoff
+# 09-06 16:29Z, touchdown 09-06 17:45Z -- yesterday's leg of a daily flight,
+# matching on destination because it is the same route every day. The aircraft
+# was still at gate 87A in Mumbai, not due out for two hours.
+YESTERDAY = leg(dest="VOBL", takeoff="2026-09-06T16:29:02",
+                landed="2026-09-06T17:45:37", ended=True)
+
+with_fetch([YESTERDAY])
+r = fr24.landing_for("6E6188", date="2026-09-07", destination_iata="BLR")
+check("a leg from an earlier day is NOT a landing", r["outcome"] == fr24.UNKNOWN, r)
+check("and it says why", "different day" in (r.get("reason") or ""), r)
+
+# THE CALLER'S WAY OUT. With a departure time the window is one leg wide, so
+# whatever comes back IS the leg asked for and the guard must not fire.
+fr24.forget_cached()
+with_fetch([leg(dest="VOBL", takeoff="2026-09-07T09:15:00",
+                landed="2026-09-07T11:43:00", ended=True)])
+r = fr24.landing_for("6E6188", date="2026-09-07", destination_iata="BLR",
+                     departure_utc="2026-09-07T09:15:00")
+check("the same day's leg with a departure time IS a landing",
+      r["outcome"] == fr24.LANDED, r)
+
+# A GENUINE LATE-UTC DEPARTURE still works when the caller passes the time --
+# 00:30 local from Asia really does take off on the previous UTC day.
+fr24.forget_cached()
+with_fetch([YESTERDAY])
+r = fr24.landing_for("6E6188", date="2026-09-07", destination_iata="BLR",
+                     departure_utc="2026-09-06T16:29:02")
+check("a real previous-UTC-day departure is kept when the time is given",
+      r["outcome"] == fr24.LANDED, r)
+
+# And the guard must not fire on a leg from the SAME day.
+fr24.forget_cached()
+with_fetch([leg(dest="VOBL", takeoff="2026-09-07T09:15:00",
+                landed="2026-09-07T11:43:00", ended=True)])
+r = fr24.landing_for("6E6188", date="2026-09-07", destination_iata="BLR")
+check("a same-day leg with no departure time is still a landing",
+      r["outcome"] == fr24.LANDED, r)
+
+print()
 print("-- the circuit breaker --")
 with_fetch(None, "http 500")
 now = datetime.now(timezone.utc)

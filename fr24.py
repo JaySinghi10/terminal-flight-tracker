@@ -280,6 +280,24 @@ def _window(date, departure_utc):
     return start.strftime(fmt), end.strftime(fmt)
 
 
+def _wrong_day(leg, date, departure_utc):
+    """Is this leg from an earlier UTC day than the date we asked about?
+
+    ONLY MEANINGFUL WHEN THE CALLER GAVE US NOTHING BUT A DATE. With a
+    departure_utc the window is one leg wide and whatever came back is the leg
+    that was asked for.
+    """
+    if departure_utc or not date:
+        return False
+    if not _ISO_DAY_RE.match(str(date).strip()):
+        return False
+    took_off = _parse_instant(leg.get("datetime_takeoff")) or         _parse_instant(leg.get("first_seen"))
+    if took_off is None:
+        return False
+    asked = datetime.strptime(str(date).strip(), "%Y-%m-%d").date()
+    return took_off.date() < asked
+
+
 def _breaker_read():
     doc, _ = pollstate.read_runtime()
     b = doc.get("breaker") or {}
@@ -562,6 +580,32 @@ def landing_for(flight_number, date=None, destination_iata=None,
         # is applied to every source, including the one brought in to fix it.
         if landed > now + timedelta(minutes=5):
             out = _result(UNKNOWN, "landing time in the future", **common)
+        elif _wrong_day(leg, date, departure_utc):
+            # ── THE PREVIOUS DAY'S ROTATION OF THE SAME FLIGHT NUMBER ────────
+            #
+            # WITHOUT departure_utc THE WINDOW IS ABOUT TWO DAYS WIDE. A "date"
+            # is a LOCAL departure date and the UTC day it starts on is not
+            # knowable here without the origin's timezone, so _window reaches
+            # twelve hours back -- and a daily flight number's PREVIOUS LEG
+            # sits inside that reach.
+            #
+            # OBSERVED, NOT IMAGINED: 6E6188 asked for 2026-09-07 returned one
+            # record, takeoff 09-06 16:29Z, touchdown 09-06 17:45Z, matching on
+            # destination because it is the same route every day. The aircraft
+            # being asked about was still at the gate in Mumbai.
+            #
+            # UNKNOWN RATHER THAN LANDED, because with only a date we cannot
+            # tell this from a genuine late-UTC departure -- a 00:30 local
+            # flight from Asia does take off on the previous UTC day. One of
+            # those two is a missed landing that AeroDataBox will cover, and
+            # the other is a landing we invent for an aircraft on the ground.
+            # This module exists to avoid the second.
+            #
+            # THE CALLER'S WAY OUT IS departure_utc. It narrows the window to a
+            # single leg and this guard then never fires. Both real callers
+            # send it.
+            out = _result(UNKNOWN, "leg is from a different day; "
+                                   "pass departure_utc to disambiguate", **common)
         else:
             out = _result(LANDED,
                           landed_utc=landed.strftime("%Y-%m-%dT%H:%M:%S"), **common)
