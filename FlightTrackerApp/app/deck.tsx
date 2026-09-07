@@ -32,11 +32,14 @@ import { airportByCode, findAirports, Airport } from '../lib/airports';
 // same reason airports.ts is separate from both: it is a different source with a
 // different licence, and it is absent for most airports.
 import { terminalOf, terminalsAt, Gate } from '../lib/terminals';
-import TerminalMap, { MapPick } from '../components/TerminalMap';
+import CorridorView from '../components/CorridorView';
 // THE JOIN AND THE ARITHMETIC MOVED OUT OF THE COMPONENT. Where a restaurant is
 // is a fact about the data, not about a view, and the map is now the third
 // thing that wants it -- see lib/terminalgeo.
-import { placeDining, Placed, metresBetween, walkMinutes } from '../lib/terminalgeo';
+import { placeDining, Placed } from '../lib/terminalgeo';
+// PROJECTING ONTO A PIER, not measuring across a floor. Distance now means
+// distance ALONG the corridor, which is the distance somebody actually walks.
+import { drawablePiers, gatesOn, projectOnto, metresWord } from '../lib/piers';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
@@ -407,8 +410,11 @@ export default function Deck() {
   // CARRYING THE TERMINAL'S OWN KEY REMOVES THE WINDOW ENTIRELY. A pin whose
   // key does not match what is on screen is not this terminal's pin, and it
   // reads as absent in the same render rather than a frame later.
-  const [hereAt, setHereAt] = useState<
-    { key: string; lon: number; lat: number } | null>(null);
+  // A GATE, NOT A POINT ON A FLOOR. "I am at B34" is a fact a traveller has;
+  // "I am 340 metres along" is not. Tapping a gate also lands the position
+  // exactly on the corridor axis, so the distance is measured rather than
+  // projected from wherever a finger landed.
+  const [hereAt, setHereAt] = useState<{ key: string; gi: number } | null>(null);
   const [selectedAt, setSelectedAt] = useState<{ key: string; id: string } | null>(null);
 
 
@@ -455,10 +461,24 @@ export default function Deck() {
   const mapKey = mapFor === null ? '' : `${mapFor.airport}|${mapFor.key}`;
   // MEMOISED BECAUSE IT IS AN OBJECT. A fresh {lon,lat} every render would make
   // the sort below re-run on every tick for a value that has not changed.
-  const here = useMemo(
-    () => (hereAt !== null && hereAt.key === mapKey && mapKey !== ''
-      ? { lon: hereAt.lon, lat: hereAt.lat } : null),
-    [hereAt, mapKey]);
+  const hereGi = hereAt !== null && hereAt.key === mapKey && mapKey !== ''
+    ? hereAt.gi : null;
+
+  // WHICH PIER THE TAPPED GATE IS ON, and where along it. Everything the list
+  // says about distance is measured from this, so it is derived once.
+  const herePier = useMemo(() => {
+    if (hereGi === null || mapFor === null) return null;
+    for (const p of drawablePiers(mapFor)) {
+      if (p.gates.some(g => g.gi === hereGi)) return p;
+    }
+    return null;
+  }, [hereGi, mapFor]);
+  const hereAlong = useMemo(() => {
+    if (herePier === null || hereGi === null || mapFor === null) return null;
+    const g = gatesOn(mapFor, herePier).find(r => r.gi === hereGi);
+    return g === undefined ? null : g.at.along;
+  }, [herePier, hereGi, mapFor]);
+
   const selected = selectedAt !== null && selectedAt.key === mapKey && mapKey !== ''
     ? selectedAt.id : null;
 
@@ -514,13 +534,18 @@ export default function Deck() {
         //
         // AN OUTLET WE CANNOT PLACE SORTS AFTER EVERY ONE WE CAN, rather than
         // being given a distance it does not have.
-        if (here !== null) {
+        if (hereAlong !== null && herePier !== null) {
           const ap = posById.get(a.sourceId);
           const bp = posById.get(b.sourceId);
           if ((ap === undefined) !== (bp === undefined)) return ap === undefined ? 1 : -1;
           if (ap !== undefined && bp !== undefined) {
-            const d = metresBetween(here, ap) - metresBetween(here, bp);
-            if (Math.abs(d) > 1) return d;
+            // ALONG THE CORRIDOR, NOT ACROSS THE FLOOR. Two units on opposite
+            // sides of a pier are a few metres apart in a straight line and the
+            // same distance to walk to; one four hundred metres down the
+            // concourse is not. The walk is what somebody is choosing between.
+            const av = Math.abs(projectOnto(herePier, ap.lon, ap.lat).along - hereAlong);
+            const bv = Math.abs(projectOnto(herePier, bp.lon, bp.lat).along - hereAlong);
+            if (Math.abs(av - bv) > 1) return av - bv;
           }
         }
 
@@ -532,7 +557,7 @@ export default function Deck() {
       });
     }
     return by;
-  }, [rows, hereTerminal, here, posById]);
+  }, [rows, hereTerminal, hereAlong, herePier, posById]);
 
   // OPEN BY DEFAULT ONLY WHERE THE TRAVELLER CAN GO. Airside always; the other
   // two only when there is no layover to be respectful of.
@@ -561,10 +586,11 @@ export default function Deck() {
     () => (selected === null ? null : rows.find(d => d.sourceId === selected) ?? null),
     [selected, rows]);
   const hereMetres = useMemo(() => {
-    if (here === null || selected === null) return null;
+    if (hereAlong === null || herePier === null || selected === null) return null;
     const p = posById.get(selected);
-    return p === undefined ? null : metresBetween(here, p);
-  }, [here, selected, posById]);
+    return p === undefined ? null
+      : projectOnto(herePier, p.lon, p.lat).along - hereAlong;
+  }, [hereAlong, herePier, selected, posById]);
 
   const tight = budget !== null && budget.usableMin < TIGHT_MIN;
 
@@ -681,20 +707,15 @@ export default function Deck() {
         {/* ── THE SCHEMATIC, WHEN WE HAVE THE SHAPE AND SHE IS IN IT ── */}
         {mapFor !== null && (
           <>
-            <TerminalMap
+            <CorridorView
               terminal={mapFor}
               placed={onMap.placed}
-              unplacedCount={onMap.unplaced.length}
+              hereGi={hereGi}
+              onSetHere={(gi) => setHereAt(gi === null ? null : { key: mapKey, gi })}
+              selected={selected}
+              onSelect={(id) => setSelectedAt(id === null ? null : { key: mapKey, id })}
               arrival={gates.arrival}
               departure={gates.departure}
-              here={here}
-              onPick={(p: MapPick) => {
-                if (p.kind === 'here') {
-                  setHereAt({ key: mapKey, lon: p.lon, lat: p.lat });
-                  return;
-                }
-                setSelectedAt(p.id === selected ? null : { key: mapKey, id: p.id });
-              }}
             />
             {/* ── WHAT WAS TAPPED, AND HOW FAR IT IS ────────────────────────
                 THE DISTANCE ONLY APPEARS ONCE THERE IS A PIN, and it is a
@@ -708,17 +729,12 @@ export default function Deck() {
                     selectedRow.terminal,
                     categoryWords(selectedRow) || null,
                     hereMetres === null ? null
-                      : `about ${walkMinutes(hereMetres)} min away`,
+                      : `${metresWord(hereMetres)} ${hereMetres >= 0 ? 'ahead' : 'behind'}`,
                   ].filter(Boolean).join(' · ')}
                 </Text>
               </View>
             )}
-            {here === null && onMap.placed.length > 0 && (
-              <Text style={st.pickHint}>
-                {'Tap the map to mark where you are, and the list below sorts by how '
-                  + 'close things are.'}
-              </Text>
-            )}
+
           </>
         )}
 

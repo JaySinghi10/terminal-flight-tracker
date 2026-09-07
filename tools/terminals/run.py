@@ -172,6 +172,161 @@ def axis_of(points):
     return (share, 0.5 * math.atan2(2 * sxy, sxx - syy))
 
 
+# ── PIERS, BECAUSE A TERMINAL IS NOT A CORRIDOR ─────────────────────────────
+#
+# MEASURED BEFORE THIS WAS BUILT. Projecting a WHOLE terminal onto one axis puts
+# unrelated buildings on top of each other: at HKG Terminal 1, twenty-two gates
+# numbered 201-230 land inside a 47-metre slice of the axis and spread 680
+# metres ACROSS it. That is the Midfield Concourse crushed to a point. Seven of
+# twenty terminals looked like corridors; the rest were 1.4-2.5 aspect blobs.
+#
+# BROKEN INTO PIERS, TWENTY-SEVEN OF THIRTY-SEVEN ARE CORRIDORS, holding 377 of
+# 571 gates. HKG T1's satellite becomes 671m x 44m -- aspect 15.2 -- with the
+# walking order exactly preserved.
+#
+# AND axisShare TURNED OUT TO MEASURE THE WRONG THING. JFK Terminal 8 has the
+# worst score in the dataset, 0.60, and splits into two of the cleanest
+# corridors we have: aspect 9.0 and 6.4, both with perfect order. The score is
+# low PRECISELY BECAUSE there are two piers at an angle to each other. It is
+# kept for continuity and it gates nothing.
+
+# Two gates further apart than this are not on the same pier. A stand sits
+# 40-60m from its neighbour along a concourse; 140m bridges a gap in the
+# numbering and still cuts a satellite loose from its terminal.
+CLUSTER_M = 140.0
+
+# A pier needs four gates to be worth drawing as one.
+MIN_PIER_GATES = 4
+
+# LONG AND THIN. Below this it is a hall, and drawing a hall as a corridor puts
+# things "ahead of" and "behind" each other that are side by side in a room.
+ASPECT_OK = 2.5
+
+# DOES FURTHER ALONG MEAN FURTHER TO WALK. Rank correlation between the
+# projected position and the real distance from the end gate.
+#
+# THIS REPLACED A METRIC THAT MEASURED THE WRONG THING. Counting direction
+# reversals along the projected order scored JFK Terminal 4 at 32 faults in 48
+# -- and its B concourse reads B55, B53, B49, B48, B46, B47, B44, in near
+# perfect order. The reversals were gates FACING each other across the pier,
+# which is the shape being drawn, not a fault in it.
+ORDER_OK = 0.90
+
+# Two gates closer than this to the centreline are on neither side. A pier is
+# only two-sided if it has gates on both.
+SIDE_M = 2.0
+
+
+def _clusters(pts, thresh=CLUSTER_M):
+    """Single-linkage groups: gates joined while within thresh of the group."""
+    n = len(pts)
+    seen = [False] * n
+    out = []
+    for i in range(n):
+        if seen[i]:
+            continue
+        stack, group = [i], []
+        seen[i] = True
+        while stack:
+            a = stack.pop()
+            group.append(a)
+            for b in range(n):
+                if seen[b]:
+                    continue
+                if math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]) <= thresh:
+                    seen[b] = True
+                    stack.append(b)
+        out.append(sorted(group))
+    return sorted(out, key=len, reverse=True)
+
+
+def _spearman(a, b):
+    n = len(a)
+    if n < 3:
+        return 0.0
+
+    def ranks(xs):
+        order = sorted(range(len(xs)), key=lambda i: xs[i])
+        r = [0] * len(xs)
+        for pos, i in enumerate(order):
+            r[i] = pos
+        return r
+    ra, rb = ranks(a), ranks(b)
+    m = (n - 1) / 2.0
+    num = sum((ra[i] - m) * (rb[i] - m) for i in range(n))
+    da = math.sqrt(sum((ra[i] - m) ** 2 for i in range(n)))
+    db = math.sqrt(sum((rb[i] - m) ** 2 for i in range(n)))
+    return (num / (da * db)) if da > 0 and db > 0 else 0.0
+
+
+def piers_of(gates, to_m, to_deg):
+    """[pier] for one terminal, ordered longest first.
+
+    Each pier carries its own axis and every gate's position on it, in metres,
+    so nothing has to redo this at render time.
+    """
+    if len(gates) < MIN_PIER_GATES:
+        return []
+    pts = [to_m(g["lon"], g["lat"]) for g in gates]
+    out = []
+    for group in _clusters(pts):
+        if len(group) < MIN_PIER_GATES:
+            continue
+        sub_pts = [pts[i] for i in group]
+        share, ang = axis_of(sub_pts)
+        cx = sum(p[0] for p in sub_pts) / len(sub_pts)
+        cy = sum(p[1] for p in sub_pts) / len(sub_pts)
+        ux, uy = math.cos(ang), math.sin(ang)
+        vx, vy = -uy, ux
+        along = [(p[0] - cx) * ux + (p[1] - cy) * uy for p in sub_pts]
+        side = [(p[0] - cx) * vx + (p[1] - cy) * vy for p in sub_pts]
+
+        # THE AXIS IS ORIENTED, NOT LEFT AS PCA RETURNED IT. The eigenvector's
+        # sign is arbitrary, so without this a pier could be drawn back to front
+        # from one run to the next for no reason a reader could see. Lowest gate
+        # number first is the direction a concourse is signed in.
+        def first_number(i):
+            # ANYWHERE IN THE REF, NOT ONLY AT THE FRONT. Concourse letters are
+            # the norm -- F39, B41, A21, C52, B18A, "31 A,B,C,D" -- and reading
+            # only a leading digit scored all of those as unnumbered, so the
+            # orientation fell back to whichever way PCA happened to point.
+            # Measured: ARN Terminal 5 came out F39 -> F1, backwards.
+            m = re.search(r"(\d+)", gates[group[i]]["ref"])
+            return int(m.group(1)) if m else 10 ** 6
+        lo = min(range(len(group)), key=lambda i: (first_number(i), along[i]))
+        if along[lo] > 0:
+            ux, uy, vx, vy = -ux, -uy, -vx, -vy
+            along = [-a for a in along]
+            side = [-x for x in side]
+
+        length = max(along) - min(along)
+        width = max(side) - min(side)
+        aspect = (length / width) if width > 1.0 else 999.0
+        end = min(range(len(sub_pts)), key=lambda i: along[i])
+        real = [math.hypot(p[0] - sub_pts[end][0], p[1] - sub_pts[end][1]) for p in sub_pts]
+        fid = _spearman(along, real)
+        left = sum(1 for x in side if x > SIDE_M)
+        right = sum(1 for x in side if x < -SIDE_M)
+
+        if fid < ORDER_OK or aspect < ASPECT_OK:
+            kind = "hall"
+        elif left < 2 or right < 2:
+            kind = "single"
+        else:
+            kind = "corridor"
+
+        clon, clat = to_deg(cx, cy)
+        out.append({
+            "kind": kind, "share": share,
+            "clon": clon, "clat": clat, "ux": ux, "uy": uy,
+            "length": length, "width": width, "aspect": min(aspect, 999.0),
+            "fidelity": fid,
+            "gates": [{"gi": group[i], "along": along[i], "side": side[i]}
+                      for i in sorted(range(len(group)), key=lambda i: along[i])],
+        })
+    return sorted(out, key=lambda p: -p["length"])
+
+
 def terminal_key(name, aliases):
     """OSM's name -> the key lib/dining.ts uses. "Terminal 4" -> "T4".
 
@@ -373,24 +528,36 @@ def build(entry, raw):
         ys = [p[1] for p in pts]
         bbox_deg = list(to_deg(min(xs), min(ys))) + list(to_deg(max(xs), max(ys)))
 
+        gates_out = sorted(
+            [{"ref": g["ref"], "lon": round(g["lon"], 6), "lat": round(g["lat"], 6),
+              "along": g.get("along", 0.0)} for g in gates],
+            key=lambda g: g["along"])
         out.append({
             "airport": code,
             "key": key,
             "name": blob["name"],
             "rings": [[[round(c, 6) for c in to_deg(x, y)] for x, y in r] for r in rings_m],
-            "gates": sorted(
-                [{"ref": g["ref"], "lon": round(g["lon"], 6), "lat": round(g["lat"], 6),
-                  "along": g.get("along", 0.0)} for g in gates],
-                key=lambda g: g["along"]),
+            "gates": gates_out,
+            # ON gates_out, NOT ON `gates`, so every gi indexes the list the app
+            # is actually handed. The two orders differ -- one is sorted.
+            "piers": piers_of(gates_out, to_m, to_deg),
             "axis_share": round(share, 3),
             "spread_m": spread_m,
             "bbox": [round(v, 6) for v in bbox_deg],
         })
 
     for t in out:
-        notes.append("%s: %d ring point(s), %d gate(s), axis %.2f over %dm"
+        kinds = {}
+        for p in t["piers"]:
+            kinds[p["kind"]] = kinds.get(p["kind"], 0) + 1
+        notes.append("%s: %d ring point(s), %d gate(s), axis %.2f over %dm, piers %s"
                      % (t["key"], sum(len(r) for r in t["rings"]), len(t["gates"]),
-                        t["axis_share"], t["spread_m"]))
+                        t["axis_share"], t["spread_m"],
+                        ", ".join("%d %s" % (v, k) for k, v in sorted(kinds.items())) or "none"))
+        for i, p in enumerate(t["piers"]):
+            notes.append("    %s p%d: %d gates, %.0fm x %.0fm, aspect %.1f, order %.2f -> %s"
+                         % (t["key"], i, len(p["gates"]), p["length"], p["width"],
+                            p["aspect"], p["fidelity"], p["kind"]))
     return out, notes
 
 
@@ -430,9 +597,19 @@ def emit_ts(all_terminals):
             '["%s",%s,%s,%s]' % (g["ref"], num(g["lon"]), num(g["lat"]), num(g["along"]))
             for g in t["gates"]) + "]"
         bbox = "[" + ",".join(num(v) for v in t["bbox"]) + "]"
-        rows.append('  ["%s","%s",%s,%s,%s,%s,%s],'
+        piers = "[" + ",".join(
+            '["%s",%s,%s,%s,%s,%s,%s,%s,%s,[%s]]' % (
+                p["kind"], num(p["clon"]), num(p["clat"]),
+                repr(round(p["ux"], 6)), repr(round(p["uy"], 6)),
+                repr(round(p["length"], 1)), repr(round(p["width"], 1)),
+                repr(round(p["aspect"], 2)), repr(round(p["fidelity"], 3)),
+                ",".join("[%d,%s,%s]" % (g["gi"], repr(round(g["along"], 1)),
+                                         repr(round(g["side"], 1)))
+                         for g in p["gates"]))
+            for p in t.get("piers", [])) + "]"
+        rows.append('  ["%s","%s",%s,%s,%s,%s,%s,%s],'
                     % (t["airport"], t["key"], json.dumps(t["name"], ensure_ascii=False),
-                       rings, gates, t["axis_share"], bbox))
+                       rings, gates, t["axis_share"], bbox, piers))
 
     body = '''// Terminal outlines and gates. Generated by tools/terminals/run.py -- do not edit.
 //
@@ -473,15 +650,63 @@ export type Terminal = {
   gates: Gate[];
   axisShare: number;
   bbox: [number, number, number, number];   // minLon, minLat, maxLon, maxLat
+  piers: Pier[];
 };
+
+// ── A PIER IS THE THING THAT IS ACTUALLY A CORRIDOR ─────────────────────────
+//
+// 'corridor'  long, thin, gates on both sides, and the projected order is the
+//             walking order. Drawable as a corridor.
+// 'single'    all of that but gates on ONE side only -- BOM Terminal 1 is
+//             twelve gates on a line with a width of zero metres. Drawn with
+//             one side, never with an empty second side implied.
+// 'hall'      too wide, or the order does not survive. HKG Terminal 1's main
+//             hall is 36 gates at aspect 1.1; JFK Terminal 5 is 2.2. These are
+//             rooms, not corridors, and a corridor drawing of them would put
+//             things ahead of and behind each other that are side by side.
+export type PierKind = 'corridor' | 'single' | 'hall';
+
+export type PierGate = {
+  gi: number;       // index into Terminal.gates
+  along: number;    // metres from the pier centre, increasing away from gate 1
+  side: number;     // signed metres across; positive is one side, negative the other
+};
+
+export type Pier = {
+  kind: PierKind;
+  // The axis, so anything else -- a restaurant -- can be projected onto it at
+  // runtime with the same arithmetic. See metresAt in lib/piers.ts.
+  clon: number;
+  clat: number;
+  ux: number;
+  uy: number;
+  lengthM: number;
+  widthM: number;
+  aspect: number;
+  // Rank correlation between projected position and real walking distance from
+  // the end gate. 1.0 means the corridor order IS the walking order.
+  fidelity: number;
+  gates: PierGate[];
+};
+
+// THE SAME PROJECTION tools/terminals/run.py USES, and it has to stay the same
+// or every `along` shipped in this file means something slightly different from
+// what the app computes for a restaurant.
+export const M_PER_DEG_LAT = 111320.0;
+export function mPerDegLon(lat: number): number {
+  return 111320.0 * Math.cos((lat * Math.PI) / 180);
+}
 
 // BELOW THIS, AN ORDERING IS ROUGH AND THE SCREEN MUST SAY SO. Measured at JFK:
 // piers land at 0.87-0.98, bent concourses at 0.76-0.79.
 export const ORDER_IS_ROUGH = 0.85;
 
+type PierRow = [string, number, number, number, number, number, number,
+                number, number, [number, number, number][]];
+
 type Row = [string, string, string, [number, number][][],
             [string, number, number, number][], number,
-            [number, number, number, number]];
+            [number, number, number, number], PierRow[]];
 
 const ROWS: Row[] = [
 %s
@@ -491,9 +716,13 @@ let cache: Terminal[] | null = null;
 
 export function allTerminals(): Terminal[] {
   if (cache !== null) return cache;
-  cache = ROWS.map(([airport, key, name, rings, gates, axisShare, bbox]) => ({
+  cache = ROWS.map(([airport, key, name, rings, gates, axisShare, bbox, piers]) => ({
     airport, key, name, rings, axisShare, bbox,
     gates: gates.map(([ref, lon, lat, along]) => ({ ref, lon, lat, along })),
+    piers: piers.map(([kind, clon, clat, ux, uy, lengthM, widthM, aspect, fidelity, pg]) => ({
+      kind: kind as PierKind, clon, clat, ux, uy, lengthM, widthM, aspect, fidelity,
+      gates: pg.map(([gi, along, side]) => ({ gi, along, side })),
+    })),
   }));
   return cache;
 }
