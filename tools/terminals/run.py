@@ -38,6 +38,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -177,15 +178,80 @@ def terminal_key(name, aliases):
     THE ALIAS TABLE IS NOT TIDINESS. JFK's OSM carries "Terminl 8", a misspelling
     of Terminal 8 with its own polygon and seventeen of the terminal's gates --
     left alone, Terminal 8 draws twice and its gates halve.
+
+    ── AND IT USED TO READ ONLY A LEADING PREFIX, WHICH LOST MOST AIRPORTS ─────
+
+    Surveyed across all eight, that rule threw away almost everything OSM had,
+    because operators do not name their buildings the way it assumed:
+
+        "Heathrow Terminal 5"            the word is not first, so Heathrow's
+                                         largest terminal was dropped entirely
+        "T2 (International)"             ARN. Every terminal, gone.
+        "T5, Pier F (International)"     ARN again
+        "TB East Pedestrian Bridge"      LGA, drawn as its own terminal
+        "T1 Flugsteig A"                 FRA
+        "一號客運大樓 Terminal 1"          HKG. The English is second, so HKG
+                                         resolved ZERO terminals and 0 gates.
+
+    Measured effect of reading the whole name: HKG goes from no geometry at all
+    to two terminals and 90 gates, LHR gains Terminal 5, FRA gains three
+    concourses, and ARN and LGA get their first dining matches.
+
+    ── WHAT IT DELIBERATELY DOES NOT DO ───────────────────────────────────────
+
+    IT WILL NOT TURN A PIER OR A FLUGSTEIG INTO A TERMINAL. "Pier 6" is not
+    Terminal 6 and "Flugsteig G" is not Terminal G -- they are structures INSIDE
+    a terminal, and which one is an airport-specific fact this function cannot
+    know. Those stay unkeyed and belong in the manifest's alias table, where the
+    answer is written down rather than guessed.
+
+    AND THE TERSE FORM IS TESTED ON THE FIRST WORD ONLY, which is what stops
+    "Terminl 8" being read as T-then-E. An earlier draft did exactly that and
+    invented a terminal "TE" out of a misspelling -- turning a typo the alias
+    table already handles into a phantom building.
     """
     n = (name or "").strip()
     if n in aliases:
         return aliases[n]
-    low = n.lower()
-    for prefix in ("terminal ", "concourse "):
-        if low.startswith(prefix):
-            return "T" + n[len(prefix):].strip().upper()
+
+    # "Heathrow Terminal 5", "一號客運大樓 Terminal 1" -- anywhere in the string.
+    #
+    # THE TRAILING LETTER IS CONSUMED AND DISCARDED, and leaving it out was a
+    # regression caught by re-running the survey: "Terminal 2A" and "Heathrow
+    # Terminal 5B" resolved to NOTHING, so LHR lost Terminal 2 entirely and came
+    # back with fewer gates than before the fix. 2A and 2B are piers of Terminal
+    # 2; 5B and 5C are satellites of Terminal 5. They belong to their terminal,
+    # which is the key dining.ts uses.
+    m = re.search(
+        r"(?:terminal|concourse)\s+(?:([0-9]{1,2})[A-Za-z]?|([A-Za-z]))(?![0-9A-Za-z])",
+        n, re.I)
+    if m:
+        return "T" + (m.group(1) or m.group(2)).upper()
+
+    # The terse form, on the FIRST WORD of the name with any parenthetical or
+    # comma-suffix already behind it: "T2 (International)", "T5, Pier F",
+    # "TB East Pedestrian Bridge", "T1 Flugsteig A", "T2A".
+    core = re.split(r"[,(]", n)[0].strip()
+    first = core.split()[0] if core.split() else ""
+    m = re.match(r"^T\s*([0-9]{1,2})[A-Za-z]?$", first, re.I)
+    if m:
+        return "T" + m.group(1).upper()
+    m = re.match(r"^T\s*([A-Za-z])$", first, re.I)
+    if m:
+        return "T" + m.group(1).upper()
     return ""
+
+
+def name_rank(name, aliases):
+    """Lower is a better name for a terminal that several polygons share.
+
+    A NAME THAT RESOLVES ON ITS OWN MERITS BEATS ONE THAT NEEDED AN ALIAS. JFK's
+    Terminal 8 is two polygons, "Terminal 8" and "Terminl 8", and the first one
+    OSM happened to return won the label -- so the app displayed a misspelling
+    it had already corrected the KEY for. This is not a hardcoded override; it
+    is the same test the key already makes, reused to pick the label.
+    """
+    return 0 if terminal_key(name, {}) != "" else 1
 
 
 def fetch(entry, cache_path, offline):
@@ -234,7 +300,13 @@ def build(entry, raw):
             unkeyed.append(str(name))
             continue
         ring_m = [to_m(p["lon"], p["lat"]) for p in w["geometry"]]
-        parts.setdefault(key, {"name": name, "rings": []})["rings"].append(ring_m)
+        part = parts.setdefault(key, {"name": name, "rings": []})
+        # THE BEST NAME WINS A MERGE, NOT THE FIRST ONE OVERPASS RETURNED.
+        # See name_rank: "Terminl 8" was labelling Terminal 8 purely by
+        # arriving first in the response.
+        if name_rank(name, aliases) < name_rank(part["name"], aliases):
+            part["name"] = name
+        part["rings"].append(ring_m)
 
     if dropped:
         notes.append("excluded %d polygon(s) by manifest: %s" % (len(dropped), ", ".join(dropped)))
