@@ -1141,18 +1141,29 @@ def poll(x_poll_secret: str | None = Header(default=None)):
 # and the poll of that particular flight may not come round then. See the note
 # at the top of dispatch.py.
 #
-# THE SAME SECRET AS /poll, deliberately. Both are woken by the same Cloud
-# Scheduler and neither is reachable by anything else, so a second secret would
-# be one more thing to rotate for no gain in what it protects.
+# ITS OWN SECRET. /poll and /dispatch are woken by the same Cloud Scheduler and
+# neither is reachable by anything else, so sharing one would have been
+# defensible -- but they are separate env vars on the service, so one can be
+# rotated without silencing the other, and a scheduler job misconfigured against
+# the wrong endpoint fails closed rather than running the wrong pass.
+#
+# UNSET MATCHES NOTHING. _secret_ok returns False for an empty expected value,
+# so a deployment that forgets DISPATCH_SECRET has a closed endpoint rather than
+# an open one. There is deliberately no fallback to POLL_SECRET: a fallback
+# would mean the endpoint quietly stayed reachable under a secret its own
+# scheduler is not sending.
+DISPATCH_SECRET = os.getenv("DISPATCH_SECRET")
+DISPATCH_SECRET_HEADER = "X-Dispatch-Secret"
+
 DISPATCH_LOCK_KEY = "runtime/dispatch.lock"
 DISPATCH_LOCK_TTL_SECONDS = 300
 
 
 @app.post("/dispatch")
-def dispatch_pass(x_poll_secret: str | None = Header(default=None)):
+def dispatch_pass(x_dispatch_secret: str | None = Header(default=None)):
     # 404 rather than 403, as at /poll and /watch above.
-    if not _secret_ok(x_poll_secret, POLL_SECRET):
-        logger.warning("dispatch rejected: bad or missing %s", POLL_SECRET_HEADER)
+    if not _secret_ok(x_dispatch_secret, DISPATCH_SECRET):
+        logger.warning("dispatch rejected: bad or missing %s", DISPATCH_SECRET_HEADER)
         return _alert_not_found()
 
     lock = pollstate.take_lock(DISPATCH_LOCK_KEY, DISPATCH_LOCK_TTL_SECONDS)
