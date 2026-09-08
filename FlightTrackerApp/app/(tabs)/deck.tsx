@@ -37,6 +37,9 @@ import { airportByCode, findAirports, Airport } from '../../lib/airports';
 // different licence, and it is absent for most airports.
 import { terminalOf, terminalsAt, Gate } from '../../lib/terminals';
 import CorridorView from '../../components/CorridorView';
+// THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
+// the marker itself for what it does and why the import path is a deep one.
+import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
 // THE JOIN AND THE ARITHMETIC MOVED OUT OF THE COMPONENT. Where a restaurant is
 // is a fact about the data, not about a view, and the map is now the third
 // thing that wants it -- see lib/terminalgeo.
@@ -630,6 +633,13 @@ export default function Deck() {
           why it was 120 rather than home's 24. Apple's bar insets the first
           scroll view itself. If a device shows the last zone hidden, measure
           what is missing and add exactly that (R7, SPEC 16; home has the note). */}
+      {/* THE MARKER, and this screen is the clearest case for it: the root's
+          first child is the brand line, so UIKit's first-child walk stops on a
+          Text and never reaches this list at all. flex: 1 keeps the scroll view
+          bounded; the full reasoning is at the marker on home. The scroll
+          view's own marginTop stays on the scroll view, inside the marker,
+          which puts the same 16 points above the first card. */}
+      <ScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         style={st.scroll}
         showsVerticalScrollIndicator={false}
@@ -807,6 +817,7 @@ export default function Deck() {
           })
         )}
       </ScrollView>
+      </ScrollViewMarker>
     </View>
   );
 }

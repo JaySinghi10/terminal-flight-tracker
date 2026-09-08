@@ -43,6 +43,9 @@ import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import type { SearchBarCommands } from "react-native-screens";
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
+// THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
+// the marker itself for what it does and why the import path is a deep one.
+import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
 import {
   View,
   Text,
@@ -4448,6 +4451,28 @@ export default function Search() {
             behind it (R7, SPEC 16). Apple's bar insets the first scroll view
             itself, so content under it would now just be unreadable. Add
             padding back here only if a device shows the last row hidden. */}
+        {/* THE MARKER, and on this screen it does two things the others do
+            not.
+
+            IT REGISTERS WITH THE STACK SCREEN, NOT THE TAB SCREEN. The marker
+            walks up for the nearest ancestor that accepts a scroll view, and
+            this route lives inside its own Stack (app/(tabs)/search/_layout),
+            so the stack screen takes it -- which is the right owner, because
+            the search bar hanging on that stack's header is the thing that
+            hides on scroll.
+
+            IT WOULD OTHERWISE SWALLOW THE MAP. Everything down this branch is
+            box-none precisely so a finger on an empty part of the screen
+            reaches the globe underneath; a plain view inserted here would be a
+            hit target across the whole screen and the map could never be
+            touched again. pointerEvents rides in the STYLE rather than as a
+            prop: the marker's props type carries only children, style and the
+            scroll-edge effects, and React Native takes pointerEvents as a
+            style, so this needs no cast.
+
+            flex: 1 keeps the scroll view bounded; the full reasoning is at the
+            marker on home. */}
+        <ScrollViewMarker style={{ flex: 1, pointerEvents: 'box-none' }}>
         <ScrollView
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
@@ -4758,6 +4783,7 @@ export default function Search() {
           )}
 
         </ScrollView>
+        </ScrollViewMarker>
       </KeyboardAvoidingView>
       {/* ── HOME ──
           LAST CHILD OF s.root, AND THAT IS A FIX RATHER THAN A TIDY-UP. It used

@@ -15,6 +15,9 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
+// the marker itself for what it does and why the import path is a deep one.
+import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
 import * as Google from 'expo-auth-session/providers/google';
 import { ResponseType } from 'expo-auth-session';
 import {
@@ -1995,6 +1998,47 @@ export default function Index() {
             carried 48 once and two sources for one edge is how a page ends up
             with a gap nobody can account for. s.scroll keeps the horizontal
             padding, which does not depend on anything at runtime. */}
+        {/* ── THE MARKER THAT TELLS UIKit WHICH SCROLL VIEW THIS SCREEN IS ──
+            THE PROBLEM IT SOLVES. The native tab bar minimises on scroll, and
+            the search field docks and hides on scroll, and every one of those
+            behaviours asks UIKit for the screen's CONTENT SCROLL VIEW. Unless
+            something registers one, react-native-screens hands UIKit nothing
+            and UIKit falls back to its own discovery, which walks the FIRST
+            CHILD of each view down from the screen's root. That chain is
+            fragile: on Deck it dies on a Text before it reaches the list, and
+            on Search it reaches the map's WebView, whose internal scroll view
+            exists and never moves. Nothing minimised on any screen, and no
+            warning was logged, because nothing had gone wrong -- UIKit was
+            watching exactly what it found.
+
+            WHAT IT DOES. ScrollViewMarker registers the scroll view beneath it
+            through setContentScrollView, which is the single hook the tab bar's
+            minimise, the search bar's hide-on-scroll, the scroll-edge effects
+            and status-bar tap-to-top all observe. A registered scroll view also
+            beats the first-child heuristic react-native-screens uses for its
+            own scroll-to-top and automatic content insets.
+
+            IT WRAPS, IT DOES NOT REPLACE, AND IT TAKES EXACTLY ONE CHILD. The
+            native side asserts on a second child and resolves the scroll view
+            from the first, understanding both a bare UIScrollView and React
+            Native's own scroll view component.
+
+            flex: 1 IS NOT DECORATION. The marker is a plain view, and a view
+            with no flex sizes to its content -- which for a scroll view is
+            unbounded, and an unbounded ScrollView does not scroll. That is
+            S-8, the rule this file's archive sheet already carries. The marker
+            takes the space the scroll view took, and the scroll view fills it
+            through its own flexGrow.
+
+            THE DEEP IMPORT PATH IS DELIBERATE. The component lives in
+            react-native-screens' gamma tree and is not on the package's public
+            export. The package declares no exports map, `src/` ships, and of
+            the four shipped trees it is the only one carrying types beside the
+            implementation -- a lib/module import compiles but has no
+            declaration file. Its native half is built only when
+            RNS_GAMMA_ENABLED is set, which expo-router's own config plugin
+            writes into the Podfile at prebuild. */}
+        <ScrollViewMarker style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
@@ -2325,6 +2369,7 @@ export default function Index() {
           )}
 
         </ScrollView>
+        </ScrollViewMarker>
       </KeyboardAvoidingView>
     </View>
   );

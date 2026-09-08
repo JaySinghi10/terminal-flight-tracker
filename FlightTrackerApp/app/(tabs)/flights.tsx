@@ -28,6 +28,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
+// THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
+// the marker itself for what it does and why the import path is a deep one.
+import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
 import {
   SavedFlight, savedFlightFromApi, ISO_DAY_RE, MAX_MAP_ROUTES,
 } from '../../lib/storage';
@@ -2115,6 +2118,10 @@ export default function Flights() {
           glass so the blur had something behind it (R7, SPEC 16). Apple's bar
           insets the first scroll view itself. Add padding back only if a
           device shows the last row hidden; see home's fuller note. */}
+      {/* THE MARKER, so UIKit watches THIS list rather than whatever its
+          first-child walk happens to reach. flex: 1 keeps the scroll view
+          bounded; the full reasoning is at the marker on home. */}
+      <ScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         contentContainerStyle={[st.scroll, st.scrollFill]}
         showsVerticalScrollIndicator={false}
@@ -2328,6 +2335,7 @@ export default function Flights() {
         {/* The past-flights sheet is still mounted above and has no way in yet. */}
 
       </ScrollView>
+      </ScrollViewMarker>
     </View>
   );
 }
