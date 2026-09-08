@@ -72,6 +72,75 @@ CLAIM_STALE = timedelta(minutes=10)
 # than asked about for ever.
 TICKET_GIVE_UP = timedelta(hours=24)
 
+# -- HOW LONG A MESSAGE IS STILL WORTH SENDING -------------------------------
+#
+# WRITTEN AFTER THE FIRST PASS SENT A BACKLOG. Nothing drained the outbox until
+# the scheduler job existed, so the first run delivered eight messages at once,
+# the oldest six hours old -- including a cancellation from six hours earlier,
+# which reads as current news and is arguably worse than silence. That was a
+# one-off, but the cause is not: any gap in this job, an outage, a paused
+# scheduler, a bad deploy, ends the same way.
+#
+# NOT THE SAME QUESTION notify's WINDOWS ANSWER. Those gate whether a change is
+# worth SAYING, measured against the flight's own schedule -- a gate change four
+# hours out, a belt within ninety minutes of landing. This gates whether a thing
+# already said is still worth DELIVERING, measured from when it was written.
+# A message can pass the first test and fail this one, which is exactly what a
+# backlog is.
+#
+# MEASURED FROM deliver_after WHEN THERE IS ONE. A cancellation written at 02:00
+# and deferred to 07:00 for the night is five hours old the moment it becomes
+# due, and dropping it would defeat the deferral it was given on purpose. The
+# clock starts at the later of the two.
+#
+# THE NUMBERS ARE ABOUT WHAT THE READER CAN STILL DO. A belt number is useless
+# once she has left the hall. A gate change goes stale fastest of all, because a
+# stale one is not merely useless but wrong: gates move again, and an hour-old
+# gate is a confident answer that may send her to the wrong pier. Terminal and
+# cancellation get the longest lives, because both can still change what a
+# person does hours later -- which terminal to drive to, and whether to travel
+# at all.
+STALE_AFTER = {
+    notify.BELT: timedelta(minutes=45),
+    notify.GATE: timedelta(minutes=30),
+    notify.GATE_CAP: timedelta(minutes=30),
+    notify.DELAY: timedelta(hours=1),
+    notify.ON_TIME: timedelta(hours=1),
+    notify.DEPARTED: timedelta(hours=1),
+    notify.LANDED: timedelta(hours=1),
+    notify.ARRIVAL_MOVED: timedelta(hours=1),
+    notify.TERMINAL: timedelta(hours=2),
+    notify.ARRIVAL_TERMINAL: timedelta(hours=2),
+    notify.CANCELLED: timedelta(hours=2),
+    notify.CANCEL_WITHDRAWN: timedelta(hours=2),
+    notify.NEXT_FLIGHT: timedelta(hours=2),
+    notify.DIVERTED: timedelta(hours=2),
+}
+
+# A kind this table has never heard of. An hour is the shortest life any kind
+# here has other than the two that are shorter for stated reasons, so an
+# unrecognised message errs towards silence rather than towards waking somebody
+# about something nobody wrote a rule for.
+STALE_DEFAULT = timedelta(hours=1)
+
+# What a drop is called in the record. A string rather than a boolean, because
+# there is already more than one way for a message to be decided against.
+DROP_STALE = "stale"
+DROP_UNRENDERABLE = "unrenderable"
+
+
+def _useful_life(kind):
+    return STALE_AFTER.get(kind, STALE_DEFAULT)
+
+
+def _age(msg, now):
+    """How long this message has been waiting, from when it became due."""
+    written = _parse(msg.get("at"))
+    due = _parse(msg.get("deliver_after"))
+    start = max([t for t in (written, due) if t is not None], default=None)
+    return None if start is None else now - start
+
+
 # -- BOUNDS ------------------------------------------------------------------
 # ONE STATE READ PER WATCHED FLIGHT PER PASS. That is inherent: receipts live on
 # state objects, and the subject ladder needs a reader's OTHER flights to know
@@ -317,9 +386,19 @@ def _claimable(slot, now):
 
 
 def _plan(watched, states, now):
-    """[(flight_key, slot_id, device, envelope)] for everything ready to go."""
+    """(work, drops).
+
+    work  [(flight_key, slot_id, device, envelope)] -- ready to send.
+    drops [(flight_key, slot_id, kind, age)] -- too old to be worth sending.
+
+    THE ORDER OF THE THREE CHECKS MATTERS. Claimable comes first, so a slot
+    already sent or already dropped is skipped without being reconsidered --
+    otherwise a stale message would be re-dropped and re-written on every pass
+    for as long as it sat in the outbox. Staleness comes next, so an old message
+    costs no envelope. Only what survives both becomes work.
+    """
     index = _reader_index(watched, states)
-    work = []
+    work, drops = [], []
     for row in watched:
         flight_key = (row["flight_number"], row["flight_date"])
         doc = states.get(flight_key)
@@ -327,6 +406,8 @@ def _plan(watched, states, now):
             continue
         slots = _slots(doc)
         for msg in _due(doc, now):
+            age = _age(msg, now)
+            stale = age is not None and age > _useful_life(msg.get("kind"))
             for device in row.get("devices") or []:
                 token, did = device.get("push_token"), device.get("device_id")
                 if not token or not did:
@@ -334,16 +415,60 @@ def _plan(watched, states, now):
                 slot_id = _slot_id(msg.get("key"), did)
                 if not _claimable(slots.get(slot_id), now):
                     continue
-                work.append((flight_key, slot_id, device, _envelope(msg, device, index)))
-    return work
+                if stale:
+                    drops.append((flight_key, slot_id, msg.get("kind"), age, DROP_STALE))
+                    continue
+                # ONE BAD MESSAGE MUST NOT SILENCE EVERY OTHER FLIGHT. notify's
+                # renderers read their own `values` by key, so a message written
+                # by an older version of notify, or by a kind whose shape has
+                # changed since, raises rather than returning a sentence. Left
+                # unguarded that exception leaves _plan, leaves send_due, and
+                # ends the whole pass -- so a single malformed row in one
+                # flight's outbox would stop delivery for everybody, every
+                # minute, until somebody noticed. It is dropped like a stale one
+                # instead, under its own reason, and the traceback goes to the
+                # log where it can be found.
+                try:
+                    envelope = _envelope(msg, device, index)
+                except Exception:
+                    logger.exception("dispatch: could not render a %s for %s/%s",
+                                     msg.get("kind"), flight_key[0], flight_key[1])
+                    drops.append((flight_key, slot_id, msg.get("kind"), age, DROP_UNRENDERABLE))
+                    continue
+                work.append((flight_key, slot_id, device, envelope))
+    return work, drops
 
 
 def send_due(watched, states, now, post=None):
     """Claim, send, confirm."""
     post = post or _post
-    work = _plan(watched, states, now)
+    work, drops = _plan(watched, states, now)
+
+    # RECORDED, NOT JUST SKIPPED. gave_up is what stops _claimable ever offering
+    # the slot again, and drop_reason is what says why it was never sent -- the
+    # difference between a message that failed and one this module decided
+    # against. The age is kept in seconds because the question asked of this
+    # record later is always "how late was it", never "when was it".
+    dropped = {}
+    for flight_key, slot_id, kind, age, reason in drops:
+        dropped.setdefault(flight_key, {})[slot_id] = {
+            "gave_up": True,
+            "drop_reason": reason,
+            "dropped_at": _iso(now),
+            "kind": kind,
+            "age_s": int(age.total_seconds()) if age is not None else None,
+        }
+    for flight_key, changes in dropped.items():
+        _merge_slots(flight_key, changes, states)
+    for flight_key, _slot_id, kind, age, reason in drops:
+        if reason == DROP_STALE:
+            logger.info("dispatch: dropped a stale %s for %s/%s, %d minutes late",
+                        kind, flight_key[0], flight_key[1],
+                        int(age.total_seconds() // 60) if age is not None else -1)
+
     if not work:
-        return {"queued": 0, "sent": 0, "failed": 0, "dead_tokens": 0}
+        return {"queued": 0, "sent": 0, "failed": 0, "dead_tokens": 0,
+                "dropped": len(drops)}
 
     # CLAIMED BEFORE THE CALL, one write per flight. Two instances cannot both
     # take the same slot, because the write goes through the same generation
@@ -405,7 +530,7 @@ def send_due(watched, states, now, post=None):
         _forget(token)
 
     return {"queued": len(work), "sent": sent, "failed": failed,
-            "dead_tokens": len(dead_tokens)}
+            "dead_tokens": len(dead_tokens), "dropped": len(drops)}
 
 
 # -- WRITING IT DOWN ---------------------------------------------------------
@@ -512,11 +637,13 @@ def run_once(now=None, post=None):
         "queued": sends["queued"],
         "sent": sends["sent"],
         "send_failed": sends["failed"],
+        "dropped_stale": sends["dropped"],
         "receipts_asked": receipts["asked"],
         "receipts_ok": receipts["ok"],
         "receipts_failed": receipts["failed"],
         "dead_tokens": sends["dead_tokens"] + receipts["dead_tokens"],
     }
-    logger.info("dispatch: %d flights, %d sent, %d receipts asked, %d dead tokens",
-                out["flights"], out["sent"], out["receipts_asked"], out["dead_tokens"])
+    logger.info("dispatch: %d flights, %d sent, %d dropped stale, %d receipts asked, "
+                "%d dead tokens", out["flights"], out["sent"], out["dropped_stale"],
+                out["receipts_asked"], out["dead_tokens"])
     return out

@@ -55,9 +55,16 @@ def msg(number="AI505", kind=notify.GATE, key="k1", deliver_after=None,
     # outbox is built this way, so the time the envelope reads and the time the
     # reader index reads come from the same field by construction.
     facts = notify._facts(dto(number, iata, city, when=when, airline=airline))
+    # A SUPERSET OF WHAT EVERY RENDERER READS. notify.render reaches into
+    # `values` by key and raises on a missing one, so a fixture carrying only a
+    # gate can render a gate message and nothing else. Every field any kind
+    # needs is here, which is what lets one fixture stand in for all fourteen.
     facts.update({"key": key, "kind": kind, "at": iso(NOW),
                   "deliver_after": deliver_after,
-                  "values": {"gate": "A12"}})
+                  "values": {"gate": "A12", "was": "B7", "belt": "5",
+                             "terminal": "2", "by": 30, "due": "11:45 PM",
+                             "time": "11:40 PM", "tz": "IST", "next": None,
+                             "searching": False, "elsewhere": False}})
     return facts
 
 
@@ -183,8 +190,16 @@ check("a deferred message waits", w5.sends() == [], w5.sends())
 
 w6 = World([watched()], [state(outbox=[later])]).install()
 w6.reply = ok_tickets(1)
-dispatch.run_once(now=NOW + timedelta(hours=6), post=w6.post)
+dispatch.run_once(now=NOW + timedelta(hours=5, minutes=1), post=w6.post)
 check("and goes once its time comes", len(w6.sends()) == 1, w6.sends())
+
+# AN HOUR LATER IT NO LONGER DOES, and that is the two rules meeting rather than
+# either misbehaving: deliver_after says the earliest it may go, STALE_AFTER
+# says the latest, and a gate is worth thirty minutes from the former.
+w6b = World([watched()], [state(outbox=[later])]).install()
+w6b.reply = ok_tickets(1)
+dispatch.run_once(now=NOW + timedelta(hours=6), post=w6b.post)
+check("and stops going once it is too late", w6b.sends() == [], w6b.sends())
 
 # ── A DEAD TOKEN ────────────────────────────────────────────────────────────
 print("-- a dead token --")
@@ -367,6 +382,107 @@ w26.reply = ok_tickets(1)
 dispatch.run_once(now=NOW, post=w26.post)
 check("a list `sent` reads as empty rather than breaking",
       len(w26.sends()) == 1, w26.sends())
+
+# -- TOO OLD TO BE WORTH SENDING --------------------------------------------
+# The first live pass drained a backlog and delivered a six-hour-old
+# cancellation. This is the rule written after it.
+print("-- stale --")
+
+
+def aged(hours=0, minutes=0, **kw):
+    m = msg(**kw)
+    m["at"] = iso(NOW - timedelta(hours=hours, minutes=minutes))
+    return m
+
+
+w30 = World([watched()], [state(outbox=[aged(hours=6, kind=notify.CANCELLED)])]).install()
+w30.reply = ok_tickets(1)
+out30 = dispatch.run_once(now=NOW, post=w30.post)
+check("a six-hour-old cancellation is not sent", w30.sends() == [], w30.sends())
+check("it is counted as dropped", out30.get("dropped_stale") == 1, out30)
+slot30 = list(w30.slots().values())[0] if w30.slots() else {}
+check("the reason is recorded", slot30.get("drop_reason") == "stale", slot30)
+check("with the kind and how late it was",
+      slot30.get("kind") == notify.CANCELLED and slot30.get("age_s") == 6 * 3600, slot30)
+
+w31 = World([watched()], [state(outbox=[aged(hours=1, kind=notify.CANCELLED)])]).install()
+w31.reply = ok_tickets(1)
+dispatch.run_once(now=NOW, post=w31.post)
+check("an hour-old cancellation still goes", len(w31.sends()) == 1, w31.sends())
+
+print("-- a dropped slot is final --")
+w32 = World([watched()], [state(outbox=[aged(hours=6, kind=notify.CANCELLED)],
+                               sent=w30.slots())]).install()
+w32.reply = ok_tickets(1)
+out32 = dispatch.run_once(now=NOW + timedelta(minutes=1), post=w32.post)
+check("it is never reconsidered, not even to re-drop it",
+      w32.sends() == [] and out32.get("dropped_stale") == 0, out32)
+
+print("-- each kind has its own life --")
+for kind, mins, should_send in [
+    (notify.GATE, 20, True), (notify.GATE, 40, False),
+    (notify.BELT, 40, True), (notify.BELT, 50, False),
+    (notify.DELAY, 50, True), (notify.DELAY, 70, False),
+    (notify.TERMINAL, 110, True), (notify.TERMINAL, 130, False),
+]:
+    wk = World([watched()], [state(outbox=[aged(minutes=mins, kind=kind)])]).install()
+    wk.reply = ok_tickets(1)
+    dispatch.run_once(now=NOW, post=wk.post)
+    check("%-17s at %3d min -> %s" % (kind, mins, "sent" if should_send else "dropped"),
+          (len(wk.sends()) == 1) == should_send, wk.sends())
+
+print("-- an unrecognised kind errs towards silence --")
+w33 = World([watched()], [state(outbox=[aged(minutes=90, kind="something_new")])]).install()
+w33.reply = ok_tickets(1)
+dispatch.run_once(now=NOW, post=w33.post)
+check("it takes the default life", w33.sends() == [], w33.sends())
+check("and the default is an hour", dispatch.STALE_DEFAULT == timedelta(hours=1))
+
+print("-- a deferred message is not stale on arrival --")
+# Written at 02:00 and held to 07:00 for the night. It is five hours old the
+# moment it becomes due, and dropping it would defeat the deferral notify gave
+# it on purpose.
+night = msg(kind=notify.CANCELLED)
+night["at"] = iso(NOW - timedelta(hours=5))
+night["deliver_after"] = iso(NOW - timedelta(minutes=1))
+w34 = World([watched()], [state(outbox=[night])]).install()
+w34.reply = ok_tickets(1)
+dispatch.run_once(now=NOW, post=w34.post)
+check("the clock starts at deliver_after, not at", len(w34.sends()) == 1, w34.sends())
+
+night2 = dict(night)
+night2["deliver_after"] = iso(NOW - timedelta(hours=3))
+w35 = World([watched()], [state(outbox=[night2])]).install()
+w35.reply = ok_tickets(1)
+dispatch.run_once(now=NOW, post=w35.post)
+check("but it is not exempt for ever", w35.sends() == [], w35.sends())
+
+print("-- every kind notify can emit has a life --")
+KINDS = [getattr(notify, n) for n in dir(notify)
+         if n.isupper() and isinstance(getattr(notify, n), str)
+         and getattr(notify, n).replace("_", "").isalpha()
+         and getattr(notify, n).islower()]
+missing = sorted(k for k in KINDS if k not in dispatch.STALE_AFTER)
+check("no kind falls through to the default by accident", missing == [], missing)
+
+print("-- a message that cannot be rendered --")
+# notify's renderers read `values` by key. A message written by an older notify,
+# or by a kind whose shape has changed, raises rather than returning a sentence.
+# Unguarded that would leave _plan, leave send_due, and end the pass -- so one
+# malformed row in one flight's outbox would stop delivery for EVERY flight,
+# every minute, until somebody noticed.
+broken = msg(kind=notify.TERMINAL)
+broken["values"] = {}
+w36 = World([watched("AI505"), watched("6E123")],
+            [state("AI505", outbox=[broken]),
+             state("6E123", outbox=[msg("6E123", key="ok1")])]).install()
+w36.reply = ok_tickets(1)
+out36 = dispatch.run_once(now=NOW, post=w36.post)
+check("the pass survives it", out36.get("ok") is True, out36)
+check("the other flight is still delivered", len(w36.sends()) == 1, w36.sends())
+check("and the bad one is recorded, not retried for ever",
+      (list(w36.slots("AI505").values())[0] if w36.slots("AI505") else {}).get("drop_reason")
+      == "unrenderable", w36.slots("AI505"))
 
 print("\nPASSED: %d   FAILURES: %d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)
