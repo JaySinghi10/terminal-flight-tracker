@@ -104,32 +104,39 @@ Passenger: Mr Jay Singhi   Class: Economy (O)
 """)
 write("03b_ba_codeshare_with_operating_number.eml", ba2)
 
-# ── 4. THREE LEGS, TWO LAYOVERS: SFO -> CPH -> BOM -> IDR ───────────────────
+# ── 4. THREE LEGS, TWO LAYOVERS: SFO -> CPH -> DEL -> IDR ───────────────────
 # An agency itinerary, the way Trip.com or MakeMyTrip lay one out: one agency
-# reference, one airline PNR, three segments across two carriers, and an
+# reference, one airline PNR, three segments across three carriers, and an
 # overnight crossing a date line so the second leg lands the next day.
+#
+# EVERY LEG IS A REAL FLIGHT ON ITS REAL ROUTE, with the provider's own
+# scheduled times for these dates (checked 8 Sep 2026). An earlier draft put
+# AI156 on CPH-BOM and invented AI635 BOM-IDR; AI156 is AMS-DEL and AI635 does
+# not exist, so the lookup with the email's origin refused both -- correctly,
+# but that tests the origin guard, not extraction. The fixture must be a
+# booking a person could hold.
 agency = base("Trip.com | E-ticket issued | Booking 8817729043 | SFO-IDR 01 Dec",
               "Trip.com <noreply@trip.com>", "Tue, 01 Sep 2026 11:30:00 +0800")
 agency.set_content("""Your e-ticket has been issued. Booking number 8817729043. Airline PNR: H8J2K1
 
 Segment 1  SK 936   Scandinavian Airlines
-  San Francisco (SFO) T1   01 Dec 2026  16:35
-  Copenhagen (CPH) T3      02 Dec 2026  12:20
-  Layover in Copenhagen: 2h 00m
+  San Francisco (SFO) Intl Terminal   01 Dec 2026  16:45
+  Copenhagen (CPH) T3                 02 Dec 2026  12:15
+  Layover in Copenhagen: 8h 10m
 
-Segment 2  AI 156   Air India
-  Copenhagen (CPH) T3      02 Dec 2026  14:20
-  Mumbai (BOM) T2          03 Dec 2026  02:50
-  Layover in Mumbai: 3h 20m
+Segment 2  AI 158   Air India
+  Copenhagen (CPH) T2      02 Dec 2026  20:25
+  New Delhi (DEL) T3       03 Dec 2026  10:10
+  Layover in New Delhi: 1h 55m
 
-Segment 3  AI 635   Air India
-  Mumbai (BOM) T2          03 Dec 2026  06:10
-  Indore (IDR)             03 Dec 2026  07:25
+Segment 3  6E 6488   IndiGo
+  New Delhi (DEL) T1       03 Dec 2026  12:05
+  Indore (IDR)             03 Dec 2026  13:35
 
 Passenger: SINGHI/JAY MR   Ticket 117-8890013422
 Total paid USD 1,284.50
 """)
-write("04_multi_leg_sfo_cph_bom_idr.eml", agency)
+write("04_multi_leg_sfo_cph_del_idr.eml", agency)
 
 # ── 5. A DATE WITH NO YEAR, RECEIVED IN LATE DECEMBER ───────────────────────
 # Received 28 December; the flight is "Fri, 15 Jan". Correct is the following
