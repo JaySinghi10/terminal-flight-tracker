@@ -721,56 +721,83 @@ Treat them as one stage with an intermediate checkpoint: get `NativeTabs` render
 
 ---
 
-## 13. Stage 10 — S10, S11, remaining glass, icons, haptics
+## 13. Stage 10 — the glass becomes Apple's, icons, haptics
 
-B2 through B5 are gone with the tab bar. Five blur surfaces remain, plus whatever `GlassLayers` sites survived Stages 2 to 7.
+**This section was rewritten after discovery.** Its previous text assumed Stages 2 through 7 had run and had already converted eight of the eleven `GlassLayers` sites, leaving three. **Those stages never ran.** Stage 1, Stage 8 and Stage 9 ran; nothing else did. All eleven sites are standing, and the B-numbering below is re-derived from the tree as it actually is rather than from what the earlier plan expected to find.
 
 ### 13.0 Discovery
 
-Locate every remaining `BlurView` and `GlassLayers` render in the tree and list them. Locate `lib/glass.tsx`'s full export list and every importer. Locate the comment in `components/FlightCard.tsx` beginning "NULL, NOT A DIMMER GlassLayers" and read it in full before touching that site. Locate every `Haptics` call and every `ICON_*` SVG path constant in `components/swipe.tsx`.
+The tree holds **sixteen render sites** across six files. Fourteen are converted, one disappears with the module, one stays.
 
-### 13.1 Remaining blur
+| File | `GlassLayers` | `BlurView` | What each is |
+|---|---|---|---|
+| `app/(tabs)/index.tsx` | 2 | 0 | the profile and name modal; the archive sheet |
+| `app/(tabs)/flights.tsx` | 2 | 0 | a sheet; a menu overlay |
+| `app/(tabs)/search/index.tsx` | 2 | 3 | route options panel; route calendar. **B6** consent pill, **B7** past-flights toggle, **B8** home button |
+| `components/FlightCard.tsx` | 3 | 1 | airport sheet; map menu; the conditional site. **B9** the map card |
+| `lib/toast.tsx` | 2 | 0 | **S10** the toast; **S11** the undo banner |
+| `lib/glass.tsx` | 0 | 1 | **B1**, the module's own material. Not a surface anybody sees |
 
-| # | Becomes |
-|---|---|
-| B1 | Deleted once its last caller is gone |
-| B6 | `GlassView`, `glassEffectStyle="regular"` |
-| B7 | `GlassView`, `glassEffectStyle="regular"`, `isInteractive` |
-| B8 | `GlassView`, `glassEffectStyle="regular"`, `isInteractive` |
-| B9 | **Stays a `BlurView`.** See 13.3 |
+`lib/glass.tsx` exports nineteen constants plus `GlassLayers` and the `g` stylesheet, and is imported by five files. Materials, easings, durations and rise distances all live there, so its removal moves motion as well as surface.
 
-### 13.2 `GlassLayers` sites after Stages 2 to 7
+**Paths in the earlier text were stale.** Stage 1 moved the routes under `app/(tabs)/`; `app/index.tsx`, `app/search.tsx` and `app/flights.tsx` no longer exist at those paths.
 
-Eight of the eleven are gone: two in `app/index.tsx` (Stages 2 and 3), one in `components/FlightCard.tsx` (Stage 4), two in `app/flights.tsx` (Stages 5 and 6), one more in `components/FlightCard.tsx` (Stage 6), two in `app/search.tsx` (Stages 6 and 7).
+### 13.1 The minimum iOS version
 
-**Three remain:**
+**`GlassView` is iOS 26 only, and it does not degrade.** Below 26 its availability check fails and the view is left holding an empty `UIVisualEffect`. It does not fall back to a blur, a tint or a fill — it renders nothing, and every converted surface becomes a transparent rectangle with its text floating over whatever is behind it.
 
-- **S10 and S11** in `lib/toast.tsx` → `GlassView`, `glassEffectStyle="regular"`. Both are floating chrome and are exactly what Apple's material is for. The in/hold/out Reanimated sequence stays; only the surface changes.
-- **The conditional site in `components/FlightCard.tsx`** whose comment begins "NULL, NOT A DIMMER GlassLayers. My Flights draws the legs…" → **read the comment fully first.** It explains why an alternative was rejected. If the reasoning is about the material's darkness, converting to `GlassView` may reintroduce what it was avoiding. Read, then decide, then report the decision.
+**The decision is to drop support below iOS 26 rather than carry a fallback.** A fallback path that no tester's phone ever takes is code that cannot be tested, and it defeats the point of the conversion. All testers are on 26.6 and 27.0.
 
-Once all three are resolved, **delete `GlassLayers` from `lib/glass.tsx`**, with `SHEET_BLUR`, `SHEET_FILL` and `g.sheetTint`.
+Add `expo-build-properties` and set the target:
 
-### 13.3 Why B9 stays a `BlurView`
+```json
+["expo-build-properties", { "ios": { "deploymentTarget": "26.0" } }]
+```
 
-The comment block above it contains measured arithmetic — "two translucent layers multiply what they let through: 0.78 through the tint × 0.18 through the fill = 0.14 … Fourteen per cent of near-black over near-black is black" — and a **Dynamic Island concealment requirement**: "Inset by `insets.top`, there is no blur, no vibrancy and no backdrop sample anywhere in the island's band; the only thing painting there is a solid `#000000`."
+**This is a new dependency and requires a native rebuild.** It also permanently prevents installation on any iPhone below iOS 26, which today is most of them. That is accepted here as the price of a single, testable material.
 
-The blur is deliberately inset from the top so nothing samples the backdrop in the island's band, and a solid `#000000` — not `#0a0a0a`, and the comment records that the five-level difference was visible — covers it, with a `LinearGradient` ramp below.
+**Record it outside this file too.** `CONTEXT.md` states what the project requires; `FlightTrackerApp/README.md` states what the app runs on. Both must say iOS 26.
 
-`GlassView` offers no equivalent inset control. **Converting this reintroduces a seam at the Dynamic Island.** Leave it.
+### 13.2 The presets
 
-**Consequence: `expo-blur` cannot be removed from `package.json`.**
+The material is chosen in the theme file, `lib/cards.ts`, beside `PAGE_BG` and the card constants. **Named presets, not a levels system.** Four surfaces do not justify a scale.
 
-The inline `s.airportCard` this blur sits inside is likewise left alone. Note its comment recording that `sheetShell`'s "NO backgroundColor" rule does not apply there — a documented exception that must survive.
+`GlassView` takes `glassEffectStyle` of `'regular' | 'clear' | 'none'`, a `tintColor`, a `colorScheme` of `'auto' | 'light' | 'dark'`, and `isInteractive`.
 
-### 13.4 `lib/glass.tsx` final state
+| Preset | Style | Scheme | Used by |
+|---|---|---|---|
+| dark | `regular` | `dark` | every sheet, panel, menu, and both toasts |
+| over-content | `clear` | `dark` | the three map controls on Search, which sit over the globe |
 
-**Expected survivors:** `SHEET_RULE` (a content divider), `SHEET_EDGE` (a hairline on any surviving non-sheet surface), `SHEET_RADIUS` if anything still rounds to it.
+**Two, not three, and this is a deviation worth confirming.** A light preset was asked for. The app is dark-only — `userInterfaceStyle` is `dark` and `PAGE_BG` is `#0a0a0a` — so nothing in the tree would use it, and an unused preset is the same category of untestable code the fallback was rejected for. It is left out on that reasoning. Say the word and it goes in.
 
-**Expected deletions:** `SHEET_BLUR`, `SHEET_FILL`, `SHEET_SCRIM`, `EASE_OUT`, `EASE_IN`, `OVERLAY_RISE`, `CAL_RISE`, `PANEL_IN_MS`, `PANEL_OUT_MS`, `CAL_IN_MS`, `CAL_OUT_MS`, `SCRIM_IN_MS`, `SCRIM_OUT_MS`, `GlassLayers`, and from `g`: `sheetTint`, `routeCalScrim`, `routeCalDim`, `sheetShell`, `sheetEdge`, `sheetBody`, `sheetBodyFill`, `sheetHead`, `sheetHeadSpacer`, `sheetTitle`, `sheetClose`.
+`isInteractive` is a per-site prop rather than part of a preset: it belongs to B6, B7 and B8, which are controls, and to nothing else.
 
-**If every export is gone, delete the file** and remove its import from `app/index.tsx`, `app/search.tsx`, `app/flights.tsx`, `components/FlightCard.tsx` (both import statements) and `lib/toast.tsx`.
+### 13.3 The fourteen conversions
 
-**Two rules must survive the file's death.** Both move to a comment above B9 in `components/FlightCard.tsx`. See Section 17.
+Eleven `GlassLayers` sites and three `BlurView` controls, all to `GlassView`.
+
+- **`lib/toast.tsx`** — S10 and S11. Floating chrome, exactly what the material is for. The in/hold/out Reanimated sequence stays; only the surface changes.
+- **`app/(tabs)/search/index.tsx`** — B6, B7 and B8 take the over-content preset and `isInteractive`. The route options panel and route calendar take the dark preset. **The `overflow: hidden` that clips B6 to B8 stays**: a `GlassView` does not round itself any more than a `BlurView` did.
+- **`app/(tabs)/index.tsx`** — the profile modal and the archive sheet, dark preset.
+- **`app/(tabs)/flights.tsx`** — the sheet and the menu overlay, dark preset.
+- **`components/FlightCard.tsx`** — the airport sheet, the map menu, and the third branch of the conditional site described in 13.4.
+
+**Motion is the narrow reading.** The existing animated presentations stay and their curves and durations move onto Apple's values. Replacing the custom sheets with native sheet presentation changes dismissal, drag and the back gesture, and is a larger job than the material. It is not part of this stage.
+
+### 13.4 What is not converted, and the module's death
+
+**B9, the map card in `components/FlightCard.tsx`, stays a `BlurView`.** Its comment carries measured arithmetic and a Dynamic Island concealment requirement: the blur is deliberately inset by `insets.top` so nothing samples the backdrop in the island's band, and a solid `#000000` — not `#0a0a0a`, and the comment records the five-level difference was visible — covers it, with a `LinearGradient` ramp below. `GlassView` offers no equivalent inset control, so converting it puts a seam back at the island.
+
+**Consequence: `expo-blur` stays in `package.json`.** The inline `s.airportCard` this blur sits inside is likewise left alone, including its comment recording that `sheetShell`'s "NO backgroundColor" rule does not apply there.
+
+**The conditional site is a three-way branch, and only one branch converts.** Read the comment beginning "NULL, NOT A DIMMER `GlassLayers`" before touching it. The map variant is B9 above. The trip-leg variant is deliberately `null`, because My Flights draws the legs either side as flat cards at `CARD_FILL` and the open leg is the same leg at a different size — glass between two flat cards would read as a different kind of object. **Only the third branch, which Home and Search take, renders glass and converts.** The reasoning in that comment is about matching flat cards, not about the material being too dark, so nothing in it argues against Apple's glass in the branch that does use it.
+
+**`lib/glass.tsx` is deleted.** With no fallback there is nothing left for it to hold. Its imports come out of `app/(tabs)/index.tsx`, `app/(tabs)/flights.tsx`, `app/(tabs)/search/index.tsx`, `components/FlightCard.tsx` (both import statements) and `lib/toast.tsx`.
+
+Anything still needed moves rather than dies: `SHEET_RULE` if a content divider survives, `SHEET_RADIUS` if anything still rounds to it, and the sheet body and header styles. **They move to `lib/cards.ts`**, which is already the theme file, rather than to a new module.
+
+**Two rules must survive the file's death** and move to a comment above B9 in `components/FlightCard.tsx`. See Section 17.
 
 ### 13.5 Icons to SF Symbols
 
@@ -811,7 +838,8 @@ Add:
 4. Swipe icons render as SF Symbols at the right weight and size.
 5. Each new haptic fires once, not twice.
 6. No haptic on tab switch beyond the system's own.
-7. `lib/glass.tsx` contains only its surviving exports or is gone, and nothing imports a name that no longer exists.
+7. `lib/glass.tsx` is gone. Nothing imports a name that no longer exists, and the styles that outlived it are in `lib/cards.ts`.
+8. **The build refuses to install below iOS 26.** App Store Connect reports the uploaded build's minimum OS as 26.0, and TestFlight does not offer it to a device on 25 or earlier. Check this on the first build after the deployment target lands, not later: it is the one change here that cannot be seen by looking at a screen.
 
 ---
 
