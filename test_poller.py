@@ -547,5 +547,62 @@ check("it refuses rather than reporting zero flights",
       bad.get("ok") is False and "unreadable" in bad.get("error", ""), bad)
 
 print()
+print("-- a cancellation becomes a message, with the next flight found on this poll's budget --")
+
+pollstate.forget_local()
+fr24.forget_cached()
+import mcp_server
+import notify
+
+sched = NOW + timedelta(hours=6)
+board_calls = []
+
+
+def fake_board(origin, dest, hours=12, date=None):
+    board_calls.append((origin, dest, date))
+    t = sched + timedelta(hours=3)
+    return {"flights": [{"flight_number": "AI2812", "airline": "Air India", "status": "scheduled",
+                         "departure_scheduled": "9:30 PM IST", "departure_scheduled_iso": iso(t)}]}
+
+
+mcp_server.fetch_route = fake_board
+live = [dto(dep_sched=iso(sched), arr_sched=iso(sched + timedelta(hours=2)), status="scheduled")]
+poller.fetch_flight_full = lambda number, date=None, origin=None, max_age=None: ("t", live[0])
+fr24.landing_for = lambda *a, **k: {"outcome": fr24.UNKNOWN}
+
+spend = {"adb": 0, "fr24": 0}
+r1 = poller.poll_one("6E5071", "2026-09-07", now=NOW, spend=spend)
+check("first sight: no message", not r1.get("notifications"), r1)
+live[0] = dto(dep_sched=iso(sched), arr_sched=iso(sched + timedelta(hours=2)), status="cancelled")
+r2 = poller.poll_one("6E5071", "2026-09-07", now=NOW + timedelta(minutes=31), spend=spend)
+check("the cancellation is one message", r2.get("notifications") == [notify.CANCELLED], r2.get("notifications"))
+doc, _ = pollstate.read_state("6E5071", "2026-09-07")
+msg = (doc.get("notify") or {}).get("outbox", [])
+check("it is in the outbox with the next flight named",
+      len(msg) == 1 and msg[0]["values"]["next"]["flight_number"] == "AI2812", msg)
+check("the board was asked for the cancelled flight's own day", board_calls == [("BOM", "BLR", "2026-09-07")], board_calls)
+check("and its two calls were counted against the run", spend["adb"] == 2 + notify.NEXT_CALLS_PER_DAY, spend)
+r3 = poller.poll_one("6E5071", "2026-09-07", now=NOW + timedelta(minutes=62), spend=spend)
+check("nothing more is said or asked once the search is closed",
+      not r3.get("notifications") and len(board_calls) == 1, (r3.get("notifications"), board_calls))
+
+print("-- the search waits when the run has no budget left --")
+pollstate.forget_local()
+board_calls.clear()
+live[0] = dto(dep_sched=iso(sched), arr_sched=iso(sched + timedelta(hours=2)), status="scheduled")
+poller.poll_one("6E5071", "2026-09-07", now=NOW, spend={"adb": 0, "fr24": 0})
+live[0] = dto(dep_sched=iso(sched), arr_sched=iso(sched + timedelta(hours=2)), status="cancelled")
+tight = {"adb": poller.MAX_ADB_CALLS_PER_RUN - 1, "fr24": 0}
+r = poller.poll_one("6E5071", "2026-09-07", now=NOW + timedelta(minutes=31), spend=tight)
+doc, _ = pollstate.read_state("6E5071", "2026-09-07")
+ob = (doc.get("notify") or {}).get("outbox", [])
+check("the cancellation still goes out, admitting the search is not done",
+      r.get("notifications") == [notify.CANCELLED] and ob and ob[0]["values"].get("searching") is True, ob)
+check("no board call was made past the cap", board_calls == [], board_calls)
+r = poller.poll_one("6E5071", "2026-09-07", now=NOW + timedelta(minutes=62), spend={"adb": 0, "fr24": 0})
+check("the next poll, with budget, finds it and says so",
+      r.get("notifications") == [notify.NEXT_FLIGHT] and len(board_calls) >= 1, (r.get("notifications"), board_calls))
+
+print()
 print("PASSED: %d   FAILURES: %d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)

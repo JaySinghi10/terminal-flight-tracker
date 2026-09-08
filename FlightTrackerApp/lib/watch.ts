@@ -157,7 +157,11 @@ async function post(apiBase: string, path: string, payload: object): Promise<voi
 //
 // The try covers the device-id read as well as the fetch, so a failure in
 // AsyncStorage is as silent as a failure in the network.
-export function registerWatch(apiBase: string, flightNumber: string, flightDate: string): void {
+// owned: the person is ON this flight (true) or meeting it (false). The
+// server writes the subject of a notification from it -- "your flight to X"
+// against "the flight from Y" -- so it is sent on every registration, and a
+// change of ownership re-registers. See notify.py on the server.
+export function registerWatch(apiBase: string, flightNumber: string, flightDate: string, owned: boolean): void {
   if (!ISO_DAY_RE.test(flightDate)) return;
   void (async () => {
     try {
@@ -169,6 +173,7 @@ export function registerWatch(apiBase: string, flightNumber: string, flightDate:
         // device agree on what a flight is.
         flight_number: flightNumber.toUpperCase(),
         flight_date: flightDate,
+        owned,
       });
     } catch {
       // Invisible, by design. See the note at the top of this file.

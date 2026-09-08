@@ -169,6 +169,14 @@ def _clean_push_token(value):
     return (s, None)
 
 
+def _clean_owned(value):
+    """True (the person is on the flight), False (meeting it), or None
+    (an app that predates the flag). Never rejected: a watch is a watch."""
+    if value is True or value is False:
+        return value
+    return None
+
+
 def _clean_platform(value) -> str:
     """Coerced, never rejected. A platform we do not recognise is still a device
     worth watching for, and "unknown" says exactly what we know."""
@@ -351,6 +359,10 @@ def watched_flights():
             "device_id": r.get("device_id"),
             "push_token": tok,
             "platform": r.get("platform"),
+            # ON IT OR MEETING IT. The sender writes the subject of a message
+            # from this: "your flight to X" against "the flight from Y". None
+            # reads as on it. See notify.subject.
+            "owned": _clean_owned(r.get("owned")),
         })
 
     return sorted(by_flight.values(),
@@ -358,9 +370,10 @@ def watched_flights():
                   reverse=True)
 
 
-def register_watch(device_id, push_token, platform, flight_number, flight_date):
+def register_watch(device_id, push_token, platform, flight_number, flight_date, owned=None):
     """Upsert on (device_id, flight_number, flight_date)."""
     did, err = _clean_device_id(device_id)
+    own = _clean_owned(owned)
     if err:
         return {"ok": False, "error": err}
     tok, err = _clean_push_token(push_token)
@@ -387,6 +400,10 @@ def register_watch(device_id, push_token, platform, flight_number, flight_date):
                 updated = dict(r)
                 updated["push_token"] = tok
                 updated["platform"] = plat
+                # Ownership follows the latest registration: owning a watched
+                # flight re-registers it, and so does disowning one.
+                if own is not None:
+                    updated["owned"] = own
                 updated["updated_at"] = now
                 out = list(rows)
                 out[i] = updated
@@ -408,6 +425,7 @@ def register_watch(device_id, push_token, platform, flight_number, flight_date):
             "platform": plat,
             "flight_number": num,
             "flight_date": day,
+            "owned": own,
             "created_at": now,
             "updated_at": now,
         }

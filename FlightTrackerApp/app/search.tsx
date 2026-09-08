@@ -36,7 +36,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 // COMING BACK TO THIS TAB IS A FOCUS EVENT, NOT A MOUNT. The tabs navigator keeps
 // this screen mounted when it loses focus, so nothing else can see the return.
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import {
@@ -1316,6 +1316,15 @@ export default function Search() {
   const routePanelMeasured = routePanelSize !== null;
   const [routeFiltersOpen, setRouteFiltersOpen] = useState(false);
   const [routeSort, setRouteSort] = useState<RouteSort>(ROUTE_SORT_DEFAULT);
+
+  // ── OPENED FROM A NOTIFICATION ──
+  //
+  // A cancellation's tap lands here with the route in the URL (see the
+  // response handler in app/_layout.tsx). The lookup runs once per tap: the
+  // nonce in `tap` is what distinguishes a second tap on the same route from
+  // a re-render with the same params.
+  const linkParams = useLocalSearchParams<{ from?: string; to?: string; date?: string; sort?: string; tap?: string }>();
+  const lastTapRef = useRef<string | null>(null);
   // One slot, so opening any control closes the others by construction.
   const [routeOpenDrop, setRouteOpenDrop] =
     useState<null | 'sort' | 'dep' | 'arr' | 'air' | 'orig' | 'dest'>(null);
@@ -1490,6 +1499,22 @@ export default function Search() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const from = (linkParams.from ?? '').toUpperCase();
+    const to = (linkParams.to ?? '').toUpperCase();
+    const tap = linkParams.tap ?? null;
+    if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to) || tap === null) return;
+    if (lastTapRef.current === tap) return;
+    lastTapRef.current = tap;
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(linkParams.date ?? '') ? (linkParams.date as string) : null;
+    // Earliest is the screen's own default ('departure'); a notification never
+    // asks for anything else today, and 'cheapest' waits for a fare source.
+    setRouteSort(ROUTE_SORT_DEFAULT);
+    setRouteDate(day);
+    void runRouteLookup(from, to, day);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkParams.from, linkParams.to, linkParams.date, linkParams.tap]);
 
   // Bookmark on a route row: look the flight up, then save it, without the card
   // ever appearing. It deliberately does NOT reuse runFlightLookup, which sets

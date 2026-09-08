@@ -56,6 +56,7 @@ from datetime import datetime, timedelta, timezone
 
 import fr24
 import pollstate
+import notify
 import store
 from mcp_server import fetch_flight_full
 
@@ -376,7 +377,14 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     if misses:
         record["misses"] = misses
 
-    if tier == DONE:
+    # A CANCELLED FLIGHT IS DONE, BUT ITS NEXT-FLIGHT SEARCH MAY NOT BE. The
+    # cancellation message goes out on the poll that sees it; if the route
+    # board had nothing for the first three days, the search continues on later
+    # polls -- which are polls of a DONE flight. So DONE returns early only when
+    # there is nothing left to look for, and a poll that only continues the
+    # search fetches nothing from either provider.
+    searching = bool(doc and (((doc.get("notify") or {}).get("next_search") or {}).get("done") is False))
+    if tier == DONE and not searching:
         return record
 
     # THE FLOOR SKIPS THE CHEAP TIERS, NOT THE FLIGHT. An ARRIVAL flight is
@@ -397,7 +405,7 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     if want_fr24 and spend.get("fr24", 0) >= MAX_FR24_CALLS_PER_RUN:
         want_fr24 = False
 
-    if not want_adb and not want_fr24:
+    if not want_adb and not want_fr24 and not searching:
         record["skipped"] = record.get("skipped") or "not due"
         return record
 
@@ -446,6 +454,39 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
 
     changes = diff((doc or {}).get("dto"), new_dto) if new_dto else []
 
+    # ── WHICH OF THIS IS WORTH A MESSAGE ──
+    #
+    # Decided here, outside the write below, because the one call notify can
+    # make -- the route board, on a cancellation -- leaves the process and must
+    # not sit inside a read-modify-write that may retry. The decision reads the
+    # CURRENT record against what the person was last told (notify.py), so it
+    # runs on the record we have now whether or not this poll fetched a new one:
+    # a cancellation's next-flight search continues on polls that fetch nothing.
+    current_dto = new_dto or (doc or {}).get("dto")
+    current_landing = landing if landing is not None else (doc or {}).get("landing")
+    prior_ns = (doc or {}).get("notify")
+    new_ns, messages = prior_ns, []
+    if current_dto and (new_dto or landing is not None or searching):
+        def lookup_next(origin, dest, day):
+            # A dated board is two provider calls; counted against this run's
+            # cap exactly as a flight fetch is, and refused past it so a
+            # cancellation cannot spend the poll's whole budget on one route.
+            if spend.get("adb", 0) + notify.NEXT_CALLS_PER_DAY > MAX_ADB_CALLS_PER_RUN:
+                raise RuntimeError("adb cap for this run")
+            spend["adb"] = spend.get("adb", 0) + notify.NEXT_CALLS_PER_DAY
+            from mcp_server import fetch_route
+            return (fetch_route(origin, dest, hours=12, date=day) or {}).get("flights") or []
+        try:
+            new_ns, messages = notify.decide(prior_ns, current_dto, current_landing, now,
+                                             lookup_next=lookup_next)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("poll: notify decision failed for %s/%s", number, day)
+            record["notify_error"] = str(exc)[:200]
+            new_ns, messages = prior_ns, []
+    if messages:
+        record["notifications"] = [m["kind"] for m in messages]
+        logger.info("poll: %s/%s -> %s", number, day, ", ".join(record["notifications"]))
+
     # A LANDING IS AN EVENT IN ITS OWN RIGHT, and it does not come from the DTO.
     # FR24 is the only thing allowed to say it, so it is recorded here rather
     # than inferred from any AeroDataBox field.
@@ -480,6 +521,10 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
         if want_fr24:
             d["last_fr24_at"] = pollstate._iso(now)
             d["fr24_polls"] = int(d.get("fr24_polls") or 0) + 1
+        if new_ns is not None:
+            # The last-told state and the outbox. Nothing drains the outbox yet;
+            # it is bounded inside notify.decide.
+            d["notify"] = new_ns
         if changes:
             pending = list(d.get("pending") or [])
             pending.append({"at": pollstate._iso(now), "tier": tier,
@@ -567,6 +612,10 @@ def run_once(now=None):
         # This is the only way to see what the poller is doing until dispatch
         # exists, and it is the thing to watch before letting it send anything.
         "changes": [r for r in records if r.get("changes")],
+        # AND WHAT WOULD HAVE BEEN SENT, by kind. The sentences are in the
+        # outbox on each state object, waiting for a sender.
+        "notifications": [{"flight": r["flight"], "date": r["date"], "kinds": r["notifications"]}
+                          for r in records if r.get("notifications")],
     }
     logger.info("poll: %d flights, %d adb, %d fr24, %d changed",
                 out["flights"], out["adb_calls"], out["fr24_calls"], changed)

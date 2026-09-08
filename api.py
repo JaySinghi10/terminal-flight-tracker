@@ -1007,6 +1007,9 @@ class WatchRequest(BaseModel):
     platform: str | None = None
     flight_number: str
     flight_date: str
+    # True: the person is on the flight. False: they are meeting it. Absent:
+    # an app that predates the flag, read as on it. See notify.subject.
+    owned: bool | None = None
 
 
 class UnwatchRequest(BaseModel):
@@ -1051,6 +1054,7 @@ def watch(req: WatchRequest, x_watch_secret: str | None = Header(default=None)):
         return _alert_not_found()
     result = store.register_watch(
         req.device_id, req.push_token, req.platform, req.flight_number, req.flight_date,
+        owned=req.owned,
     )
     if not result.get("ok"):
         # The distinct reason — which cap, which field — goes to the log. The

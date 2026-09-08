@@ -1663,7 +1663,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   const restoreUnsaved = useCallback(async (held: SavedFlight): Promise<boolean> => {
     const result = await saveFlight(email, held, f => !isArchived(f, Date.now()));
     setSavedFlights(result.flights);
-    if (result.ok) registerWatch(API_BASE, held.flightNumber, held.flightDate);
+    if (result.ok) registerWatch(API_BASE, held.flightNumber, held.flightDate, held.tripId !== null);
     return result.ok;
   }, [email]);
 
@@ -1705,7 +1705,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     const result = await saveFlight(email, record, f => !isArchived(f, Date.now()));
     setSavedFlights(result.flights);
     if (!result.ok) return { kind: 'limit' };
-    registerWatch(API_BASE, record.flightNumber, record.flightDate);
+    registerWatch(API_BASE, record.flightNumber, record.flightDate, record.tripId !== null);
     return { kind: 'saved', remind: await enableReminders(record) };
   }, [email, takeUndoRecord, restoreUnsaved, enableReminders]);
 
@@ -1719,6 +1719,11 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // for the same reason: one device-owned field, one store call, one setState.
   const setTrip = useCallback(async (f: SavedFlight, tripId: string | null): Promise<void> => {
     setSavedFlights(await setFlightTrip(email, f.id, tripId));
+    // OWNERSHIP IS PART OF THE WATCH. Joining a trip means the person is on
+    // the flight; leaving one means they are only watching it. The server
+    // upserts on the same key, so this is the existing watch corrected, not a
+    // second one.
+    registerWatch(API_BASE, f.flightNumber, f.flightDate, tripId !== null);
   }, [email]);
 
   // THE MERGE'S WRITE, AND IT IS NOT ON THE CONTEXT. One caller -- ownFlight --
@@ -1792,7 +1797,8 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       const result = await saveFlight(email, record, () => false);
       setSavedFlights(result.flights);
       list = result.flights;
-      registerWatch(API_BASE, record.flightNumber, record.flightDate);
+      // Owned from the first registration: this is the own path.
+      registerWatch(API_BASE, record.flightNumber, record.flightDate, true);
     }
     // ONLY WHEN NOTHING WAS ASKED FOR. An explicit id is the user's decision and
     // detection does not get a vote on it.

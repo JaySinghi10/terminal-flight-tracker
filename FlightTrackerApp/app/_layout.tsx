@@ -1,5 +1,7 @@
 import { useEffect } from "react";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
+import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import GlassTabBar from "../components/GlassTabBar";
 // THE STORE, MOUNTED ONCE FOR THE WHOLE APP. Inside GestureHandlerRootView
 // because that has to stay the outermost thing in the tree, and wrapping Tabs
@@ -63,6 +65,43 @@ export default function Layout() {
     // Hide on error too: a font failure must not leave the splash up forever.
     if (fontsLoaded || fontError) SplashScreen.hideAsync();
   }, [fontsLoaded, fontError]);
+
+  // ── A TAPPED NOTIFICATION ──
+  //
+  // The server's messages carry a deep link (notify.deep_link): a cancellation
+  // opens the route list, earliest first, with the origin, destination and
+  // date filled in. Nothing sends yet -- push needs a dev build -- so this is
+  // the receiving end, built against the payload shape the sender will use.
+  // The response listener covers a tap while the app is running or in the
+  // background; the last-response read covers a cold start from the tap.
+  const router = useRouter();
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const open = (data: Record<string, unknown> | undefined) => {
+      if (!data || data.screen !== 'search') return;
+      const from = typeof data.from === 'string' ? data.from : null;
+      const to = typeof data.to === 'string' ? data.to : null;
+      if (from === null || to === null) return;
+      router.push({
+        pathname: '/search',
+        params: {
+          from, to,
+          date: typeof data.date === 'string' ? data.date : '',
+          sort: typeof data.sort === 'string' ? data.sort : 'earliest',
+          // A fresh nonce, so tapping two notifications for the same route
+          // runs the lookup twice rather than being deduplicated as one.
+          tap: String(Date.now()),
+        },
+      });
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener(resp => {
+      open(resp.notification.request.content.data as Record<string, unknown> | undefined);
+    });
+    Notifications.getLastNotificationResponseAsync().then(resp => {
+      if (resp) open(resp.notification.request.content.data as Record<string, unknown> | undefined);
+    }).catch(() => {});
+    return () => { sub.remove(); };
+  }, [router]);
 
   if (!fontsLoaded && !fontError) return null;
 
