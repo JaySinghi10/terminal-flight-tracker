@@ -1,20 +1,20 @@
-Subject: Your booking confirmation Q8T4LM: Frankfurt - Bengaluru
+Subject: Your booking confirmation Q8T4LM: Chennai - Frankfurt
 From: Lufthansa <noreply@lufthansa.com>
 To: Jay Singhi <jay@example.com>
 Date: Sat, 20 Jun 2026 09:12:00 +0200
 MIME-Version: 1.0
 Content-Type: multipart/alternative;
- boundary="===============4031198182560073517=="
+ boundary="===============5224061881194268279=="
 
---===============4031198182560073517==
+--===============5224061881194268279==
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 7bit
 
 Booking code Q8T4LM
-LH 759 Frankfurt (FRA) 05 Oct 2026 13:35 - Bengaluru (BLR) 06 Oct 2026 01:50
+LH 759 Chennai (MAA) 05 Oct 2026 01:55 - Frankfurt (FRA) 05 Oct 2026 08:40
 Passenger: Singhi, Jay
 
---===============4031198182560073517==
+--===============5224061881194268279==
 Content-Type: text/html; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 MIME-Version: 1.0
@@ -27,16 +27,16 @@ ionConfirmed",
  "underName":{"@type":"Person","name":"Jay Singhi"},
  "reservationFor":{"@type":"Flight","flightNumber":"759",
    "airline":{"@type":"Airline","name":"Lufthansa","iataCode":"LH"},
-   "departureAirport":{"@type":"Airport","name":"Frankfurt Airport","iataCode=
-":"FRA"},
-   "departureTime":"2026-10-05T13:35:00+02:00",
-   "arrivalAirport":{"@type":"Airport","name":"Kempegowda International Airpo=
-rt","iataCode":"BLR"},
-   "arrivalTime":"2026-10-06T01:50:00+05:30"}}
+   "departureAirport":{"@type":"Airport","name":"Chennai International Airpor=
+t","iataCode":"MAA"},
+   "departureTime":"2026-10-05T01:55:00+05:30",
+   "arrivalAirport":{"@type":"Airport","name":"Frankfurt Airport","iataCode":=
+"FRA"},
+   "arrivalTime":"2026-10-05T08:40:00+02:00"}}
 </script></head>
 <body><h2>Thank you for your booking</h2><p>Booking code <b>Q8T4LM</b></p>
-<table><tr><td>LH 759</td><td>FRA 05 Oct 2026 13:35</td><td>BLR 06 Oct 2026 0=
-1:50</td><td>Boeing 747-8</td></tr></table>
+<table><tr><td>LH 759</td><td>MAA 05 Oct 2026 01:55</td><td>FRA 05 Oct 2026 0=
+8:40</td><td>Airbus A340-300</td></tr></table>
 <p>Ticket number 220-4432198877</p></body></html>
 
---===============4031198182560073517==--
+--===============5224061881194268279==--

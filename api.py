@@ -34,6 +34,7 @@ from mcp_server import (
     fetch_route,
     quota_status,
     _validate_route_date,
+    FLIGHT_MAX_FUTURE_DAYS,
 )
 
 load_dotenv()
@@ -98,9 +99,10 @@ app.add_middleware(
 @app.get("/flight/{flight_number}")
 def get_flight(flight_number: str, date: str | None = None, origin: str | None = None):
     # The same validator the route search uses, so the two cannot drift on what
-    # a date means or how far it may reach. Every rejection happens here, before
-    # any upstream call, so a malformed date costs nothing.
-    day, date_error = _validate_route_date(date)
+    # a date means -- but with the FLIGHT ceiling, which the provider puts at 180
+    # days on this plan where the board's is 60. See FLIGHT_MAX_FUTURE_DAYS.
+    # Every rejection happens here, before any upstream call.
+    day, date_error = _validate_route_date(date, max_future=FLIGHT_MAX_FUTURE_DAYS)
     if date_error is not None:
         return {"error": date_error}
     _text, dto = fetch_flight_full(flight_number, day, origin)
@@ -143,7 +145,7 @@ def get_landing(flight_number: str, date: str | None = None, dest: str | None = 
           and FR24 bills per returned record.
     reg   aircraft registration, used only to break a tie.
     """
-    day, date_error = _validate_route_date(date)
+    day, date_error = _validate_route_date(date, max_future=FLIGHT_MAX_FUTURE_DAYS)
     if date_error is not None:
         return {"error": date_error}
     result = fr24.landing_for(
@@ -323,12 +325,34 @@ GMAIL_ERRORS = {
 }
 
 
+# ── THE FIXTURE INBOX ────────────────────────────────────────────────────────
+#
+# OFF UNLESS GMAIL_FIXTURE_TOKEN IS SET ON THE SERVICE, and then only for a
+# request whose token is exactly "fixture:<that value>". The seven synthetic
+# emails in tools/gmail_fixtures stand in for the mailbox and everything from
+# decoding onward is the real path, model calls included -- which is why it is
+# a secret and not a flag: an open fixture endpoint is an open model bill.
+# Unset in production, it is a dead branch.
+GMAIL_FIXTURE_TOKEN = os.getenv("GMAIL_FIXTURE_TOKEN")
+
+
+def _is_fixture_token(token: str) -> bool:
+    if not GMAIL_FIXTURE_TOKEN or not token.startswith("fixture:"):
+        return False
+    return _secret_ok(token[len("fixture:"):], GMAIL_FIXTURE_TOKEN)
+
+
 @app.post("/gmail/flights")
 def gmail_flights_endpoint(req: GmailFlightsRequest):
     if not req.gmail_token:
         return {"error": GMAIL_ERRORS[gmail_flights.EXPIRED], "code": gmail_flights.EXPIRED, "flights": []}
     try:
-        r = gmail_flights.upcoming_flights(req.gmail_token)
+        if _is_fixture_token(req.gmail_token):
+            logger.warning("gmail flights: serving the FIXTURE inbox")
+            r = gmail_flights.upcoming_flights(
+                req.gmail_token, lister=gmail_flights.fixture_lister, fetch=gmail_flights.fixture_fetch)
+        else:
+            r = gmail_flights.upcoming_flights(req.gmail_token)
     except Exception:
         # The traceback goes to the log. Nothing from the mailbox is in it: the
         # module logs counts and codes only, and this catches what it missed.

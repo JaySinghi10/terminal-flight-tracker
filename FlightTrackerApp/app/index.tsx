@@ -17,6 +17,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -2020,6 +2021,28 @@ export default function Index() {
                 style={gm.row}
                 activeOpacity={0.7}
                 onPress={pullFromGmail}
+                // ── DEV ONLY: POINT THE PULL AT THE FIXTURE INBOX ──
+                // A long press asks for the server's GMAIL_FIXTURE_TOKEN and
+                // stores "fixture:<it>" as the Gmail token, so the next pull is
+                // served the seven synthetic emails in tools/gmail_fixtures
+                // through the real extraction path. A second long press
+                // clears it. __DEV__ so it cannot ship; Alert.prompt so it is
+                // iOS-only, which is the only platform the pull runs on.
+                onLongPress={__DEV__ ? () => {
+                  if (gmailToken !== null && gmailToken.startsWith('fixture:')) {
+                    void persistGmailToken(null);
+                    setGmailPull(IDLE_PULL);
+                    showToast('fixture inbox off');
+                    return;
+                  }
+                  Alert.prompt('fixture inbox', 'GMAIL_FIXTURE_TOKEN on the server', (v) => {
+                    const secret = (v ?? '').trim();
+                    if (secret === '') return;
+                    void persistGmailToken(`fixture:${secret}`);
+                    setGmailPull(IDLE_PULL);
+                    showToast('fixture inbox on');
+                  });
+                } : undefined}
                 disabled={gmailPull.status === 'loading'}
               >
                 <View style={sf.rowEdge} pointerEvents="none" />

@@ -38,6 +38,7 @@ The access token is used for the two Gmail calls and is not logged either.
 """
 import base64
 import email
+import os
 import email.policy
 import email.utils
 import html
@@ -793,6 +794,34 @@ def upcoming_flights(token: str, today=None, *, fetch=fetch_message, extract=ext
                 len(ids), len(fetched), structured_n, len(candidates), len(legs), len(flights))
     return {"ok": True, "code": OK, "flights": flights,
             "scanned": len(fetched), "structured": structured_n, "extracted": len(candidates)}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# A FIXTURE INBOX, so the app can be pointed at synthetic emails
+# ══════════════════════════════════════════════════════════════════════════
+#
+# tools/gmail_fixtures/*.eml are seven airline emails, none real. With these
+# two in place of list_messages and fetch_message, upcoming_flights runs the
+# same code from decode_body onward -- JSON-LD, gate, model, re-check, merge --
+# on files instead of a mailbox. The endpoint enables this ONLY for a token
+# that matches an environment secret; see api.py.
+FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "gmail_fixtures")
+
+
+def fixture_lister(token, today):
+    try:
+        names = sorted(f for f in os.listdir(FIXTURE_DIR) if f.endswith(".eml"))
+    except OSError:
+        return [], ERROR
+    return names, OK
+
+
+def fixture_fetch(token, name):
+    try:
+        with open(os.path.join(FIXTURE_DIR, name), "rb") as f:
+            return decode_body(base64.urlsafe_b64encode(f.read()).decode().rstrip("="))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def soonest(flights: list[dict]) -> dict | None:

@@ -31,6 +31,8 @@ def base(subject, sender, date):
 # strip at the bottom. No plain-text alternative at all.
 indigo = base("Booking Confirmation - PNR R7K3XQ | 6E 5071 | Mumbai - Bengaluru",
               "IndiGo <no-reply@goindigo.in>", "Mon, 02 Mar 2026 15:45:10 +0530")
+# 6E5071 flies BOM-BLR at 15:35 on Tuesday 15 September 2026 (checked against
+# the provider); it does not operate on the 14th, which the first draft used.
 indigo.set_content("""<!DOCTYPE html><html><head><meta charset="utf-8"><title>IndiGo</title>
 <style>body{font-family:Arial} .h{background:#001B94;color:#fff}</style></head>
 <body>
@@ -38,7 +40,7 @@ indigo.set_content("""<!DOCTYPE html><html><head><meta charset="utf-8"><title>In
 <tr><td>PNR</td><td><b>R7K3XQ</b></td><td>Booking date</td><td>02 Mar 2026</td></tr>
 <tr><td colspan="4">Dear Jay Singhi, thank you for choosing IndiGo.</td></tr>
 <tr class="h"><td>Flight</td><td>From</td><td>To</td><td>Date</td></tr>
-<tr><td><b>6E</b> 5071</td><td>Mumbai (BOM)<br>Terminal 2<br>10:35</td><td>Bengaluru (BLR)<br>Terminal 1<br>12:20</td><td>Sat, 14 Sep 2026</td></tr>
+<tr><td><b>6E</b> 5071</td><td>Mumbai (BOM)<br>Terminal 1<br>15:35</td><td>Bengaluru (BLR)<br>Terminal 1<br>17:25</td><td>Tue, 15 Sep 2026</td></tr>
 <tr><td colspan="4">Passenger: MR JAY SINGHI &nbsp; Seat: 14A &nbsp; Meal: Veg</td></tr>
 <tr><td colspan="4">Fare INR 4,999 &nbsp; Convenience fee INR 350 &nbsp; Total INR 5,349</td></tr>
 <tr><td colspan="4">Web check-in opens 48 hours before departure. Carry a valid photo ID.</td></tr>
@@ -49,10 +51,10 @@ write("01_indigo_html_only.eml", indigo)
 # ── 2. LUFTHANSA WITH JSON-LD ───────────────────────────────────────────────
 # Lufthansa Group emails carry a schema.org FlightReservation block with the
 # number alone in flightNumber and the carrier in airline.iataCode.
-lh = base("Your booking confirmation Q8T4LM: Frankfurt - Bengaluru",
+lh = base("Your booking confirmation Q8T4LM: Chennai - Frankfurt",
           "Lufthansa <noreply@lufthansa.com>", "Sat, 20 Jun 2026 09:12:00 +0200")
 lh.set_content("""Booking code Q8T4LM
-LH 759 Frankfurt (FRA) 05 Oct 2026 13:35 - Bengaluru (BLR) 06 Oct 2026 01:50
+LH 759 Chennai (MAA) 05 Oct 2026 01:55 - Frankfurt (FRA) 05 Oct 2026 08:40
 Passenger: Singhi, Jay
 """)
 lh.add_alternative("""<html><head>
@@ -62,13 +64,13 @@ lh.add_alternative("""<html><head>
  "underName":{"@type":"Person","name":"Jay Singhi"},
  "reservationFor":{"@type":"Flight","flightNumber":"759",
    "airline":{"@type":"Airline","name":"Lufthansa","iataCode":"LH"},
-   "departureAirport":{"@type":"Airport","name":"Frankfurt Airport","iataCode":"FRA"},
-   "departureTime":"2026-10-05T13:35:00+02:00",
-   "arrivalAirport":{"@type":"Airport","name":"Kempegowda International Airport","iataCode":"BLR"},
-   "arrivalTime":"2026-10-06T01:50:00+05:30"}}
+   "departureAirport":{"@type":"Airport","name":"Chennai International Airport","iataCode":"MAA"},
+   "departureTime":"2026-10-05T01:55:00+05:30",
+   "arrivalAirport":{"@type":"Airport","name":"Frankfurt Airport","iataCode":"FRA"},
+   "arrivalTime":"2026-10-05T08:40:00+02:00"}}
 </script></head>
 <body><h2>Thank you for your booking</h2><p>Booking code <b>Q8T4LM</b></p>
-<table><tr><td>LH 759</td><td>FRA 05 Oct 2026 13:35</td><td>BLR 06 Oct 2026 01:50</td><td>Boeing 747-8</td></tr></table>
+<table><tr><td>LH 759</td><td>MAA 05 Oct 2026 01:55</td><td>FRA 05 Oct 2026 08:40</td><td>Airbus A340-300</td></tr></table>
 <p>Ticket number 220-4432198877</p></body></html>""", subtype="html")
 write("02_lufthansa_jsonld.eml", lh)
 

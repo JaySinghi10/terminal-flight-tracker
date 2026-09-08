@@ -814,6 +814,17 @@ ROUTE_WINDOW_SPACING_SECONDS = 1.3
 # evidence stops, so it is where we stop: beyond it we would be guessing.
 ROUTE_MAX_FUTURE_DAYS = 60
 
+# ── A SINGLE FLIGHT REACHES FURTHER THAN A BOARD ─────────────────────────────
+#
+# THE PROVIDER SAID THE NUMBER ITSELF. Dated lookups of LH759 and BA178 were
+# answered at +61, +90, +120 and +180 days, and at +200 the provider returned
+# 400 with: "Specified date-time '27.03.2027 00:00' must not be later than 180
+# day(s) ahead. Please consider upgrading your plan." So 180 is not a guess
+# and it is not the board's 60: a booking confirmation arrives months out, and
+# the Gmail pull was refusing five legs in seven at the validator before the
+# provider was ever asked. The board keeps its own, evidenced, ceiling.
+FLIGHT_MAX_FUTURE_DAYS = 180
+
 # Local dates run from UTC-12 to UTC+14, so an airport's own calendar date can be
 # a day behind the server's UTC date. One day of slack lets a genuinely-today
 # request through for those airports without opening up real history.
@@ -1040,10 +1051,14 @@ def _route_result(origin, destination, hours, flights=None, total_found=0,
     }
 
 
-def _validate_route_date(raw):
+def _validate_route_date(raw, max_future=ROUTE_MAX_FUTURE_DAYS):
     """(day, error). day is None for a rolling search, a "YYYY-MM-DD" string for a
     dated one. Every rejection happens before any network call, so a malformed
     date costs nothing upstream.
+
+    `max_future` is the ceiling in days. The board's callers take the default;
+    a single-flight lookup passes FLIGHT_MAX_FUTURE_DAYS, because the two are
+    different questions with different evidenced limits.
     """
     if raw is None or str(raw).strip() == "":
         return None, None
@@ -1062,8 +1077,8 @@ def _validate_route_date(raw):
     today = datetime.now(timezone.utc).date()
     if asked < today - timedelta(days=ROUTE_MAX_PAST_DAYS):
         return None, "Route search does not cover past dates."
-    if asked > today + timedelta(days=ROUTE_MAX_FUTURE_DAYS):
-        return None, f"Route search reaches {ROUTE_MAX_FUTURE_DAYS} days ahead at most."
+    if asked > today + timedelta(days=max_future):
+        return None, f"Lookups reach {max_future} days ahead at most."
     return day, None
 
 
