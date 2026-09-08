@@ -141,6 +141,49 @@ export const PAGE_BG = '#0a0a0a';
 // cannot come apart.
 export const PAGE_RGB = '10,10,10';
 
+// ── APPLE'S GLASS, AS TWO PRESETS ───────────────────────────────────────────
+//
+// STAGE 10 REPLACED THE HAND-BUILT MATERIAL. lib/glass.tsx assembled every
+// surface from three pieces -- a BlurView, a tint over it, and a hairline
+// sibling -- inside a wrapper whose overflow clipped all three to a radius.
+// expo-glass-effect's GlassView is one view that is the material, rounds its
+// own effect through borderRadius, and draws its own edge. So a converted
+// surface is the glass view, with a radius, and nothing inside it but content.
+//
+// TWO PRESETS, NOT A SCALE. Four kinds of surface do not justify a levels
+// system, and a preset nothing renders is a preset nobody can check. A light
+// preset was considered and left out for exactly that reason: this app is
+// dark-only -- userInterfaceStyle is "dark" and the page is PAGE_BG -- so
+// nothing in the tree would ever have taken it.
+//
+// SPREAD, NOT WRAPPED. These are prop objects rather than a component, because
+// a component would be a third thing to keep in step with the two real
+// variables: the style and whether the surface is interactive. `<GlassView
+// {...GLASS_DARK} style={...} />` says what it is at the call site.
+//
+// iOS 26 IS THE FLOOR, AND IT IS ENFORCED IN THE BUILD. GlassView does not
+// degrade: below 26 its availability check fails and it holds an empty effect,
+// which renders NOTHING -- a converted sheet would be a transparent rectangle
+// with its text floating over whatever is behind it. There is no fallback path
+// here on purpose. app.json sets ios.deploymentTarget to 26.0 through
+// expo-build-properties, so a phone that cannot draw this cannot install the
+// app at all. SPEC 13.1.
+
+// EVERY SHEET, PANEL, MENU AND TOAST. `regular` is the material Apple uses for
+// chrome that sits over ordinary content.
+export const GLASS_DARK = { glassEffectStyle: 'regular', colorScheme: 'dark' } as const;
+
+// THE CONTROLS THAT FLOAT ON THE MAP. `clear` is thinner and lets what is
+// behind it read through, which is the point when the thing behind is the globe
+// rather than a list. isInteractive is NOT here: it belongs to a control and
+// these three are the only controls, so it is passed at those three call sites
+// rather than baked into a preset the sheets also use.
+export const GLASS_OVER_CONTENT = { glassEffectStyle: 'clear', colorScheme: 'dark' } as const;
+
+// THE RADIUS EVERY GLASS SURFACE ROUNDS TO. It was SHEET_RADIUS in lib/glass.tsx
+// and it means the same thing; it lives here now because the material does.
+export const GLASS_RADIUS = 16;
+
 // THE TWO ENTRIES BOTH SCREENS READ, and the only reason this file now declares
 // a stylesheet at all.
 //

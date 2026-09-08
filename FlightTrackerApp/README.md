@@ -2,6 +2,10 @@
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
+## Requirements
+
+**iOS 26 or later.** `app.json` sets `ios.deploymentTarget` to 26.0, so the app cannot be installed on anything earlier. Its surfaces are Apple's glass, which exists only on iOS 26 and renders nothing below it. There is deliberately no fallback. See SPEC.md section 13.1.
+
 ## Get started
 
 1. Install dependencies

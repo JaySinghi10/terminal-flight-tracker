@@ -778,7 +778,7 @@ The material is chosen in the theme file, `lib/cards.ts`, beside `PAGE_BG` and t
 Eleven `GlassLayers` sites and three `BlurView` controls, all to `GlassView`.
 
 - **`lib/toast.tsx`** — S10 and S11. Floating chrome, exactly what the material is for. The in/hold/out Reanimated sequence stays; only the surface changes.
-- **`app/(tabs)/search/index.tsx`** — B6, B7 and B8 take the over-content preset and `isInteractive`. The route options panel and route calendar take the dark preset. **The `overflow: hidden` that clips B6 to B8 stays**: a `GlassView` does not round itself any more than a `BlurView` did.
+- **`app/(tabs)/search/index.tsx`** — B6, B7 and B8 take the over-content preset and `isInteractive`. The route options panel and route calendar take the dark preset. **The clipping wrappers collapse.** `GlassView` takes `borderRadius` as a real prop and applies it to the effect's own corner configuration, so the `overflow: hidden` that had to clip a `BlurView` to its shape is no longer needed anywhere. A converted surface is the glass view itself with a radius, not a rounded box with an absolutely-positioned material inside it, and the hairline sibling goes too: Apple's material draws its own edge.
 - **`app/(tabs)/index.tsx`** — the profile modal and the archive sheet, dark preset.
 - **`app/(tabs)/flights.tsx`** — the sheet and the menu overlay, dark preset.
 - **`components/FlightCard.tsx`** — the airport sheet, the map menu, and the third branch of the conditional site described in 13.4.

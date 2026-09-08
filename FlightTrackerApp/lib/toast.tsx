@@ -26,8 +26,8 @@ import Reanimated, {
   withTiming, withSequence, withDelay, Easing as REasing,
 } from 'react-native-reanimated';
 import { useSaved } from './saved';
-import { GlassLayers, g } from './glass';
-import { CARD_PAD } from './cards';
+import { GlassView } from 'expo-glass-effect';
+import { CARD_PAD, GLASS_DARK, GLASS_RADIUS } from './cards';
 
 // Declared here rather than imported from a screen, exactly as every other
 // module in lib/ and components/ declares its own. The values are the family
@@ -240,26 +240,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           and sit above it, which is correct — a sheet is a thing you are in,
           and this is a note about something you just did to the page behind it.
 
-          The surface is the app's glass, from the same constants and the same
-          GlassLayers every sheet and panel uses, so it cannot drift from them:
-          sheetShell for the radius and the clip, GlassLayers for the blur and
-          the tint, sheetEdge for the hairline. */}
+          THE SURFACE IS APPLE'S NOW (Stage 10). It was a rounded box with a
+          blur, a tint and a hairline stacked inside it and clipped by the box's
+          overflow -- four views to say "glass". A GlassView IS the material: it
+          rounds its own effect from borderRadius and draws its own edge, so the
+          box, the tint and the hairline are all gone and what is left is the
+          surface and the text on it. GLASS_DARK in lib/cards.ts is the preset
+          every sheet and panel takes, so this still cannot drift from them. */}
       {toastMsg !== '' && (
         <Reanimated.View
           pointerEvents="none"
           style={[s.toastWrap, { top: insets.top + 12 }, toastStyle]}
         >
-          <View style={[g.sheetShell, s.toastCard]}>
-            <GlassLayers />
-            <View style={g.sheetEdge} pointerEvents="none" />
+          <GlassView {...GLASS_DARK} style={[s.toastCard, { borderRadius: GLASS_RADIUS }]}>
             <Text style={s.toastText} numberOfLines={1}>{toastMsg}</Text>
-          </View>
+          </GlassView>
         </Reanimated.View>
       )}
-      {/* THE UNDO BANNER. Same material as every other surface in the app —
-          sheetShell for the radius and the clip, GlassLayers for the blur and
-          the tint, sheetEdge for the hairline — because a second glass would be
-          a second thing to keep in step with the first.
+      {/* THE UNDO BANNER. The same GLASS_DARK preset as the toast above and as
+          every sheet in the app, because a second glass would be a second thing
+          to keep in step with the first.
 
           THE TOAST'S OWN POSITION, top and insets.top + 12, sharing s.toastWrap
           so the two cannot drift apart. It sat at the bottom on the reasoning
@@ -281,9 +281,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <Reanimated.View
           style={[s.toastWrap, { top: insets.top + 12 }, undoStyle]}
         >
-          <View style={[g.sheetShell, s.undoCard]}>
-            <GlassLayers />
-            <View style={g.sheetEdge} pointerEvents="none" />
+          <GlassView {...GLASS_DARK} style={[s.undoCard, { borderRadius: GLASS_RADIUS }]}>
             <Text style={s.toastText} numberOfLines={1}>{undoMsg}</Text>
             {/* #4ade80 because this is live and actionable, which is the one
                 thing the green is for in this app. hitSlop rather than padding:
@@ -295,7 +293,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             >
               <Text style={s.undoAction}>{'undo'}</Text>
             </TouchableOpacity>
-          </View>
+          </GlassView>
         </Reanimated.View>
       )}
       </View>

@@ -20,6 +20,8 @@ The app also ran on real hardware for the first time this week. Before that ever
 
 ## 2. The app
 
+**It requires iOS 26 or later, and this is enforced in the build.** `app.json` sets `ios.deploymentTarget` to 26.0 through `expo-build-properties`, so a phone below 26 cannot install it. The reason is the surface material: every sheet, panel, menu and toast is Apple's glass through `expo-glass-effect`, which exists only on 26 and does not degrade -- below that it renders nothing at all rather than something plainer, so a converted surface would be a transparent rectangle with text floating on it. A fallback path was considered and rejected: no tester's phone would ever take it, which makes it code that cannot be checked. See SPEC.md 13.1.
+
 React Native and Expo, file-based routing, four tabs. In tab order: **Home**, **My Flights**, **Deck**, **Search**.
 
 **Home** is the search field and the result. You type a flight number and get a card. Under it sits the watchlist, a row that pulls flights out of Gmail, a section for legs the airline has not published yet, and a profile sheet holding Google sign-in.
