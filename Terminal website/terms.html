@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Terms · Terminal</title>
+  <meta name="description" content="The terms for using Terminal. Flight information is provided as-is, may be wrong or late, and is not a substitute for checking with your airline."/>
+  <meta name="theme-color" content="#050505"/>
+  <meta name="robots" content="index,follow"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <style>
+/* The same tokens as index.html. A legal page is a column of text on the
+   same black, under the same header, so the two never look like different
+   sites. Green is reserved for links, the one actionable thing here. */
+:root{
+  --bg:#050505;--fg-rgb:226 226 226;--fg:rgb(var(--fg-rgb));
+  --green:#4ade80;
+  --t2:rgb(var(--fg-rgb)/.72);--t3:rgb(var(--fg-rgb)/.48);--t4:rgb(var(--fg-rgb)/.3);
+  --line:rgb(255 255 255/.08);
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --pad:20px;--maxw:1180px;--top:58px;
+}
+@media(min-width:640px){:root{--pad:32px}}
+@media(min-width:1024px){:root{--pad:64px}}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+a{color:inherit}
+
+.dot-grid{position:fixed;inset:0;background:var(--bg);z-index:0;overflow:hidden;pointer-events:none}
+.dot-grid::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgb(255 255 255/.22) 1px,transparent 1px);background-size:20px 20px;
+  -webkit-mask-image:radial-gradient(circle 420px at var(--mx,70%) var(--my,30%),black 0%,transparent 100%);mask-image:radial-gradient(circle 420px at var(--mx,70%) var(--my,30%),black 0%,transparent 100%)}
+.page{position:relative;z-index:10}
+
+.top{position:fixed;top:0;left:0;right:0;z-index:100;background:rgb(5 5 5/.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.top-in{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad);display:flex;justify-content:space-between;align-items:center;gap:16px}
+.brand{font-family:var(--mono);font-size:1rem;font-weight:500;letter-spacing:-.02em;color:var(--fg);padding:16px 0;text-decoration:none}
+.brand i{font-style:normal;color:var(--green)}
+.xlink{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.7rem;color:var(--t2);text-decoration:none;padding:8px 0;white-space:nowrap}
+.xlink:hover{color:var(--fg)}
+@media(min-width:640px){.xlink{font-size:.78rem}}
+
+/* ── THE TEXT ── One column, 62 characters wide, because terms that run the
+   full width of a monitor are terms nobody reads. */
+.legal{max-width:640px;margin:0 auto;padding:calc(var(--top) + 48px) var(--pad) 72px}
+.eyebrow{font-family:var(--mono);font-size:.66rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--t3);margin-bottom:16px}
+h1{font-size:clamp(2rem,8.5vw,2.6rem);font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-bottom:14px}
+.meta{font-family:var(--mono);font-size:.74rem;color:var(--t4);margin-bottom:36px}
+.lede{font-size:1.1rem;color:var(--t2);margin-bottom:40px;line-height:1.55}
+h2{font-size:1.15rem;font-weight:600;letter-spacing:-.02em;margin:40px 0 12px;padding-top:28px;border-top:1px solid var(--line)}
+h2 b{font-family:var(--mono);font-weight:500;font-size:.66rem;color:var(--green);letter-spacing:.08em;margin-right:10px;vertical-align:middle}
+p{margin-bottom:14px;color:var(--t2)}
+p strong{color:var(--fg);font-weight:600}
+ul{margin:0 0 16px 0;padding-left:0;list-style:none}
+li{position:relative;padding-left:20px;margin-bottom:8px;color:var(--t2)}
+li::before{content:'';position:absolute;left:0;top:.72em;width:6px;height:6px;border-radius:3px;background:var(--t4)}
+li strong{color:var(--fg);font-weight:600}
+a.in{color:var(--green);text-decoration:none;border-bottom:1px solid rgb(74 222 128/.35)}
+a.in:hover{border-bottom-color:var(--green)}
+@media(min-width:760px){.legal{padding-top:calc(var(--top) + 80px);padding-bottom:110px}h1{margin-bottom:18px}}
+
+footer{padding:26px var(--pad) 44px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px 20px;font-family:var(--mono);font-size:.74rem;color:var(--t4);max-width:var(--maxw);margin:0 auto}
+footer a{color:var(--t3);text-decoration:none}footer a:hover{color:var(--fg)}
+footer .brand{font-size:.85rem;color:var(--t3);padding:0}
+footer .links{display:flex;gap:18px}
+  </style>
+</head>
+<body>
+<div class="dot-grid" id="dotGrid"></div>
+<div class="page">
+
+  <header class="top">
+    <div class="top-in">
+      <a class="brand" href="/"><i>&gt;</i> Terminal</a>
+      <a class="xlink" href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer" aria-label="Jayo10o on X">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.46l8.6-9.83L0 1.15h7.59l5.24 6.93zm-1.29 19.5h2.04L6.49 3.24H4.3z"/></svg><span class="h">@Jayo10o</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="legal">
+    <div class="eyebrow">Terms of service</div>
+    <h1>The deal, in plain words</h1>
+    <div class="meta">Last updated 8 September 2026</div>
+
+    <p class="lede">Terminal is a flight tracker for iPhone. By using it you agree to what follows. It is short because there is not much to agree to, and the one part that matters is the first one.</p>
+
+    <h2><b>01</b>Flight information can be wrong</h2>
+    <p>Terminal shows schedules, gates, delays, cancellations and landings. All of it comes from third-party data feeds, and <strong>all of it is provided as-is</strong>. It can be late, incomplete, or plainly wrong, and the app has no way to know when it is. A gate can change after the app last looked. A flight can be cancelled before the feed says so. Airlines change their minds.</p>
+    <p><strong>Terminal is not a substitute for checking with your airline.</strong> The airline's app, its website, its text messages and the screens in the airport are the authority. If Terminal and the airline disagree, the airline is right.</p>
+
+    <h2><b>02</b>Missed flights are on you</h2>
+    <p>If you miss a flight, a connection, a gate change or a boarding call because you relied on Terminal, that is not something we can be responsible for. We are not liable for missed flights, rebooking costs, hotel nights, lost time or anything else that follows from information in the app being wrong or late. Use it as one more source, and go to the gate early.</p>
+
+    <h2><b>03</b>What you get</h2>
+    <p>The app is free and there is no account. You can use it for tracking your own travel. Please do not use it to hammer the service with automated requests, to scrape the data feeds behind it, or to do anything that costs other people their flight updates. The service has limits, and one person abusing them can switch everyone else off.</p>
+
+    <h2><b>04</b>Gmail is your choice</h2>
+    <p>Connecting Gmail is optional. If you do, you are letting Terminal read booking confirmations to find your flights, on the terms in the <a class="in" href="/privacy">privacy policy</a>. You can disconnect at any time, in the app or from your Google account. The flights it finds are subject to section 01 like every other flight.</p>
+
+    <h2><b>05</b>The service can change or stop</h2>
+    <p>This is a small app built by one person. Features may change, data providers may change, and the app may one day stop working or be withdrawn. We will try to give notice, but cannot promise it.</p>
+
+    <h2><b>06</b>Changes to these terms</h2>
+    <p>If these terms change, this page changes and the date at the top moves. Using the app after that means you accept the new version.</p>
+
+    <h2><b>07</b>Contact</h2>
+    <p>Questions about any of this go to <a class="in" href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer">@Jayo10o</a> on X.</p>
+  </main>
+
+  <footer>
+    <div class="brand"><i>&gt;</i> Terminal</div>
+    <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer">@Jayo10o</a></div>
+    <div>© 2026</div>
+  </footer>
+</div>
+<script>
+(function(){
+  var grid=document.getElementById('dotGrid');
+  if(grid&&window.matchMedia('(pointer: fine)').matches&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    window.addEventListener('mousemove',function(e){grid.style.setProperty('--mx',e.clientX+'px');grid.style.setProperty('--my',e.clientY+'px');},{passive:true});
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Privacy · Terminal</title>
+  <meta name="description" content="What Terminal keeps on your phone, what it keeps on its server, what it sends to Google, Flightradar24 and AeroDataBox, and how to delete all of it."/>
+  <meta name="theme-color" content="#050505"/>
+  <meta name="robots" content="index,follow"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <style>
+/* The same tokens as index.html. A legal page is a column of text on the
+   same black, under the same header, so the two never look like different
+   sites. Green is reserved for links, the one actionable thing here. */
+:root{
+  --bg:#050505;--fg-rgb:226 226 226;--fg:rgb(var(--fg-rgb));
+  --green:#4ade80;
+  --t2:rgb(var(--fg-rgb)/.72);--t3:rgb(var(--fg-rgb)/.48);--t4:rgb(var(--fg-rgb)/.3);
+  --line:rgb(255 255 255/.08);
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --pad:20px;--maxw:1180px;--top:58px;
+}
+@media(min-width:640px){:root{--pad:32px}}
+@media(min-width:1024px){:root{--pad:64px}}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+a{color:inherit}
+
+.dot-grid{position:fixed;inset:0;background:var(--bg);z-index:0;overflow:hidden;pointer-events:none}
+.dot-grid::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgb(255 255 255/.22) 1px,transparent 1px);background-size:20px 20px;
+  -webkit-mask-image:radial-gradient(circle 420px at var(--mx,70%) var(--my,30%),black 0%,transparent 100%);mask-image:radial-gradient(circle 420px at var(--mx,70%) var(--my,30%),black 0%,transparent 100%)}
+.page{position:relative;z-index:10}
+
+.top{position:fixed;top:0;left:0;right:0;z-index:100;background:rgb(5 5 5/.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.top-in{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad);display:flex;justify-content:space-between;align-items:center;gap:16px}
+.brand{font-family:var(--mono);font-size:1rem;font-weight:500;letter-spacing:-.02em;color:var(--fg);padding:16px 0;text-decoration:none}
+.brand i{font-style:normal;color:var(--green)}
+.xlink{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.7rem;color:var(--t2);text-decoration:none;padding:8px 0;white-space:nowrap}
+.xlink:hover{color:var(--fg)}
+@media(min-width:640px){.xlink{font-size:.78rem}}
+
+/* ── THE TEXT ── One column, 62 characters wide, because a policy that runs
+   the full width of a monitor is a policy nobody reads. */
+.legal{max-width:640px;margin:0 auto;padding:calc(var(--top) + 48px) var(--pad) 72px}
+.eyebrow{font-family:var(--mono);font-size:.66rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--t3);margin-bottom:16px}
+h1{font-size:clamp(2rem,8.5vw,2.6rem);font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-bottom:14px}
+.meta{font-family:var(--mono);font-size:.74rem;color:var(--t4);margin-bottom:36px}
+.lede{font-size:1.1rem;color:var(--t2);margin-bottom:40px;line-height:1.55}
+h2{font-size:1.15rem;font-weight:600;letter-spacing:-.02em;margin:40px 0 12px;padding-top:28px;border-top:1px solid var(--line)}
+h2 b{font-family:var(--mono);font-weight:500;font-size:.66rem;color:var(--green);letter-spacing:.08em;margin-right:10px;vertical-align:middle}
+p{margin-bottom:14px;color:var(--t2)}
+p strong{color:var(--fg);font-weight:600}
+ul{margin:0 0 16px 0;padding-left:0;list-style:none}
+li{position:relative;padding-left:20px;margin-bottom:8px;color:var(--t2)}
+li::before{content:'';position:absolute;left:0;top:.72em;width:6px;height:6px;border-radius:3px;background:var(--t4)}
+li strong{color:var(--fg);font-weight:600}
+code{font-family:var(--mono);font-size:.86em;color:var(--fg)}
+a.in{color:var(--green);text-decoration:none;border-bottom:1px solid rgb(74 222 128/.35)}
+a.in:hover{border-bottom-color:var(--green)}
+@media(min-width:760px){.legal{padding-top:calc(var(--top) + 80px);padding-bottom:110px}h1{margin-bottom:18px}}
+
+footer{padding:26px var(--pad) 44px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px 20px;font-family:var(--mono);font-size:.74rem;color:var(--t4);max-width:var(--maxw);margin:0 auto}
+footer a{color:var(--t3);text-decoration:none}footer a:hover{color:var(--fg)}
+footer .brand{font-size:.85rem;color:var(--t3);padding:0}
+footer .links{display:flex;gap:18px}
+  </style>
+</head>
+<body>
+<div class="dot-grid" id="dotGrid"></div>
+<div class="page">
+
+  <header class="top">
+    <div class="top-in">
+      <a class="brand" href="/"><i>&gt;</i> Terminal</a>
+      <a class="xlink" href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer" aria-label="Jayo10o on X">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.46l8.6-9.83L0 1.15h7.59l5.24 6.93zm-1.29 19.5h2.04L6.49 3.24H4.3z"/></svg><span class="h">@Jayo10o</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="legal">
+    <div class="eyebrow">Privacy policy</div>
+    <h1>What Terminal knows about you</h1>
+    <div class="meta">Last updated 8 September 2026</div>
+
+    <p class="lede">Terminal is a flight tracker for iPhone, built by one person. It works without an account, it shows no ads, and it does not sell anything about you to anyone. This page says exactly what it keeps, where, and how to make it forget.</p>
+
+    <h2><b>01</b>On your phone</h2>
+    <p>Almost everything lives on the phone and nowhere else.</p>
+    <ul>
+      <li><strong>Your flights.</strong> Every flight you save, with its times, gates and status, is stored on the device. There is no copy on our server.</li>
+      <li><strong>Flights from your email that the airline has not published yet.</strong> Flight number, date, route and booking reference, kept on the phone until the airline's schedule catches up.</li>
+      <li><strong>Reminders.</strong> Scheduled on the phone by the phone.</li>
+      <li><strong>Your Google email address,</strong> if you sign in with Google. It is used only to keep your saved list separate from a guest list on the same phone. It is never sent to our server.</li>
+      <li><strong>Your location,</strong> if you allow it. It is used once, on the phone, to work out the nearest airport. It never leaves the device.</li>
+      <li><strong>A random install id.</strong> A code the app makes up the first time it runs. It identifies the install, not you, and it is the only thing the server knows you by.</li>
+    </ul>
+    <p>Delete the app and all of this is gone.</p>
+
+    <h2><b>02</b>On our server</h2>
+    <p>The server keeps one thing: a <strong>watch list</strong>. Its job is to notice when a flight you saved changes, so the app can tell you. Each entry holds:</p>
+    <ul>
+      <li>the random install id from above,</li>
+      <li>a flight number and a date,</li>
+      <li>a push notification token, only if you have allowed notifications.</li>
+    </ul>
+    <p>No names. No email addresses. Nothing that says who holds the phone. An entry is deleted two days after the flight's date, and unsaving a flight in the app deletes it at once.</p>
+    <p>The server runs on Google Cloud, in Google's Mumbai region.</p>
+
+    <h2><b>03</b>Gmail, if you connect it</h2>
+    <p>You can let Terminal find your flights in your inbox. This is optional and off until you turn it on. When you do:</p>
+    <ul>
+      <li>We ask Google for <strong>read-only</strong> access to Gmail. Terminal cannot send, delete or change anything in your mail.</li>
+      <li>The app searches for recent booking confirmations and reads only the messages that look like one. It does not read the rest of your mail.</li>
+      <li>The text of a matching email is sent to <strong>Google's Gemini</strong> model, which pulls out the flight number, date, route and booking reference. That text is truncated before it is sent, is never written to a log, and is never stored. Once the flight details are out, the email is forgotten.</li>
+      <li>The flight details go back to your phone, and only there.</li>
+      <li>We store a <strong>refresh token</strong> from Google so the connection survives between sessions and you do not have to sign in every time.</li>
+    </ul>
+    <p>The assistant inside the app works the same way: anything you type into it is sent to Gemini to be answered, and is not kept.</p>
+
+    <h2><b>04</b>Who else sees anything</h2>
+    <p>Four companies, and only what each needs:</p>
+    <ul>
+      <li><strong>Google Cloud</strong> hosts the server and the watch list.</li>
+      <li><strong>Google Gemini</strong> receives the text of booking emails you let us read, and what you type into the assistant.</li>
+      <li><strong>Flightradar24</strong> and <strong>AeroDataBox</strong> receive flight numbers and dates, so the app can show schedules, gates and whether the aircraft has landed. They never receive your install id or anything about you.</li>
+    </ul>
+    <p>That is the whole list. There is no analytics kit, no crash reporter, no advertising network and no data broker.</p>
+
+    <h2><b>05</b>What we do not do</h2>
+    <ul>
+      <li>No accounts. Google sign-in exists only to reach Gmail.</li>
+      <li>No advertising, in the app or anywhere else.</li>
+      <li>No selling, renting or sharing of your data.</li>
+      <li>No tracking across other apps or sites.</li>
+    </ul>
+
+    <h2><b>06</b>Disconnecting and deleting</h2>
+    <ul>
+      <li><strong>Disconnect Gmail:</strong> sign out of Google inside the app. That deletes the token from your phone and the refresh token from our server. You can also revoke Terminal's access at <a class="in" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>, which cuts it off from Google's side no matter what the app does.</li>
+      <li><strong>Delete a flight from the server:</strong> unsave it in the app. Entries also delete themselves two days after the flight.</li>
+      <li><strong>Delete everything on the phone:</strong> delete the app.</li>
+      <li><strong>Anything else:</strong> message <a class="in" href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer">@Jayo10o</a> on X with your request. Since the server holds no name or email, tell us the flights on your list and we will remove them.</li>
+    </ul>
+
+    <h2><b>07</b>Changes</h2>
+    <p>If any of this changes, this page changes, and the date at the top moves. The app will not start collecting something new without saying so here first.</p>
+  </main>
+
+  <footer>
+    <div class="brand"><i>&gt;</i> Terminal</div>
+    <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer">@Jayo10o</a></div>
+    <div>© 2026</div>
+  </footer>
+</div>
+<script>
+(function(){
+  var grid=document.getElementById('dotGrid');
+  if(grid&&window.matchMedia('(pointer: fine)').matches&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    window.addEventListener('mousemove',function(e){grid.style.setProperty('--mx',e.clientX+'px');grid.style.setProperty('--my',e.clientY+'px');},{passive:true});
+  }
+})();
+</script>
+</body>
+</html>
