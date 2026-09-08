@@ -134,6 +134,8 @@ import { useFlightCardHost, FlightError } from '../lib/flightcard';
 // this screen and the /chat request that sends it is on the search screen, so it
 // is the one piece of the account that had to stop being one screen's.
 import { useAccount } from '../lib/account';
+// A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
+import { pendingFromLeg } from '../lib/pendingRules';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -1161,6 +1163,7 @@ export default function Index() {
     savedFlights, email, setEmail, refreshing,
     saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
     handleRemind, setArchived,
+    pending, addPendingLeg, removePendingLeg, retryPending,
   } = useSaved();
   // THE UNDO BANNER, for the Gmail pull's auto-add. See pullFromGmail.
   const { showUndo } = useToast();
@@ -1290,6 +1293,8 @@ export default function Index() {
   const autoAdd = async (legs: GmailLeg[]) => {
     const added: SavedFlight[] = [];
     let limit = false;
+    let queued = 0;
+    const tried: string[] = [];
     for (const leg of legs) {
       // THE OPERATING NUMBER FIRST, THEN THE MARKETING ONE. An email that
       // printed "operated as AA 100" may have printed it wrongly, or the
@@ -1307,7 +1312,15 @@ export default function Index() {
           const body = await resp.json();
           if (resp.ok && !body.error) { data = body; break; }
         }
-        if (data === null) continue;
+        if (data === null) {
+          // NOT IN THE SCHEDULE YET. Kept on the device with what the email
+          // said, shown as such, and looked up again on every pull and once a
+          // day until the airline publishes it. See lib/pendingRules.ts.
+          const r = await addPendingLeg(pendingFromLeg(leg, Date.now()));
+          if (r === 'added') queued += 1;
+          tried.push(pendingFromLeg(leg, Date.now()).id);
+          continue;
+        }
         const record = savedFlightFromApi(data);
         if (savedFlights.some(f => f.id === record.id) || added.some(f => f.id === record.id)) continue;
         const outcome = await saveRecord(record);
@@ -1317,8 +1330,16 @@ export default function Index() {
         // One leg that will not look up is skipped; the rest still go in.
       }
     }
+    // THE PENDING LEGS THIS PULL DID NOT SEE -- an email older than the window,
+    // say -- get their retry now too, and anything that resolves joins the
+    // banner as an addition, because to the user that is what it is.
+    const retry = await retryPending('pull', tried);
+    for (const r of retry.resolved) added.push(r);
+    if (retry.limit) limit = true;
+
     if (added.length === 0) {
       if (limit) showToast('watchlist limit reached — unsave one first');
+      else if (queued > 0) showToast(queued === 1 ? '1 flight not in the schedule yet' : `${queued} flights not in the schedule yet`);
       else if (legs.length > 0) showToast('already on your watchlist');
       return;
     }
@@ -2114,6 +2135,44 @@ export default function Index() {
             </View>
           )}
 
+          {/* ── NOT IN THE SCHEDULE YET ──
+              Legs the email gave and the provider does not carry. Not a card,
+              because there is nothing to open: the row is what the email said
+              and a note that it is tried again daily. The × forgets it. */}
+          {pending.length > 0 && flight === null && (
+            <View style={gm.wrap}>
+              <Text style={c.detailsTitle}>{'not in the schedule yet'}</Text>
+              {pending.map((p, i) => (
+                <View key={p.id} style={[gm.leg, i === pending.length - 1 && gm.legLast]}>
+                  <View style={sf.rowEdge} pointerEvents="none" />
+                  <View style={sf.line1}>
+                    <Text style={sf.number}>{p.flightNumber}</Text>
+                    <Text style={sf.route} numberOfLines={1} ellipsizeMode="middle">
+                      {`${p.origin ?? p.originName ?? '?'} → ${p.destination ?? p.destinationName ?? '?'}`}
+                    </Text>
+                    {ISO_DAY_RE.test(p.date) && (
+                      <Text style={sf.date} numberOfLines={1}>{routeDateLabel(p.date)}</Text>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => { void removePendingLeg(p.id); }}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={gm.forget}
+                    >
+                      <Text style={gm.forgetTxt}>{'×'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={gm.legSub} numberOfLines={1}>
+                    {[
+                      'airline has not published it yet',
+                      p.pnr !== null ? `pnr ${p.pnr}` : null,
+                      p.tries > 0 ? `tried ${p.tries}×` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* GATED ON watchlist, NOT ON savedFlights. The section is about what
               home SHOWS, and it is gated on the same list it renders. A heading
               and an archive button over "Nothing upcoming" is a section
@@ -2385,6 +2444,10 @@ const gm = StyleSheet.create({
   },
   legLast: { marginBottom: 0 },
   legSub: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)', marginTop: 4 },
+  // The forget control on a pending row: the same dim ink as the archive
+  // icon, sized as a tap target, not as text.
+  forget: { marginLeft: 10, paddingHorizontal: 4 },
+  forgetTxt: { fontFamily: MONO, fontSize: 16, color: 'rgba(226,226,226,0.4)' },
 });
 
 const pm = StyleSheet.create({

@@ -59,6 +59,15 @@ import {
   reconcile,
 } from './reminders';
 import { registerWatch, deregisterWatch } from './watch';
+// THE PENDING LEGS: flights the user has booked that the provider does not
+// carry yet. Their own store beside this one, never inside it -- see the note
+// at the top of lib/pendingRules.ts for why a pending leg is not a SavedFlight.
+import {
+  getPending, setPending, getRetryDay, setRetryDay, tryResolve, recordResolved,
+} from './pending';
+import {
+  type PendingLeg, type PendingResolvedEvent, addToPending, retryBatch, dueToday,
+} from './pendingRules';
 import {
   checkLanding,
   landedUtcToTs,
@@ -1190,6 +1199,15 @@ type SavedContextValue = {
   setTrip: (f: SavedFlight, tripId: string | null) => Promise<void>;
   ownFlight: (record: SavedFlight, tripId?: string) => Promise<{ ok: true; remind: RemindOutcome }>;
   disownFlight: (f: SavedFlight) => Promise<void>;
+  // ── PENDING LEGS ──
+  pending: PendingLeg[];
+  // Adds one, or says why not: 'dup', 'limit' or 'past'.
+  addPendingLeg: (leg: PendingLeg) => Promise<'added' | 'dup' | 'limit' | 'past'>;
+  removePendingLeg: (id: string) => Promise<void>;
+  // Tries the lookup again for every pending leg (minus skipIds), saves the
+  // ones that resolve, drops the ones whose date has passed. Returns what it
+  // saved and how many it dropped, so the caller can say so.
+  retryPending: (how: PendingResolvedEvent['how'], skipIds?: string[]) => Promise<{ resolved: SavedFlight[]; dropped: number; limit: boolean }>;
 };
 
 const SavedContext = createContext<SavedContextValue | null>(null);
@@ -1202,6 +1220,7 @@ export function useSaved(): SavedContextValue {
 
 export function SavedProvider({ children }: { children: ReactNode }) {
   const [savedFlights, setSavedFlights] = useState<SavedFlight[]>([]);
+  const [pending, setPendingState] = useState<PendingLeg[]>([]);
   const [email, setEmail] = useState<string | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -1459,8 +1478,10 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       const list = email
         ? await mergeGuestInto(email)
         : await getSavedFlights(null);
+      const pend = await getPending(email);
       if (!cancelled) {
         setSavedFlights(list);
+        setPendingState(pend);
         autoRefresh(list, () => cancelled);
       }
     })();
@@ -1910,6 +1931,82 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // shorter list. Leaving one out to make the value look stable is the same
   // mistake as leaving a dependency out of a callback: it would hand consumers a
   // value whose fields disagree with the render it came from.
+  // ── PENDING LEGS ───────────────────────────────────────────────────────────
+  const addPendingLeg = useCallback(async (leg: PendingLeg): Promise<'added' | 'dup' | 'limit' | 'past'> => {
+    const list = await getPending(email);
+    const r = addToPending(list, leg, localDayKey(Date.now()));
+    if (!r.ok) return r.reason;
+    await setPending(email, r.pending);
+    setPendingState(r.pending);
+    return 'added';
+  }, [email]);
+
+  const removePendingLeg = useCallback(async (id: string): Promise<void> => {
+    const next = (await getPending(email)).filter(p => p.id !== id);
+    await setPending(email, next);
+    setPendingState(next);
+  }, [email]);
+
+  // ONE RETRY AT A TIME, for the reason landingSweep runs one sweep at a time:
+  // the daily tick and a pull can land in the same second and would each pay
+  // for the same lookups.
+  const retryRef = useRef(false);
+  const retryPending = useCallback(async (
+    how: PendingResolvedEvent['how'], skipIds: string[] = [],
+  ): Promise<{ resolved: SavedFlight[]; dropped: number; limit: boolean }> => {
+    const nothing = { resolved: [] as SavedFlight[], dropped: 0, limit: false };
+    if (retryRef.current) return nothing;
+    retryRef.current = true;
+    try {
+      const todayKey = localDayKey(Date.now());
+      const list = await getPending(email);
+      const { kept, dropped, batch } = retryBatch(list, todayKey, new Set(skipIds));
+      let next = kept;
+      const resolved: SavedFlight[] = [];
+      let limit = false;
+      for (const leg of batch) {
+        const record = await tryResolve(API_BASE, leg);
+        const now = Date.now();
+        if (record === null) {
+          next = next.map(p => p.id === leg.id ? { ...p, lastTriedAt: now, tries: p.tries + 1 } : p);
+          continue;
+        }
+        // RESOLVED. Saved through the same path as any other flight, so the
+        // watch is registered and the reminders offered exactly as if the user
+        // had bookmarked it; then it leaves the pending list; then the trigger.
+        const outcome = await saveRecord(record);
+        if (outcome.kind === 'limit') { limit = true; break; }
+        next = next.filter(p => p.id !== leg.id);
+        resolved.push(record);
+        await recordResolved(email, leg, record, how);
+      }
+      await setPending(email, next);
+      setPendingState(next);
+      if (how === 'daily' || how === 'mount') await setRetryDay(email, todayKey);
+      return { resolved, dropped: dropped.length, limit };
+    } finally {
+      retryRef.current = false;
+    }
+  }, [email, saveRecord]);
+
+  // ONCE A DAY, ON THE STORE'S OWN TICK. The day rollover the tick already
+  // notices is the boundary; dueToday compares the stamp to today, so a phone
+  // that was off over midnight catches up on the first tick after launch and
+  // nothing runs twice in one day.
+  useEffect(() => {
+    if (!authHydrated) return;
+    let cancelled = false;
+    const maybe = async () => {
+      const list = await getPending(email);
+      if (list.length === 0 || cancelled) return;
+      if (!dueToday(await getRetryDay(email), localDayKey(Date.now()))) return;
+      if (!cancelled) await retryPending('daily');
+    };
+    void maybe();
+    const id = setInterval(() => { void maybe(); }, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [authHydrated, email, retryPending]);
+
   const value = useMemo(() => ({
     savedFlights,
     email,
@@ -1925,10 +2022,15 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     setTrip,
     ownFlight,
     disownFlight,
+    pending,
+    addPendingLeg,
+    removePendingLeg,
+    retryPending,
   }), [
     savedFlights, email, setEmail, refreshing,
     saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
     handleRemind, setArchived, setTrip, ownFlight, disownFlight,
+    pending, addPendingLeg, removePendingLeg, retryPending,
   ]);
 
   return (
