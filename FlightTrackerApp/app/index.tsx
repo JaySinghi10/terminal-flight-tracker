@@ -1291,13 +1291,23 @@ export default function Index() {
     const added: SavedFlight[] = [];
     let limit = false;
     for (const leg of legs) {
-      const number = leg.operating_flight_number ?? leg.flight_number;
+      // THE OPERATING NUMBER FIRST, THEN THE MARKETING ONE. An email that
+      // printed "operated as AA 100" may have printed it wrongly, or the
+      // provider may file the flight under the marketing number only; a miss
+      // on the first costs one unit and the second still finds it.
+      const numbers = leg.operating_flight_number !== null && leg.operating_flight_number !== leg.flight_number
+        ? [leg.operating_flight_number, leg.flight_number]
+        : [leg.flight_number];
       try {
         const q = [`date=${encodeURIComponent(leg.date)}`];
         if (leg.origin !== null) q.push(`origin=${encodeURIComponent(leg.origin)}`);
-        const resp = await fetch(`${API_BASE}/flight/${encodeURIComponent(number)}?${q.join('&')}`);
-        const data = await resp.json();
-        if (!resp.ok || data.error) continue;
+        let data: any = null;
+        for (const number of numbers) {
+          const resp = await fetch(`${API_BASE}/flight/${encodeURIComponent(number)}?${q.join('&')}`);
+          const body = await resp.json();
+          if (resp.ok && !body.error) { data = body; break; }
+        }
+        if (data === null) continue;
         const record = savedFlightFromApi(data);
         if (savedFlights.some(f => f.id === record.id) || added.some(f => f.id === record.id)) continue;
         const outcome = await saveRecord(record);
