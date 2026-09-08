@@ -42,6 +42,7 @@ import { BlurView } from 'expo-blur';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -108,18 +109,6 @@ import {
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
 import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../../components/GlobeMap';
-// READ, NOT TOUCHED. The bar is drawn by the navigator outside this screen and
-// floats over whatever the screen puts at the bottom; the expanded card pads for
-// it so nothing is hidden underneath. See the note at the overlay.
-import {
-  TAB_BAR_HEIGHT,
-  // THE BAR'S OWN PRESS, REUSED RATHER THAN RESTATED. The pin is the third
-  // control of the same kind as the two glyphs in the bar; all three should
-  // grow by the same amount on the same spring, and two imports are how that
-  // stays true when one of them is retuned.
-  TAB_PRESS_SPRING,
-  TAB_PRESS_SCALE,
-} from '../../components/GlassTabBar';
 // THE APP'S ONE HAPTIC. components/swipe fires it when a full swipe arms and
 // when a long press opens the map menu -- both moments where a gesture becomes
 // a result. Tapping a hairline arc and having a panel appear is the same kind of
@@ -160,6 +149,23 @@ import {
   isKnownPlace,
   normalizeTerm,
 } from '../../lib/airports';
+
+// THE PIN'S PRESS, WHICH USED TO BE THE BAR'S. These were TAB_PRESS_SPRING and
+// TAB_PRESS_SCALE, exported by components/GlassTabBar.tsx so the map pin grew by
+// the same amount on the same spring as the bar's two glyphs. The bar is native
+// now (Stage 8) and exports nothing, so the pin owns its own copy of the two
+// numbers, with the derivation the bar carried for them:
+//
+//   response 0.18s, damping fraction 0.9 -> stiffness (2*pi/0.18)^2 = 1218.5,
+//   taken as 1200; damping 1.8*sqrt(1200) = 62.35, taken as 62. Ratio 0.895,
+//   0.18% overshoot, 129ms to settle -- inside the 150 that separates
+//   "responded" from "responding".
+//
+//   The scale is 10 points all round on a 56-point circle: (56 + 10) / 56. One
+//   factor on both axes, because the circle is square, about a centre that
+//   does not move.
+const TAB_PRESS_SPRING = { damping: 62, stiffness: 1200 };
+const TAB_PRESS_SCALE = (56 + 10) / 56;
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
@@ -1235,10 +1241,12 @@ function routeEndLabel(code: string, name: string, cap: number): string {
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
 export default function Search() {
-  // THE QUERY IS THE BAR'S, and this screen only reads it. setQuery is here for
-  // one purpose: clearResultView wipes the line when the account changes, exactly
-  // as it did when sign-in and logout called it on home.
-  const { query, setQuery, submitCount } = useQuery();
+  // THE QUERY WAS THE BAR'S, and this screen only read it. The bar is native
+  // now (Stage 8) and has no field, so until Stage 9 puts a system search bar
+  // in this screen's header the CHECKPOINT STUB below writes the query and
+  // raises the submit, through the same lib/query.tsx the bar used -- which is
+  // why the submit effect under this line is untouched. SPEC 12.9.
+  const { query, setQuery, submitCount, submit } = useQuery();
   const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
   const { session } = useAccount();
@@ -4376,10 +4384,33 @@ export default function Search() {
         style={{ flex: 1, paddingTop: insets.top + 12 }}
         pointerEvents="box-none"
       >
-        {/* The same clearance home gives the floating bar, and for the same
-            reason: the list ends under the glass and scrolls past behind it. */}
+        {/* ── THE CHECKPOINT STUB (SPEC 12.9). A plain field standing in for
+            the search field that lived in the deleted tab bar, so Stage 8 can
+            be verified with search still working. Stage 9 replaces it with
+            headerSearchBarOptions and deletes it. It carries the old field's
+            input props so nothing about typing changes in between; the
+            placeholder is the settled one. Not the app's design. */}
+        <TextInput
+          style={s.stubField}
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={submit}
+          placeholder="flight number or route"
+          placeholderTextColor="rgba(226,226,226,0.35)"
+          returnKeyType="search"
+          autoCapitalize="none"
+          autoCorrect={false}
+          selectionColor="#4ade80"
+          blurOnSubmit
+        />
+        {/* THE BOTTOM CLEARANCE WAS REMOVED WHEN THE BAR BECAME NATIVE. It
+            was insets.bottom + 24, and deliberately not enough: the list was
+            meant to end under the glass so the blur had something moving
+            behind it (R7, SPEC 16). Apple's bar insets the first scroll view
+            itself, so content under it would now just be unreadable. Add
+            padding back here only if a device shows the last row hidden. */}
         <ScrollView
-          contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           pointerEvents="box-none"
@@ -5661,6 +5692,12 @@ const hm = StyleSheet.create({
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: PAGE_BG },
   scroll: { paddingHorizontal: 20 },
+  // The checkpoint stub's one style. Dies with it in Stage 9.
+  stubField: {
+    marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.16)',
+    fontFamily: MONO, fontSize: 15, color: '#e2e2e2',
+  },
 
   searchBtn: {
     paddingVertical: 8, paddingHorizontal: 0,

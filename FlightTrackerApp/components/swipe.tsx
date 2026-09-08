@@ -1,5 +1,35 @@
 // THE SWIPE, AND EVERY PIECE IT IS MADE OF.
 //
+// ── THE GESTURE RULES, MOVED HERE FROM THE DELETED TAB BAR (SPEC 17, S-1 to S-5)
+//
+// components/GlassTabBar.tsx owned the app's other gesture and the notes on
+// how gestures go wrong. Stage 8 of the native conversion deleted it, and this
+// file is now the one that still owns a gesture, so the rules live here. Each
+// was paid for by a named bug in that file.
+//
+//   S-1  NEVER .enabled() ON A GESTURE. Toggling a handler's enabled state
+//        mid-life is how a recogniser is left holding a touch nobody can end.
+//   S-2  NEVER .onTouchesDown() WITH manager.fail(). That guard was the second
+//        of four drag bugs: failing a gesture from a touch callback left the
+//        Pressables underneath it dead after one trip through a mode change.
+//   S-3  NO EARLY RETURNS IN GESTURE CALLBACKS; a guard is a condition on a
+//        statement. onStart began `if (mode) return;` before setting its own
+//        state, so the gesture ACTIVATED, then onFinalize hit its own early
+//        return and never finished -- the recogniser stayed open and every
+//        touch after it was dead. Write `if (x) { ... }` and let the callback
+//        run to its end.
+//   S-4  WORKLETS MAY ONLY PASS PRIMITIVES AND SHARED-VALUE READS INTO runOnJS.
+//        A plain function call as an argument is evaluated on the UI thread
+//        and throws there, silently: the log shows nothing and the callback
+//        never runs. Build the value first, then hand it across.
+//   S-5  A SHARED VALUE WRITTEN BY A COMPONENT THAT UNMOUNTS INSIDE ITS OWN
+//        PRESS HANDLER MUST BE RESET IN onPress, NOT ONLY onPressOut. For a
+//        press shorter than Pressability's 130ms floor, onPressOut is
+//        scheduled on a timeout and onPress runs first; if onPress unmounts
+//        the Pressable, its reset() cancels that timeout and onPressOut never
+//        arrives. The shared value stays at its pressed size and the control
+//        comes back wrong next time.
+//
 // Every line of this was app/index.tsx's and every line is unchanged. It moved
 // because two things wear this gesture and only one of them is the home screen:
 // a watchlist row and the flight card open the same panels, with the same

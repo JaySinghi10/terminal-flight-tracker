@@ -2110,8 +2110,13 @@ export default function Flights() {
           unless told to fill the viewport. It changes nothing when there IS
           content -- there is no flexing child then, so everything sits at the
           top exactly as before. */}
+      {/* THE BOTTOM CLEARANCE WAS REMOVED WHEN THE BAR BECAME NATIVE. It was
+          home's insets.bottom + 24, for home's reason: the list ended under the
+          glass so the blur had something behind it (R7, SPEC 16). Apple's bar
+          insets the first scroll view itself. Add padding back only if a
+          device shows the last row hidden; see home's fuller note. */}
       <ScrollView
-        contentContainerStyle={[st.scroll, st.scrollFill, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[st.scroll, st.scrollFill]}
         showsVerticalScrollIndicator={false}
         // THE HOME SCREEN'S OWN CONTROL, value for value -- the same green, the
         // same `refreshing` off the store, so the two screens pull identically.

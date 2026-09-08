@@ -625,9 +625,13 @@ export default function Deck() {
       <Text style={st.title}>{'Deck'}</Text>
       <Text style={st.clock}>{formatClock(now)}</Text>
 
+      {/* THE BOTTOM CLEARANCE WAS REMOVED WHEN THE BAR BECAME NATIVE. This one
+          was insets.bottom + 120, the largest of the four, with no note saying
+          why it was 120 rather than home's 24. Apple's bar insets the first
+          scroll view itself. If a device shows the last zone hidden, measure
+          what is missing and add exactly that (R7, SPEC 16; home has the note). */}
       <ScrollView
         style={st.scroll}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

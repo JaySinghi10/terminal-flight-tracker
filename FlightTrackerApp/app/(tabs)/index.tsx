@@ -1983,36 +1983,34 @@ export default function Index() {
 
       <StatusBar barStyle="light-content" backgroundColor="#000" />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, paddingTop: insets.top + 12 }}>
-        {/* CLEARANCE FOR THE FLOATING BAR, applied here rather than in
-            s.scroll because it depends on the safe-area inset and a StyleSheet
-            entry cannot read one. insets is already in scope for the
-            paddingTop above.
+        {/* THE BOTTOM CLEARANCE, AND WHAT BECAME OF IT WHEN THE BAR WENT NATIVE.
 
-            AND IT DOES NOT TRACK THE BAR'S HEIGHT. profile.tsx derives its
-            footer clearance from TAB_BAR_HEIGHT; this deliberately does not,
-            because it is not trying to clear anything. Do not "fix" it to match.
+            WHAT SURVIVES (S-11, SPEC 17). Two of the three reasons the old
+            clearance gave still hold, rewritten for the new bar. It could not
+            live in s.scroll, because it depended on a safe-area inset a
+            StyleSheet entry cannot read. And it must never hand-track a bar
+            height: it did not track the hand-built bar's, and now it must not
+            track Apple's, because the SYSTEM insets the first scroll view under
+            a native tab bar and a number here would be a second source for an
+            edge the system already owns.
 
-            24 IS DELIBERATELY NOT ENOUGH TO CLEAR THE BAR. GlassTabBar's top
-            edge is insets.bottom + 64 off the bottom of the screen, so at 24
-            the last rows of the list end UNDER it and scroll past behind the
-            glass. That is the point: a blur with nothing behind it is a grey
-            pill, and the material only reads as glass while something is moving
-            underneath it.
+            WHAT WAS RETIRED (R7, SPEC 16). The third reason was that 24 was
+            deliberately NOT enough to clear the bar: the last rows were meant to
+            end under the glass and scroll past behind it, because a blur with
+            nothing behind it is a grey pill and the material only reads as
+            glass while something is moving underneath. That was an argument
+            about a hand-built floating blurred bar. Apple's bar has Apple's
+            scroll-edge behaviour and insets the scene itself; content
+            deliberately hidden under it is now just content the user cannot
+            read. So there is no bottom padding here at all. Add one back only if
+            a device shows the last row hidden -- measure, do not restore.
 
-            PROFILE DOES THE OPPOSITE, at insets.bottom + 76, and the difference
-            is what the content is. Home ends in a list, and a list that
-            continues under an edge is understood — you can see there is more and
-            you can scroll it out. The profile screen ends in its version and its
-            data credit, which are read once and never scrolled; half a line of
-            those behind frosted glass is not atmosphere, it is a defect.
-
-            THE ONLY BOTTOM PADDING THERE IS. s.scroll carried 48 and no longer
-            carries anything: two sources for one edge, one of which could not
-            see the inset, is how a page ends up with a gap nobody can account
-            for. s.scroll keeps the horizontal padding, which does not depend on
-            anything at runtime. */}
+            THE ONLY BOTTOM PADDING THERE IS, is still none in s.scroll: it
+            carried 48 once and two sources for one edge is how a page ends up
+            with a gap nobody can account for. s.scroll keeps the horizontal
+            padding, which does not depend on anything at runtime. */}
         <ScrollView
-          contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
