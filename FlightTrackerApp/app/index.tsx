@@ -1854,7 +1854,13 @@ export default function Index() {
           // server's record dies with its next refresh or on the next sign-in.
           if (session !== null && !session.startsWith('fixture:')) {
             try {
-              await fetch(`${API_BASE}/auth/signout`, { method: 'POST', headers: { Authorization: `Bearer ${session}` } });
+              await fetch(`${API_BASE}/auth/signout`, {
+                method: 'POST',
+                // An explicit empty body: Google's front end answers 411 to a
+                // POST that carries no Content-Length at all.
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session}` },
+                body: '{}',
+              });
             } catch {
               // See above.
             }
