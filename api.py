@@ -1,7 +1,4 @@
-import requests
 import os
-import re
-import base64
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -18,6 +15,11 @@ import llm
 # quota currency, its own error vocabulary and its own cache does not belong
 # inside the AeroDataBox layer.
 import fr24
+# THE USER'S OWN GMAIL, read for upcoming flights. Its own module for the
+# reasons the other two vendors have theirs, plus one more: it handles the
+# contents of people's booking emails, and the rules for that -- never logged,
+# never stored, truncated before the model sees them -- live in one file.
+import gmail_flights
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -82,35 +84,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
-
-def search_gmail_for_flight(gmail_token: str):
-    headers = {"Authorization": f"Bearer {gmail_token}"}
-    list_resp = requests.get(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-        headers=headers,
-        params={"q": "flight booking confirmation", "maxResults": 5},
-    )
-    messages = list_resp.json().get("messages", [])
-    if not messages:
-        return None
-    for msg in messages:
-        msg_data = requests.get(
-            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
-            headers=headers,
-            params={"format": "full"},
-        ).json()
-        payload = msg_data.get("payload", {})
-        body_text = ""
-        for part in payload.get("parts", []) or [payload]:
-            if part.get("mimeType", "").startswith("text/plain"):
-                data = part.get("body", {}).get("data", "")
-                if data:
-                    body_text += base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
-        match = re.search(r'\b([A-Z]{2}\d{2,4})\b', body_text.upper())
-        if match:
-            return match.group(1)
-    return None
-
 
 # `origin` is the departure IATA the caller is asking about, and it exists for
 # TAG FLIGHTS: one number operating consecutive legs on one day returns two
@@ -212,7 +185,7 @@ TOOLS = [
             "Smart flight status checker. "
             "If a flight number is given (e.g. AI2630), check it directly. "
             "If the question is vague (e.g. 'what's my flight status?'), "
-            "scan Gmail for recent booking confirmations and check that flight."
+            "read the user's upcoming flights out of their Gmail and check the soonest one."
         ),
         "input_schema": {
             "type": "object",
@@ -235,7 +208,7 @@ TOOLS = [
     },
     {
         "name": "find_flight_from_gmail",
-        "description": "Search the user's Gmail for a flight booking and return the flight number. Use this only when the user asks about their own flight without giving a flight number.",
+        "description": "Read the user's upcoming flights out of their Gmail and check the soonest one. Use this only when the user asks about their own flight without giving a flight number.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -252,16 +225,35 @@ def run_tool(name: str, inputs: dict, gmail_token: str = None) -> tuple[str, dic
             return fetch_flight_full(flight_number)
         if not gmail_token:
             return ("No flight number provided and you're not signed in with Google. Please sign in or provide a flight number directly.", None)
-        found = search_gmail_for_flight(gmail_token)
-        return fetch_flight_full(found) if found else ("No flight booking found in your Gmail.", None)
+        return _soonest_from_gmail(gmail_token)
     if name == "get_flight_status":
         return fetch_flight_full(inputs["flight_number"])
     if name == "find_flight_from_gmail":
         if not gmail_token:
             return ("You need to sign in with Google first so I can access your Gmail.", None)
-        found = search_gmail_for_flight(gmail_token)
-        return fetch_flight_full(found) if found else ("No flight booking found in your Gmail.", None)
+        return _soonest_from_gmail(gmail_token)
     return (f"Unknown tool: {name}", None)
+
+
+def _soonest_from_gmail(gmail_token: str) -> tuple[str, dict | None]:
+    """The assistant's Gmail path: the next leg to depart, looked up ON ITS DATE.
+
+    The old path handed fetch_flight_full a bare number and let the provider
+    pick the day. The extractor knows the date, so the lookup is dated and a
+    booking for the 20th is not answered with today's instance of the same
+    number. The tool result names the other legs so the model can mention them.
+    """
+    r = gmail_flights.upcoming_flights(gmail_token)
+    if not r["ok"]:
+        return (GMAIL_ERRORS.get(r["code"], GMAIL_ERROR_GENERIC), None)
+    first = gmail_flights.soonest(r["flights"])
+    if first is None:
+        return ("No upcoming flight bookings found in your Gmail.", None)
+    text, dto = fetch_flight_full(first["flight_number"], first["date"], first.get("origin"))
+    others = [f"{f['flight_number']} on {f['date']}" for f in r["flights"][1:5]]
+    if others:
+        text = text + "\nOther upcoming flights in Gmail: " + ", ".join(others)
+    return (text, dto)
 
 
 # HUNK 5. The tool set is three tools deep and the longest honest path is two
@@ -300,6 +292,52 @@ CHAT_ERROR_TOO_MANY_STEPS = (
 class ChatRequest(BaseModel):
     message: str
     gmail_token: str | None = None
+
+
+class GmailFlightsRequest(BaseModel):
+    gmail_token: str | None = None
+
+
+# ──────────────────────────────────────────────
+# UPCOMING FLIGHTS, FROM GMAIL
+# ──────────────────────────────────────────────
+#
+# ITS OWN ENDPOINT RATHER THAN A /chat TOOL, for three reasons. It returns a
+# LIST -- one booking email holds three legs -- and /chat is built around one
+# flight card. It fans out to up to ten model calls, which does not belong
+# inside a tool loop capped at four rounds. And the app needs structured legs
+# to offer "look this one up", not prose.
+#
+# THE TOKEN TRAVELS IN THE BODY, as it does for /chat, and it is never logged.
+#
+# FIXED STRINGS OUT, CODES BESIDE THEM. The app switches on `code` -- an expired
+# sign-in has to clear the stored token and ask for another, which no sentence
+# can tell it to do -- and shows the string. Neither is ever the provider's own
+# text.
+GMAIL_ERROR_GENERIC = "Could not read your Gmail right now. Please try again."
+GMAIL_ERRORS = {
+    gmail_flights.EXPIRED: "Your Google sign-in has expired. Sign in again to pull flights from Gmail.",
+    gmail_flights.FORBIDDEN: "Terminal was not given permission to read your Gmail. Sign in again and allow it.",
+    gmail_flights.BUSY: "Gmail is busy right now. Please try again in a moment.",
+    gmail_flights.ERROR: GMAIL_ERROR_GENERIC,
+}
+
+
+@app.post("/gmail/flights")
+def gmail_flights_endpoint(req: GmailFlightsRequest):
+    if not req.gmail_token:
+        return {"error": GMAIL_ERRORS[gmail_flights.EXPIRED], "code": gmail_flights.EXPIRED, "flights": []}
+    try:
+        r = gmail_flights.upcoming_flights(req.gmail_token)
+    except Exception:
+        # The traceback goes to the log. Nothing from the mailbox is in it: the
+        # module logs counts and codes only, and this catches what it missed.
+        logger.exception("gmail flights failed")
+        return {"error": GMAIL_ERROR_GENERIC, "code": gmail_flights.ERROR, "flights": []}
+    if not r["ok"]:
+        return {"error": GMAIL_ERRORS.get(r["code"], GMAIL_ERROR_GENERIC), "code": r["code"], "flights": []}
+    return {"error": None, "code": None, "flights": r["flights"],
+            "scanned": r["scanned"], "extracted": r["extracted"]}
 
 
 class ParseRequest(BaseModel):

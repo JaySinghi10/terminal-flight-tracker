@@ -1,0 +1,800 @@
+"""Upcoming flights, read out of the user's own Gmail.
+
+── WHAT THIS REPLACES, AND WHY EVERY PART OF IT WAS WRONG ─────────────────────
+
+The old search_gmail_for_flight searched the whole mailbox for one phrase,
+took the top five hits, and regexed the first two-letters-plus-digits out of
+whatever plain-text part it found. No date bound, so a 2019 booking could win.
+A regex that matched PNR fragments and "ID 1234" as readily as a flight number.
+Plain text only, so an HTML-only airline email yielded nothing. One level of
+multipart, so anything nested was missed. And one flight number back with no
+date, so the lookup never knew which day it was looking up.
+
+── THE SHAPE OF THIS ONE ───────────────────────────────────────────────────────
+
+  1. SEARCH BY WHEN THE EMAIL ARRIVED, never by when the flight departs. An
+     airline confirmation lands months before the flight, and Gmail cannot
+     filter on a date that is only written inside the body. That is the whole
+     reason parsing exists here rather than a better query.
+  2. FETCH THE RAW RFC 822 MESSAGE and let the standard library walk it: every
+     level of multipart, every transfer encoding, every charset. HTML is
+     stripped to text rather than skipped.
+  3. GATE, THEN EXTRACT. A cheap presence check decides whether an email is
+     worth a model call; the MODEL decides what is in it. The gate must never
+     be the extractor -- that is the mistake the old regex made.
+  4. RE-CHECK EVERYTHING THE MODEL SAID. Flight numbers against a regex that
+     accepts digit-leading codes, dates re-parsed, PNRs re-shaped, confidence
+     clamped, past dates dropped, duplicates across emails collapsed.
+
+── WHAT NEVER LEAVES THIS PROCESS ──────────────────────────────────────────────
+
+THESE ARE PEOPLE'S BOOKING CONFIRMATIONS. Bodies go to the model and nowhere
+else: never to the log, never to storage, never back to the client. The log
+carries counts and outcome codes only. The truncation to BODY_MAX_CHARS is
+applied here, on every body, before it is handed anywhere -- it is not a limit
+somebody upstream is trusted to have applied.
+
+The access token is used for the two Gmail calls and is not logged either.
+"""
+import base64
+import email
+import email.policy
+import email.utils
+import html
+import json
+import logging
+import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
+
+import requests
+
+import llm
+
+logger = logging.getLogger("gmail-flights")
+
+GMAIL_MESSAGES = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+HTTP_TIMEOUT = 15
+
+# ── THE WINDOW AND THE CAPS ─────────────────────────────────────────────────
+#
+# 365 DAYS OF RECEIVED MAIL. A long-haul booked in December for the following
+# August is the case a six-month window loses, and the window is a filter that
+# costs nothing; the caps below are what cost something.
+WINDOW_DAYS = 365
+# Listed, fetched, and sent to the model. Gmail bills five quota units per list
+# and five per fetch, so a request at these caps is 5 + 25 * 5 = 130 units
+# against a per-user allowance of 250 per second -- quota is not the constraint,
+# latency is, which is why the fetches run in a pool.
+LIST_MAX = 40
+FETCH_MAX = 25
+EXTRACT_MAX = 10
+FETCH_POOL = 5
+MODEL_POOL = 4
+# ENFORCED HERE, on every body, before the model sees it. See the header.
+BODY_MAX_CHARS = 12000
+# A leg the model was not sure of is a leg not shown. It is re-validated after
+# this anyway, but a low confidence usually means an inferred field.
+MIN_CONFIDENCE = 0.6
+# AIRLINES DO NOT SELL BEYOND A YEAR. A leg further out than this is a wrong
+# year, whatever produced it, and is dropped rather than shown.
+MAX_DAYS_AHEAD = 365
+# ── THE YEAR ROLLOVER ─────────────────────────────────────────────────────────
+#
+# AN EMAIL RECEIVED ON 28 DECEMBER FOR A FLIGHT ON 15 JANUARY IS NEXT YEAR. The
+# email prints "15 Jan", the model is told the received date, and mostly gets
+# it right; this is the backstop for when it does not. A flight dated BEFORE
+# the email that booked it is impossible, so the year is bumped once.
+#
+# ONLY WHEN THE GAP IS LARGE. A wrong-year resolution puts the flight about
+# eleven months before the email; a post-flight email -- "thanks for flying
+# with us on the 3rd", received on the 5th -- puts it a few days before. The
+# second must NOT be bumped, or a flight that has already happened would come
+# back as next year's. Sixty days separates the two cases by a wide margin.
+ROLLOVER_MIN_GAP_DAYS = 60
+EXTRACT_MAX_TOKENS = 1024
+
+# Subject-shaped terms an airline or agent puts on a confirmation. Broad by
+# design: the gate and the model do the narrowing, and a term missing here is
+# a booking never seen.
+SUBJECT_TERMS = [
+    "itinerary", "e-ticket", "eticket", "booking confirmation",
+    "flight confirmation", "booking reference", "boarding pass",
+    "your trip", "your flight", "travel confirmation", "ticket confirmation",
+    "PNR", "reservation confirmed", "booking confirmed",
+]
+
+# ── A FLIGHT NUMBER, INCLUDING THE ONES THAT START WITH A DIGIT ─────────────
+#
+# THE FIFTH TIME THIS CODEBASE HAS MET THE LEADING-DIGIT ASSUMPTION. [A-Z]{2}
+# rejects 6E, 9W, 5J and U2 -- IndiGo is India's largest carrier -- so the
+# code is two characters with AT LEAST ONE LETTER, then one to four digits.
+FLIGHT_RE = re.compile(r"^(?:[A-Z][A-Z0-9]|[0-9][A-Z])\d{1,4}$")
+# The presence gate's looser cousin: the same shape, inside running text,
+# with an optional space between code and number as airlines print it.
+FLIGHT_IN_TEXT_RE = re.compile(r"\b(?:[A-Z][A-Z0-9]|[0-9][A-Z]) ?\d{1,4}\b")
+PNR_RE = re.compile(r"^[A-Z0-9]{5,8}$")
+IATA_RE = re.compile(r"^[A-Z]{3}$")
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# Words that, alongside a flight-number-shaped token, make an email worth a
+# model call. Matched case-insensitively.
+BOOKING_WORDS = (
+    "itinerary", "booking", "e-ticket", "eticket", "pnr", "boarding",
+    "confirmation", "reservation", "flight",
+)
+
+# Outcome codes. The endpoint maps these to fixed user strings; nothing here
+# produces a sentence for a user.
+OK = None
+EXPIRED = "gmail_expired"
+FORBIDDEN = "gmail_forbidden"
+BUSY = "gmail_busy"
+ERROR = "gmail_error"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 1. SEARCH
+# ══════════════════════════════════════════════════════════════════════════
+
+def search_query(today) -> str:
+    """The Gmail query: a window of RECEIVED mail, minus the noise categories.
+
+    after: is a received-date bound and is the only date Gmail can filter on.
+    Promotions and social are excluded because that is where fare sales and
+    "your friend is travelling" live, and a real confirmation is filed under
+    updates or primary.
+    """
+    since = (today - timedelta(days=WINDOW_DAYS)).strftime("%Y/%m/%d")
+    quoted = " OR ".join(('"%s"' % t) if (" " in t or "-" in t) else t for t in SUBJECT_TERMS)
+    return "after:%s -category:promotions -category:social (subject:(%s) OR (%s))" % (
+        since, quoted, quoted)
+
+
+def _classify_http(resp) -> str:
+    """One of the outcome codes for a non-2xx Gmail response."""
+    if resp.status_code == 401:
+        return EXPIRED
+    if resp.status_code == 403:
+        # Insufficient scope reads as 403 too, and so does a daily quota; both
+        # are "the operator or the grant has to change", not "try again".
+        return FORBIDDEN
+    if resp.status_code == 429:
+        return BUSY
+    return ERROR
+
+
+def list_messages(token: str, today) -> tuple[list[str], str | None]:
+    """Message ids in the window, newest first, or an outcome code.
+
+    THE FIRST CALL IS WHERE AN EXPIRED TOKEN SHOWS UP, before a single body is
+    fetched or a single model call is made. An expired sign-in costs nothing.
+    """
+    try:
+        resp = requests.get(
+            GMAIL_MESSAGES,
+            headers={"Authorization": "Bearer " + token},
+            params={"q": search_query(today), "maxResults": LIST_MAX},
+            timeout=HTTP_TIMEOUT,
+        )
+    except requests.RequestException:
+        return [], ERROR
+    if resp.status_code != 200:
+        return [], _classify_http(resp)
+    try:
+        rows = resp.json().get("messages") or []
+    except ValueError:
+        return [], ERROR
+    return [r["id"] for r in rows if isinstance(r, dict) and r.get("id")], OK
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 2. FETCH AND DECODE
+# ══════════════════════════════════════════════════════════════════════════
+
+class _HtmlToText(HTMLParser):
+    """HTML to readable text, keeping the breaks an itinerary depends on.
+
+    Airline emails are tables. A stripper that joins every cell with nothing
+    produces "BOM10:35BLR12:20", which no reader -- model or human -- can take
+    apart. Block elements become newlines and cells become separators, so the
+    table survives as lines.
+    """
+    BLOCK = {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6",
+             "table", "section", "article", "header", "footer", "ul", "ol"}
+    SKIP = {"script", "style", "head", "title"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self._skip += 1
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+        elif tag in ("td", "th"):
+            self.out.append("  ")
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP and self._skip:
+            self._skip -= 1
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            self.out.append(data)
+
+    def text(self) -> str:
+        raw = "".join(self.out)
+        raw = re.sub(r"[ \t\r\f\v]+", " ", raw)
+        raw = re.sub(r" *\n *", "\n", raw)
+        return re.sub(r"\n{3,}", "\n\n", raw).strip()
+
+
+# ── SCHEMA.ORG FlightReservation, WHEN THE AIRLINE EMBEDS IT ─────────────────
+#
+# United, Delta, American, Air France, KLM, Lufthansa, Singapore and Booking.com
+# put a <script type="application/ld+json"> block in the email carrying the
+# reservation as structured data: ISO-8601 times, IATA codes, the carrier and
+# the booking reference. DETERMINISTIC AND FREE, so it is read first and the
+# model is only asked when it is absent.
+_LDJSON_RE = re.compile(
+    r"<script[^>]*type\s*=\s*[\"']application/ld\+json[\"'][^>]*>(.*?)</script>",
+    re.I | re.S)
+
+
+def _jsonld_blocks(markup: str) -> list:
+    out = []
+    for block in _LDJSON_RE.findall(markup or ""):
+        try:
+            out.append(json.loads(html.unescape(block).strip()))
+        except ValueError:
+            continue
+    return out
+
+
+def _walk(node, found):
+    """Every dict with @type FlightReservation, at any depth, in any list."""
+    if isinstance(node, dict):
+        t = node.get("@type")
+        types = t if isinstance(t, list) else [t]
+        if "FlightReservation" in [str(x) for x in types if x]:
+            found.append(node)
+        for v in node.values():
+            _walk(v, found)
+    elif isinstance(node, list):
+        for v in node:
+            _walk(v, found)
+
+
+def _first(v):
+    return v[0] if isinstance(v, list) and v else v
+
+
+def _code(d, *keys):
+    """An IATA code out of a nested object, whichever of the keys carries it."""
+    if not isinstance(d, dict):
+        return None
+    for k in keys:
+        v = d.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def jsonld_legs(markup: str) -> list[dict]:
+    """Raw legs in the same shape the model returns, from the JSON-LD blocks.
+
+    schema.org's Flight carries flightNumber as the NUMBER ALONE ("100") beside
+    airline.iataCode ("AA"); some senders put "AA100" in flightNumber directly.
+    Both are read. A cancelled reservationStatus is skipped. The operating
+    carrier, where a sender names one under `provider`, is carried as
+    operated_by; the schema has no field for the operating flight NUMBER.
+    """
+    legs = []
+    for doc in _jsonld_blocks(markup):
+        found = []
+        _walk(doc, found)
+        for res in found:
+            status = str(res.get("reservationStatus") or "")
+            if "Cancelled" in status or "Canceled" in status:
+                continue
+            pnr = res.get("reservationNumber") or res.get("reservationId")
+            flights = res.get("reservationFor")
+            flights = flights if isinstance(flights, list) else [flights]
+            for fl in flights:
+                if not isinstance(fl, dict):
+                    continue
+                airline = fl.get("airline") if isinstance(fl.get("airline"), dict) else {}
+                num = str(fl.get("flightNumber") or "").replace(" ", "").upper()
+                code = (_code(airline, "iataCode") or "").upper()
+                # NUMBER ONLY ("100") IS JOINED TO THE CODE; "AA100" IS KEPT. The
+                # test is "starts with a carrier code", which needs a LETTER in
+                # its two characters -- "10" is two digits, not a code.
+                if num and code and not re.match(r"^(?:[A-Z][A-Z0-9]|[0-9][A-Z])", num):
+                    num = code + num
+                dep = fl.get("departureAirport") if isinstance(fl.get("departureAirport"), dict) else {}
+                arr = fl.get("arrivalAirport") if isinstance(fl.get("arrivalAirport"), dict) else {}
+                dep_time = str(fl.get("departureTime") or "")
+                provider = fl.get("provider") if isinstance(fl.get("provider"), dict) else {}
+                legs.append({
+                    "flight_number": num,
+                    # THE LOCAL DATE AS PRINTED, not converted: the string carries
+                    # its own offset and its first ten characters are the day.
+                    "date": dep_time[:10],
+                    "departure_time": dep_time[11:16] if len(dep_time) >= 16 else None,
+                    "origin": _code(dep, "iataCode") or dep.get("name"),
+                    "destination": _code(arr, "iataCode") or arr.get("name"),
+                    "airline": airline.get("name") if isinstance(airline, dict) else None,
+                    "pnr": pnr,
+                    "operated_by": provider.get("name") if provider else None,
+                    "operating_flight_number": None,
+                    "confidence": 1.0,
+                })
+    return legs
+
+
+def html_to_text(markup: str) -> str:
+    p = _HtmlToText()
+    try:
+        p.feed(markup)
+        p.close()
+    except Exception:  # noqa: BLE001 -- a malformed page is still text
+        return html.unescape(re.sub(r"<[^>]+>", " ", markup))
+    return p.text()
+
+
+def decode_body(raw_b64url: str) -> dict:
+    """{subject, sender, received, body} from Gmail's raw message.
+
+    THE STANDARD LIBRARY DOES THE WALK. msg.walk() visits every part at every
+    depth, get_content() applies the transfer encoding and the declared
+    charset, and the policy handles the header folding. None of that is worth
+    writing again, and the old one-level loop is what happens when it is.
+
+    PLAIN AND HTML ARE BOTH READ AND THE LONGER WINS. A multipart/alternative
+    email's plain part is often a stub ("view this email in your browser") next
+    to the real itinerary in HTML; occasionally the reverse. Length is a crude
+    judge and a reliable one for this.
+
+    Attachments are skipped. A PDF ticket is real, and out of scope here.
+    """
+    pad = "=" * (-len(raw_b64url) % 4)
+    data = base64.urlsafe_b64decode(raw_b64url + pad)
+    msg = email.message_from_bytes(data, policy=email.policy.default)
+
+    plain, htmls = [], []
+    for part in msg.walk():
+        if part.is_multipart():
+            continue
+        if part.get_content_disposition() == "attachment":
+            continue
+        ctype = part.get_content_type()
+        if ctype not in ("text/plain", "text/html"):
+            continue
+        try:
+            content = part.get_content()
+        except Exception:  # noqa: BLE001 -- an undecodable part is skipped
+            continue
+        if not isinstance(content, str):
+            continue
+        (plain if ctype == "text/plain" else htmls).append(content)
+
+    plain_text = "\n".join(plain).strip()
+    raw_html = "\n".join(htmls)
+    html_text = html_to_text(raw_html) if htmls else ""
+    body = plain_text if len(plain_text) >= len(html_text) else html_text
+    # STRUCTURED DATA FIRST. Read off the raw markup before it is stripped,
+    # because the stripper drops <script> blocks, which is exactly where it is.
+    structured = jsonld_legs(raw_html) if htmls else []
+
+    received = None
+    try:
+        dt = email.utils.parsedate_to_datetime(msg.get("date") or "")
+        if dt is not None:
+            received = dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        received = None
+
+    return {
+        "subject": str(msg.get("subject") or "").strip()[:200],
+        "sender": str(msg.get("from") or "").strip()[:200],
+        "received": received,
+        # THE ONE PLACE THE TRUNCATION HAPPENS, and every body passes through it.
+        "body": body[:BODY_MAX_CHARS],
+        # Legs the sender stated outright. Empty for most airlines still.
+        "jsonld": structured,
+    }
+
+
+def fetch_message(token: str, msg_id: str) -> dict | None:
+    """One decoded message, or None on any failure. Never raises."""
+    try:
+        resp = requests.get(
+            GMAIL_MESSAGES + "/" + msg_id,
+            headers={"Authorization": "Bearer " + token},
+            params={"format": "raw"},
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            return None
+        raw = resp.json().get("raw")
+        if not raw:
+            return None
+        return decode_body(raw)
+    except Exception:  # noqa: BLE001 -- one bad message must not sink the rest
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 3. GATE, THEN EXTRACT
+# ══════════════════════════════════════════════════════════════════════════
+
+def worth_a_model_call(m: dict) -> bool:
+    """Does this email look like it could hold a flight? A filter on SPENDING.
+
+    It decides whether to pay for a model call, and nothing else. It does not
+    read a flight number out; it only checks that something shaped like one is
+    present, next to a word that suggests a booking. Both the old regex's
+    false positives ("ID 1234") and its false negatives (6E5071) are fine here,
+    because the model is what answers and this only opens the door.
+    """
+    text = (m.get("subject") or "") + "\n" + (m.get("body") or "")
+    upper = text.upper()
+    if not FLIGHT_IN_TEXT_RE.search(upper):
+        return False
+    lower = text.lower()
+    return any(w in lower for w in BOOKING_WORDS)
+
+
+EXTRACT_TOOL = {
+    "name": "flight_bookings",
+    "description": "Record every confirmed flight leg contained in this one email.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "is_booking": {
+                "type": "boolean",
+                "description": (
+                    "True ONLY if this email is a confirmed flight booking, "
+                    "itinerary, e-ticket or boarding pass for the recipient. "
+                    "False for marketing, fare alerts, hotels, car hire, "
+                    "cancellations, refunds, surveys, check-in nags with no "
+                    "itinerary, and anything that merely mentions a flight."
+                ),
+            },
+            "bookings": {
+                "type": "array",
+                "description": "One entry per flight leg. Empty when is_booking is false.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "flight_number": {
+                            "type": "string",
+                            "description": (
+                                "Airline code and number exactly as printed, "
+                                "spaces removed: AI2630, 6E5071, BA178. Never "
+                                "invent or complete one."
+                            ),
+                        },
+                        "date": {
+                            "type": "string",
+                            "description": (
+                                "Departure date as YYYY-MM-DD, local to the "
+                                "departure airport. If the email prints no "
+                                "year, use the email's received date given in "
+                                "the message and take the next occurrence on or "
+                                "after it."
+                            ),
+                        },
+                        "origin": {
+                            "type": "string",
+                            "description": "Departure airport: the printed IATA code, else the printed city name.",
+                        },
+                        "destination": {
+                            "type": "string",
+                            "description": "Arrival airport: the printed IATA code, else the printed city name.",
+                        },
+                        "departure_time": {
+                            "type": "string",
+                            "description": "Departure time as HH:MM, 24-hour, if printed.",
+                        },
+                        "airline": {"type": "string", "description": "The MARKETING airline, whose code is on the flight number."},
+                        "operated_by": {
+                            "type": "string",
+                            "description": (
+                                "The OPERATING airline, only if the email prints "
+                                "'operated by' or similar fine print. Omit otherwise."
+                            ),
+                        },
+                        "operating_flight_number": {
+                            "type": "string",
+                            "description": (
+                                "The operating carrier's own flight number, only if "
+                                "the email prints it, e.g. 'BA1502 operated by American "
+                                "Airlines as AA100' gives AA100. Never derive one."
+                            ),
+                        },
+                        "pnr": {
+                            "type": "string",
+                            "description": (
+                                "The booking reference, PNR, record locator or "
+                                "confirmation code: 5 to 8 letters and digits. "
+                                "NEVER the 13-digit e-ticket number."
+                            ),
+                        },
+                        "confidence": {
+                            "type": "number",
+                            "description": (
+                                "0 to 1. How sure you are that every field on "
+                                "this leg is printed in the email rather than "
+                                "inferred. Below 0.6 means you guessed something."
+                            ),
+                        },
+                    },
+                    "required": ["flight_number", "date", "confidence"],
+                },
+            },
+        },
+        "required": ["is_booking", "bookings"],
+    },
+}
+
+
+def _system_prompt(today) -> str:
+    return (
+        "You extract confirmed flight legs from ONE email. "
+        f"Today is {today.isoformat()}. "
+        "Call the flight_bookings tool exactly once and say nothing else.\n"
+        "REFUSE RATHER THAN GUESS. If the email is not a confirmed flight "
+        "booking, itinerary, e-ticket or boarding pass addressed to the "
+        "recipient, set is_booking to false and return no bookings. Marketing, "
+        "fare alerts, hotels, car hire, cancellations, refunds, surveys and "
+        "reminders without an itinerary are all false.\n"
+        "Never write a flight number, date, airport or booking reference that "
+        "is not printed in the email. If a required field is not printed, "
+        "omit that leg rather than fill it in.\n"
+        "Return EVERY leg the email contains: a return trip is two legs, a "
+        "connection is two legs, a multi-city itinerary is all of them.\n"
+        "Dates are the departure's local calendar date as YYYY-MM-DD. If no "
+        "year is printed, resolve it from the received date in the message: "
+        "the next occurrence on or after that date.\n"
+        "The booking reference is the short code labelled PNR, booking "
+        "reference, record locator or confirmation. It is never the 13-digit "
+        "ticket number.\n"
+        "Set confidence below 0.6 for any leg where a field was inferred.\n"
+        "CODESHARES: the flight number on the booking is the marketing number. "
+        "If the email prints 'operated by <airline>' record it as operated_by, and "
+        "if it prints the operator's own flight number record that as "
+        "operating_flight_number. Do not derive either from knowledge."
+    )
+
+
+def _message_for_model(m: dict) -> str:
+    return (
+        f"Received: {m.get('received') or 'unknown'}\n"
+        f"Subject: {m.get('subject') or ''}\n"
+        f"From: {m.get('sender') or ''}\n\n"
+        f"{m.get('body') or ''}"
+    )
+
+
+def extract_with_model(m: dict, today) -> list[dict]:
+    """The model's raw legs for one email. Empty on refusal or any failure."""
+    try:
+        turn = llm.generate(
+            model=llm.PARSE_MODEL,
+            system=_system_prompt(today),
+            messages=[llm.user_text(_message_for_model(m))],
+            tools=[EXTRACT_TOOL],
+            forced_tool="flight_bookings",
+            max_tokens=EXTRACT_MAX_TOKENS,
+            temperature=0,
+            thinking=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # The reason goes to the log in llm's own words for it, never the
+        # provider's message and never anything from the email.
+        kind, reason = llm.failure_kind(exc)
+        logger.warning("gmail extract call failed: %s", reason)
+        return []
+    call = next((c for c in turn.tool_calls if c.name == "flight_bookings"), None)
+    if call is None:
+        return []
+    args = call.args or {}
+    if not args.get("is_booking"):
+        return []
+    legs = args.get("bookings")
+    return legs if isinstance(legs, list) else []
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 4. RE-CHECK EVERYTHING
+# ══════════════════════════════════════════════════════════════════════════
+
+def _s(v, cap=60):
+    v = str(v).strip() if isinstance(v, (str, int, float)) else ""
+    return v[:cap] or None
+
+
+def _place(v):
+    """A three-letter code stays a code; anything else is a name."""
+    v = _s(v, 60)
+    if v is None:
+        return None, None
+    up = v.upper().replace(".", "")
+    if IATA_RE.match(up):
+        return up, None
+    return None, v
+
+
+def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
+    """One leg the model returned, re-validated field by field, or None."""
+    if not isinstance(raw, dict):
+        return None
+    number = re.sub(r"\s+", "", str(raw.get("flight_number") or "")).upper()
+    if not FLIGHT_RE.match(number):
+        return None
+    day = _s(raw.get("date"), 10)
+    if day is None or not DAY_RE.match(day):
+        return None
+    try:
+        when = datetime.strptime(day, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    # THE YEAR ROLLOVER. See ROLLOVER_MIN_GAP_DAYS for why the gap is tested.
+    received = None
+    try:
+        rd = (source or {}).get("received")
+        received = datetime.strptime(rd, "%Y-%m-%d").date() if rd else None
+    except (TypeError, ValueError):
+        received = None
+    if received is not None and (received - when).days > ROLLOVER_MIN_GAP_DAYS:
+        try:
+            when = when.replace(year=when.year + 1)
+        except ValueError:
+            return None            # 29 Feb into a year without one
+        day = when.isoformat()
+    # DROP ANYTHING BEFORE TODAY. "Upcoming" is the contract.
+    if when < today:
+        return None
+    # AND ANYTHING PAST WHAT AN AIRLINE WILL SELL.
+    if (when - today).days > MAX_DAYS_AHEAD:
+        return None
+    try:
+        conf = max(0.0, min(1.0, float(raw.get("confidence", 0))))
+    except (TypeError, ValueError):
+        conf = 0.0
+    if conf < MIN_CONFIDENCE:
+        return None
+    pnr = _s(raw.get("pnr"), 12)
+    pnr = pnr.upper().replace(" ", "") if pnr else None
+    if pnr and not PNR_RE.match(pnr):
+        pnr = None
+    dep_time = _s(raw.get("departure_time"), 5)
+    if dep_time and not re.match(r"^\d{2}:\d{2}$", dep_time):
+        dep_time = None
+    o_iata, o_name = _place(raw.get("origin"))
+    d_iata, d_name = _place(raw.get("destination"))
+    op_num = re.sub(r"\s+", "", str(raw.get("operating_flight_number") or "")).upper() or None
+    if op_num is not None and (not FLIGHT_RE.match(op_num) or op_num == number):
+        op_num = None
+    return {
+        "flight_number": number,
+        "date": day,
+        "departure_time": dep_time,
+        "origin": o_iata,
+        "origin_name": o_name,
+        "destination": d_iata,
+        "destination_name": d_name,
+        "airline": _s(raw.get("airline"), 40),
+        # CODESHARES. The number on the booking is the marketing carrier's; the
+        # aircraft flies under the operator's. Both are kept where the email
+        # printed both, and the app looks the flight up under the operating one
+        # when it has it -- that is the number the landing feed knows.
+        "operated_by": _s(raw.get("operated_by"), 40),
+        "operating_flight_number": op_num,
+        "pnr": pnr,
+        "confidence": round(conf, 2),
+        # WHERE IT CAME FROM: the subject and the received date, so the app can
+        # say "from your BA email of 3 March". Never the body.
+        "source": {
+            "subject": (source or {}).get("subject"),
+            "received": (source or {}).get("received"),
+        },
+    }
+
+
+def merge(legs: list[dict]) -> list[dict]:
+    """Collapse the same leg seen in several emails, keep the surest copy.
+
+    One booking arrives three times: the confirmation, the e-ticket and the
+    reminder. Keyed on number and date, which is what the app keys a saved
+    flight on too.
+    """
+    best = {}
+    for leg in legs:
+        key = (leg["flight_number"], leg["date"])
+        cur = best.get(key)
+        # A structured leg carries confidence 1.0 and so wins on the same rule.
+        if cur is None or leg["confidence"] > cur["confidence"]:
+            # Keep any field the other copy had and this one lacks.
+            if cur is not None:
+                for k, v in cur.items():
+                    if leg.get(k) in (None, "") and v not in (None, ""):
+                        leg[k] = v
+            best[key] = leg
+        else:
+            for k, v in leg.items():
+                if cur.get(k) in (None, "") and v not in (None, ""):
+                    cur[k] = v
+    return sorted(best.values(), key=lambda l: (l["date"], l["departure_time"] or "99:99", l["flight_number"]))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# THE WHOLE THING
+# ══════════════════════════════════════════════════════════════════════════
+
+def upcoming_flights(token: str, today=None, *, fetch=fetch_message, extract=extract_with_model,
+                     lister=list_messages) -> dict:
+    """Every upcoming flight leg in the user's Gmail, or why not.
+
+    {ok, code, flights, scanned, extracted}. `code` is one of the outcome codes
+    above and is what the endpoint turns into a sentence.
+
+    fetch / extract / lister are injectable so the tests run with no network
+    and no model.
+    """
+    today = today or datetime.now(timezone.utc).date()
+    if not token:
+        return {"ok": False, "code": EXPIRED, "flights": [], "scanned": 0, "extracted": 0}
+
+    ids, code = lister(token, today)
+    if code is not OK:
+        logger.warning("gmail list failed: %s", code)
+        return {"ok": False, "code": code, "flights": [], "scanned": 0, "extracted": 0}
+    ids = ids[:FETCH_MAX]
+
+    with ThreadPoolExecutor(max_workers=FETCH_POOL) as pool:
+        fetched = [m for m in pool.map(lambda i: fetch(token, i), ids) if m]
+
+    # STRUCTURED FIRST, AT NO TOKEN COST. An email that states its legs in
+    # JSON-LD is read and done; only the rest are gated and sent to the model.
+    legs = []
+    structured_n = 0
+    rest = []
+    for m in fetched:
+        if m.get("jsonld"):
+            structured_n += 1
+            for raw in m["jsonld"]:
+                leg = clean_leg(raw, today, source=m)
+                if leg is not None:
+                    leg["method"] = "jsonld"
+                    legs.append(leg)
+        else:
+            rest.append(m)
+    candidates = [m for m in rest if worth_a_model_call(m)][:EXTRACT_MAX]
+
+    with ThreadPoolExecutor(max_workers=MODEL_POOL) as pool:
+        for m, raw_legs in zip(candidates, pool.map(lambda m: extract(m, today), candidates)):
+            for raw in raw_legs:
+                leg = clean_leg(raw, today, source=m)
+                if leg is not None:
+                    leg["method"] = "model"
+                    legs.append(leg)
+
+    flights = merge(legs)
+    # COUNTS ONLY. Nothing from any email reaches the log.
+    logger.info("gmail flights: listed %d fetched %d structured %d sent %d legs %d upcoming %d",
+                len(ids), len(fetched), structured_n, len(candidates), len(legs), len(flights))
+    return {"ok": True, "code": OK, "flights": flights,
+            "scanned": len(fetched), "structured": structured_n, "extracted": len(candidates)}
+
+
+def soonest(flights: list[dict]) -> dict | None:
+    """The next leg to depart, for callers that want one answer."""
+    return flights[0] if flights else None

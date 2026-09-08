@@ -59,6 +59,7 @@ import { clock24 } from '../lib/time';
 // another module imports from. One copy each.
 import {
   useSaved,
+  API_BASE,
   arrivalTs,
   hasFlown,
   effectiveStatus,
@@ -201,6 +202,41 @@ const ARCHIVE_ROW_RISE = 6;
 // belong beside SURFACE_1 and SURFACE_2 where the next reader would take it for
 // a third level.
 const ARCHIVED_FILL = 'rgba(255,255,255,0.03)';
+
+// ── A LEG READ OUT OF GMAIL ─────────────────────────────────────────────────
+//
+// WHAT /gmail/flights RETURNS, one per flight leg, already re-checked by the
+// server: the number matches a flight-number regex that accepts 6E, the date
+// is YYYY-MM-DD and not in the past, the PNR is a short code and never a
+// ticket number. Nothing here is the email itself -- `source` is the subject
+// and the received date, and that is deliberately all the app is given.
+type GmailLeg = {
+  flight_number: string;
+  date: string;
+  departure_time: string | null;
+  origin: string | null;
+  origin_name: string | null;
+  destination: string | null;
+  destination_name: string | null;
+  airline: string | null;
+  // CODESHARES. The booking prints the marketing number; the aircraft flies
+  // under the operator's. When the email printed the operator's number it is
+  // here, and the lookup is made under it -- that is the number the landing
+  // feed knows. When it did not, the provider resolves the marketing number to
+  // the operating flight itself, so the lookup still lands on the right one.
+  operated_by: string | null;
+  operating_flight_number: string | null;
+  pnr: string | null;
+  confidence: number;
+  source: { subject: string | null; received: string | null };
+};
+
+type GmailPull = {
+  status: 'idle' | 'loading' | 'done' | 'error';
+  flights: GmailLeg[];
+  message: string;
+};
+const IDLE_PULL: GmailPull = { status: 'idle', flights: [], message: '' };
 
 // WEEKDAYS holds abbreviations for the clock line; "Happy Sat" reads clipped in
 // a greeting, so the full names live here. Only the weekend entries reach it.
@@ -1125,6 +1161,8 @@ export default function Index() {
     saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
     handleRemind, setArchived,
   } = useSaved();
+  // THE UNDO BANNER, for the Gmail pull's auto-add. See pullFromGmail.
+  const { showUndo } = useToast();
   // THE TWO BANNERS ARE NO LONGER THIS SCREEN'S. Both moved to lib/toast.tsx and
   // are rendered by the provider in app/_layout.tsx, because the search screen
   // raises most of them now — a banner drawn here reports nothing while the user
@@ -1133,7 +1171,9 @@ export default function Index() {
   // THE GMAIL TOKEN. This screen only ever WRITES it — sign-in and logout are
   // both here — and the search screen is what reads it, for the /chat request.
   // See lib/account.tsx.
-  const { persistGmailToken } = useAccount();
+  // AND READ, now that home has a use for it: the pull sends it to
+  // /gmail/flights, and an expired one is cleared here on the server's word.
+  const { gmailToken, persistGmailToken } = useAccount();
   // EVERYTHING THIS SCREEN NEEDS TO OWN A FLIGHT CARD, and the search screen owns
   // one too. The lookup, the save, the refresh, the entry animation, the error
   // channel and the minute tick moved to lib/flightcard.tsx so that a card opened
@@ -1152,6 +1192,10 @@ export default function Index() {
     handleToggleSave, refreshFlightCard,
     routeOnMap, toggleRouteOnMap,
     isOwnedFlight, toggleOwned,
+    // FOR A TAPPED GMAIL LEG. It takes the date and the origin, so a booking
+    // for the 20th opens the 20th's instance and a tag flight opens the leg
+    // the email named -- neither of which a bare number can do.
+    runFlightLookup,
   } = useFlightCardHost();
   const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
@@ -1172,6 +1216,113 @@ export default function Index() {
   const [refreshMsgCounter, setRefreshMsgCounter] = useState(0);
   const [refreshTone, setRefreshTone] = useState<'error' | 'info'>('error');
   const insets = useSafeAreaInsets();
+
+  // ── PULL FROM GMAIL ──────────────────────────────────────────────────────
+  //
+  // ONE PRESS, ONE REQUEST, A LIST. The server searches a year of received
+  // mail, decodes the bodies, asks the model per email and re-checks every
+  // leg; this screen sends the token and draws what comes back. Nothing is
+  // saved by the pull itself -- a tapped leg runs the ordinary lookup, and
+  // saving is the card's own bookmark, exactly as for any other flight.
+  //
+  // THE SERVER'S `code` IS WHAT THIS SWITCHES ON, not the sentence beside it.
+  // An expired or refused sign-in has to CLEAR the stored token, or the next
+  // pull sends the same dead token again and gets the same answer for ever.
+  const [gmailPull, setGmailPull] = useState<GmailPull>(IDLE_PULL);
+  const pullFromGmail = async () => {
+    if (gmailToken === null) {
+      // No token to send. On native the sign-in flow produces one; on web the
+      // sign-in path never has, so the row is honest about that and does not
+      // pretend to try.
+      if (Platform.OS === 'web') {
+        showToast('gmail pull needs the iphone app');
+        return;
+      }
+      promptAsync();
+      return;
+    }
+    setGmailPull({ status: 'loading', flights: [], message: '' });
+    try {
+      const response = await fetch(`${API_BASE}/gmail/flights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gmail_token: gmailToken }),
+      });
+      const data = await response.json() as {
+        error?: string | null; code?: string | null; flights?: GmailLeg[];
+      };
+      if (data.code === 'gmail_expired' || data.code === 'gmail_forbidden') {
+        await persistGmailToken(null);
+        setGmailPull({ status: 'error', flights: [], message: data.error || 'sign in again to pull from gmail' });
+        showToast('google sign-in expired');
+        return;
+      }
+      if (data.error || !response.ok) {
+        setGmailPull({ status: 'error', flights: [], message: data.error || 'could not read gmail' });
+        return;
+      }
+      const legs = data.flights ?? [];
+      setGmailPull({ status: 'done', flights: legs, message: '' });
+      await autoAdd(legs);
+    } catch {
+      setGmailPull({ status: 'error', flights: [], message: 'could not reach the server' });
+    }
+  };
+
+  // ── AUTO-ADD, WITH ONE UNDO FOR THE LOT ──────────────────────────────────
+  //
+  // EVERY COMPARABLE APP EITHER CONFIRMS OR OFFERS AN UNDO, and this offers the
+  // undo: the legs are saved as they come, the banner names what was added,
+  // and undo removes exactly those and nothing else. Not a confirmation
+  // screen, not silent.
+  //
+  // EACH LEG IS LOOKED UP FIRST, under its date and origin, because a saved
+  // record is a full DTO and the email gave a number and a day. That is one
+  // provider unit per new leg -- two to six per pull -- and it is spent only
+  // on legs not already on the watchlist.
+  //
+  // THE LOOKUP NUMBER IS THE OPERATING ONE WHERE THE EMAIL PRINTED IT. Where
+  // it did not, the marketing number goes up and the provider answers with the
+  // operating flight anyway, so the record that comes back is the one the
+  // aircraft actually flies under. The id is built from THAT, which is why the
+  // "already saved" test is made on the looked-up record and not on the leg.
+  const autoAdd = async (legs: GmailLeg[]) => {
+    const added: SavedFlight[] = [];
+    let limit = false;
+    for (const leg of legs) {
+      const number = leg.operating_flight_number ?? leg.flight_number;
+      try {
+        const q = [`date=${encodeURIComponent(leg.date)}`];
+        if (leg.origin !== null) q.push(`origin=${encodeURIComponent(leg.origin)}`);
+        const resp = await fetch(`${API_BASE}/flight/${encodeURIComponent(number)}?${q.join('&')}`);
+        const data = await resp.json();
+        if (!resp.ok || data.error) continue;
+        const record = savedFlightFromApi(data);
+        if (savedFlights.some(f => f.id === record.id) || added.some(f => f.id === record.id)) continue;
+        const outcome = await saveRecord(record);
+        if (outcome.kind === 'limit') { limit = true; break; }
+        if (outcome.kind === 'saved') added.push(record);
+      } catch {
+        // One leg that will not look up is skipped; the rest still go in.
+      }
+    }
+    if (added.length === 0) {
+      if (limit) showToast('watchlist limit reached — unsave one first');
+      else if (legs.length > 0) showToast('already on your watchlist');
+      return;
+    }
+    // WITHIN THE BANNER'S 26 CHARACTERS: "added 6E5071 · 14 Sep" is 21, and
+    // "added 6E5071 +2 more" is 20 at the longest number this app sees.
+    const first = added[0];
+    const label = added.length === 1
+      ? `added ${first.flightNumber} · ${routeDateLabel(first.flightDate).replace(/^\w+ /, '')}`
+      : `added ${first.flightNumber} +${added.length - 1} more`;
+    showUndo(label, async () => {
+      for (const r of added) await handleUnsave(r);
+      showToast(added.length === 1 ? `${first.flightNumber} removed` : `${added.length} flights removed`);
+    });
+    if (limit) showToast('watchlist limit reached — some were not added');
+  };
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: '970706733452-n7ki9no870k7ad1bpkb86eu7rec0an7d.apps.googleusercontent.com',
@@ -1637,6 +1788,7 @@ export default function Index() {
           // clears the key and the value together, and carries the same web guard
           // that branch gave it. See lib/account.tsx.
           await persistGmailToken(null);
+          setGmailPull(IDLE_PULL);
           setEmail(null);
           clearResultView();
           setProfileOpen(false);
@@ -1855,6 +2007,77 @@ export default function Index() {
                 </Svg>
                 <Text style={{ fontFamily: SANS, color: '#e3e3e3', fontSize: 13 }}>Sign in with Google</Text>
               </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ── PULL FROM GMAIL ──
+              Signed in, and no card open: the card takes the screen and this
+              is a way of opening one. The row is the only control; the list
+              under it is what the last pull found. */}
+          {username !== null && flight === null && (
+            <View style={gm.wrap}>
+              <TouchableOpacity
+                style={gm.row}
+                activeOpacity={0.7}
+                onPress={pullFromGmail}
+                disabled={gmailPull.status === 'loading'}
+              >
+                <View style={sf.rowEdge} pointerEvents="none" />
+                <Text style={gm.rowTitle}>
+                  {gmailToken === null
+                    ? 'sign in again to pull from gmail'
+                    : gmailPull.status === 'loading'
+                      ? 'reading your gmail'
+                      : gmailPull.status === 'done'
+                        ? 'pull from gmail again'
+                        : 'add flights from gmail'}
+                </Text>
+                <Text style={gm.rowSub}>
+                  {gmailPull.status === 'loading'
+                    ? 'a year of confirmations, checked one by one'
+                    : 'booking emails from the last year, added to your watchlist'}
+                </Text>
+              </TouchableOpacity>
+
+              {gmailPull.status === 'error' && (
+                <Text style={gm.msg}>{`> ${gmailPull.message}`}</Text>
+              )}
+              {gmailPull.status === 'done' && gmailPull.flights.length === 0 && (
+                <Text style={gm.msg}>{'> no upcoming flights found in your gmail'}</Text>
+              )}
+              {gmailPull.status === 'done' && gmailPull.flights.map((leg, i) => (
+                <TouchableOpacity
+                  key={`${leg.flight_number}-${leg.date}`}
+                  style={[gm.leg, i === gmailPull.flights.length - 1 && gm.legLast]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    // THE DATE AND THE ORIGIN GO WITH IT, and the operating
+                    // number where the email printed one. See runFlightLookup.
+                    void runFlightLookup(leg.operating_flight_number ?? leg.flight_number, false, leg.date, leg.origin);
+                  }}
+                >
+                  <View style={sf.rowEdge} pointerEvents="none" />
+                  <View style={sf.line1}>
+                    <Text style={sf.number}>{leg.flight_number}</Text>
+                    <Text style={sf.route} numberOfLines={1} ellipsizeMode="middle">
+                      {`${leg.origin ?? leg.origin_name ?? '?'} → ${leg.destination ?? leg.destination_name ?? '?'}`}
+                    </Text>
+                    {ISO_DAY_RE.test(leg.date) && (
+                      <Text style={sf.date} numberOfLines={1}>{routeDateLabel(leg.date)}</Text>
+                    )}
+                  </View>
+                  <Text style={gm.legSub} numberOfLines={1}>
+                    {[
+                      leg.departure_time !== null ? `departs ${leg.departure_time}` : null,
+                      leg.pnr !== null ? `pnr ${leg.pnr}` : null,
+                      leg.operating_flight_number !== null
+                        ? `operated as ${leg.operating_flight_number}`
+                        : leg.operated_by !== null ? `operated by ${leg.operated_by}` : leg.airline,
+                    ].filter(Boolean).join(' · ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 
@@ -2110,6 +2333,25 @@ const s = StyleSheet.create({
   // scrolls once it has one. Without it the list would run past the bottom of
   // the sheet at the ceiling and simply be clipped.
   archiveList: { marginHorizontal: -20, paddingHorizontal: 20, flex: 1 },
+});
+
+// THE GMAIL SECTION, in sf.row's vocabulary so a leg found in an email and a
+// leg on the watchlist read as the same kind of thing.
+const gm = StyleSheet.create({
+  wrap: { marginBottom: 24 },
+  row: {
+    paddingVertical: 13, paddingHorizontal: CARD_PAD,
+    backgroundColor: CARD_FILL, borderRadius: CARD_RADIUS, marginBottom: CARD_GAP,
+  },
+  rowTitle: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
+  rowSub: { fontFamily: SANS, fontSize: 11, color: 'rgba(226,226,226,0.4)', marginTop: 4 },
+  msg: { fontFamily: SANS, fontSize: 11, color: 'rgba(226,226,226,0.5)', paddingVertical: 6 },
+  leg: {
+    paddingVertical: 13, paddingHorizontal: CARD_PAD,
+    backgroundColor: CARD_FILL, borderRadius: CARD_RADIUS, marginBottom: CARD_GAP,
+  },
+  legLast: { marginBottom: 0 },
+  legSub: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)', marginTop: 4 },
 });
 
 const pm = StyleSheet.create({

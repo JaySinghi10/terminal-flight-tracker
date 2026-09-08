@@ -82,7 +82,11 @@ const UNDO_TOAST_MS = 5000;
 
 type ToastContextValue = {
   showToast: (msg: string) => void;
-  showUndo: (msg: string) => void;
+  // THE SECOND ARGUMENT IS WHAT UNDO DOES. Absent, it is the store's own
+  // undoUnsave -- the restore every unsave has always offered. Present, the
+  // banner runs THAT instead: the Gmail pull auto-adds several flights and its
+  // undo removes exactly those, which is not a restore and not one record.
+  showUndo: (msg: string, onUndo?: () => void | Promise<void>) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -118,6 +122,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }));
   const undoToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A custom undo, when the banner was raised with one. A ref rather than
+  // state: nothing renders it, and it must be the one the banner was raised
+  // with even if another message has displaced the banner since.
+  const customUndoRef = useRef<(() => void | Promise<void>) | null>(null);
 
   // In, hold, out — as one sequence rather than a delayed fade, so a second
   // message arriving mid-flight restarts cleanly instead of inheriting whatever
@@ -187,13 +195,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToastCounter(c => c + 1);
   };
 
-  const showUndo = (msg: string) => {
+  const showUndo = (msg: string, onUndo?: () => void | Promise<void>) => {
+    customUndoRef.current = onUndo ?? null;
     setToastMsg('');
     setUndoMsg(msg);
     setUndoCounter(c => c + 1);
   };
 
   const handleUndo = async () => {
+    const custom = customUndoRef.current;
+    if (custom !== null) {
+      // The banner goes the instant undo is pressed, exactly as below, and the
+      // action reports for itself: it knows what it removed.
+      customUndoRef.current = null;
+      setUndoMsg('');
+      await custom();
+      return;
+    }
     // onTaken RUNS THE MOMENT THE RECORD IS IN HAND and before the restore is
     // awaited, which is where setUndoMsg('') always was: the banner goes when
     // undo is pressed, not when storage comes back.
