@@ -166,14 +166,33 @@ const NIGHT_INK = '#050505';
 // version number.
 const MAPLIBRE = '5.24.0';
 
-// TWO HOSTS, TRIED IN ORDER. If unpkg is unreachable or blocked under the
-// synthesised origin, the page falls through to jsdelivr and says which one
-// served it, so "the CDN is blocked" and "the library is broken" stop looking
-// like the same failure.
+// TWO HOSTS. If the first is unreachable or blocked under the synthesised
+// origin, the page falls through to the second and says which one served it,
+// so "the CDN is blocked" and "the library is broken" stop looking like the
+// same failure.
+//
+// JSDELIVR LEADS, AND THAT IS MEASURED RATHER THAN PREFERRED. The same 1.06 MB
+// file, fetched back to back from this project's own network: jsdelivr 0.55s,
+// unpkg 0.71s. jsdelivr also has the wider set of edge locations, which matters
+// more on a phone in India than the difference in a single desk measurement.
+// Neither is trusted: whichever answers first wins, and see loadFrom.
 const CDNS: [string, string][] = [
-  ['unpkg', `https://unpkg.com/maplibre-gl@${MAPLIBRE}/dist/maplibre-gl.js`],
   ['jsdelivr', `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE}/dist/maplibre-gl.js`],
+  ['unpkg', `https://unpkg.com/maplibre-gl@${MAPLIBRE}/dist/maplibre-gl.js`],
 ];
+
+// ── HOW LONG A HOST GETS BEFORE THE NEXT ONE IS STARTED TOO ─────────────────
+//
+// SIX SECONDS IS NOT A DEADLINE, IT IS A SECOND OPINION. The first host is not
+// cancelled when this expires -- see loadFrom -- so the cost of being wrong
+// about a merely-slow host is one extra request, while the cost of not asking
+// is the map never appearing. On a working connection the library arrives in
+// well under a second, so six is already far outside normal.
+const CDN_STAGGER_MS = 6000;
+// AND THE ONE TERMINAL STATE. Every host started, none of them produced a
+// usable namespace, so there is nothing left to wait for and the diagnostic
+// probes are worth more than more waiting.
+const CDN_GIVE_UP_MS = 25000;
 
 // THE VECTOR SOURCE, AND ONLY THE SOURCE. OpenFreeMap serves the OpenMapTiles
 // schema; positron is their light stylesheet over it, and none of positron's 55
@@ -1177,38 +1196,95 @@ function diagnose() {
 // fails to fetch does so silently and the page carries on to the next statement
 // with the namespace missing — which is exactly the failure being fixed.
 var CDNS = ${JSON.stringify(CDNS)};
+var CDN_STAGGER_MS = ${CDN_STAGGER_MS};
+var CDN_GIVE_UP_MS = ${CDN_GIVE_UP_MS};
+
+// ── A HOST THAT NEVER ANSWERS IS NOT AN ERROR, AND THAT WAS THE BUG ────────
+//
+// onerror FIRES ON A FAILED REQUEST, NOT A SLOW ONE. A CDN that accepts the
+// connection and then takes a minute to send a megabyte, or never sends it at
+// all, raises no event whatever: no error, no load, nothing. So the fallback
+// under it could not run, and the map waited for ever with the page sitting on
+// stage 'script'. On a first launch that is indistinguishable from a slow cold
+// cache, which is how it went unnoticed.
+//
+// THE NEXT HOST IS STARTED, NOT SWITCHED TO. Abandoning a download that is
+// merely slow would throw away the bytes already in flight and begin the same
+// megabyte somewhere else, which is worse than waiting. Both requests are left
+// running and the first USABLE namespace wins. That is never slower than the
+// old behaviour and is the difference between six seconds and never when the
+// leading host is dead.
+//
+// async = true IS LOAD-BEARING. A dynamically inserted script is async by
+// default and this code used to set it to false, which puts it on the in-order
+// list -- where a second script WAITS for the first to execute. That single
+// property would have made the race below strictly serial and pointless.
+var claimed = false;
+var tags = [];
+var t0 = Date.now();
+
+function usable() {
+  return !!(window.maplibregl && typeof window.maplibregl.Map === 'function');
+}
+
+// THE FIRST USABLE NAMESPACE WINS, ONCE. Every other tag has its handlers
+// dropped, so a copy that arrives late cannot post over the winner or start a
+// second map. The late script still executes and redefines the namespace with
+// a byte-identical build of the same pinned version, which the already
+// constructed map does not care about: it holds its own references.
+function claim(host) {
+  if (claimed || !usable()) return false;
+  claimed = true;
+  for (var j = 0; j < tags.length; j++) { tags[j].onload = null; tags[j].onerror = null; }
+  post({ type: 'cdn', host: host, ms: Date.now() - t0,
+         version: window.maplibregl.getVersion ? window.maplibregl.getVersion() : 'unknown' });
+  start();
+  return true;
+}
 
 function loadFrom(i) {
-  if (i >= CDNS.length) {
-    err('script', 'no CDN reachable: tried ' + CDNS.map(function (c) { return c[0]; }).join(', '));
-    diagnose();
-    return;
+  if (claimed || i >= CDNS.length) return;
+  if (i === 0) {
+    t0 = Date.now();
+    // NOTHING USABLE FROM ANY HOST, and it needs a timer of its own now that a
+    // stalled host no longer ends the chain by falling through.
+    setTimeout(function () {
+      if (claimed) return;
+      err('script', 'no CDN produced a usable library in ' + CDN_GIVE_UP_MS + 'ms: tried '
+        + CDNS.map(function (c) { return c[0]; }).join(', '));
+      diagnose();
+    }, CDN_GIVE_UP_MS);
   }
-  STAGE = 'script:' + CDNS[i][0];
+  var host = CDNS[i][0];
+  STAGE = 'script:' + host;
   var s = document.createElement('script');
   s.src = CDNS[i][1];
-  s.async = false;
+  s.async = true;
   // SAFE BECAUSE BOTH HOSTS AGREE. crossorigin on a script whose server does NOT
   // send Access-Control-Allow-Origin makes it fail to load outright rather than
   // load opaquely, so this was checked first: unpkg and jsdelivr both send *.
   s.crossOrigin = 'anonymous';
   s.onerror = function () {
-    err('script', 'fetch failed from ' + CDNS[i][0] + ' (' + CDNS[i][1] + ')');
+    err('script', 'fetch failed from ' + host + ' (' + CDNS[i][1] + ')');
     loadFrom(i + 1);
   };
   s.onload = function () {
     // LOADED IS NOT THE SAME AS USABLE. A 200 that returns an error page, or a
     // build whose namespace is not where it is expected, both land here — and
     // both used to become "undefined is not an object" several lines later.
-    if (!window.maplibregl || typeof window.maplibregl.Map !== 'function') {
-      err('script', CDNS[i][0] + ' served the script but window.maplibregl.Map is not a function');
-      loadFrom(i + 1);
-      return;
-    }
-    post({ type: 'cdn', host: CDNS[i][0], version: window.maplibregl.getVersion ? window.maplibregl.getVersion() : 'unknown' });
-    start();
+    if (claim(host)) return;
+    if (claimed) return;
+    err('script', host + ' served the script but window.maplibregl.Map is not a function');
+    loadFrom(i + 1);
   };
+  tags.push(s);
   document.head.appendChild(s);
+  setTimeout(function () {
+    if (claimed || i + 1 >= CDNS.length) return;
+    err('script', host + ' has not answered in ' + CDN_STAGGER_MS + 'ms; starting '
+      + CDNS[i + 1][0] + ' alongside it');
+    loadFrom(i + 1);
+  }, CDN_STAGGER_MS);
 }
 
 function start() {
@@ -2490,7 +2566,7 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           if (m === null || typeof m !== 'object') return;
           if (m.type === 'error') console.warn(`[MAP] ${m.stage}: ${m.message}`);
           if (m.type === 'probe') console.warn(`[MAP] probe ${m.what}: ${m.status}`);
-          if (m.type === 'cdn') console.log(`[MAP] library from ${m.host} (v${m.version})`);
+          if (m.type === 'cdn') console.log(`[MAP] library from ${m.host} in ${m.ms}ms (v${m.version})`);
           if (m.type === 'style') {
             console.log(`[MAP] style parsed, globe attached (load ${m.load})`);
             // BEFORE THE FIRST TILE. Applying home here means the camera is set
