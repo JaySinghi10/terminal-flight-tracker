@@ -653,7 +653,7 @@ Leave a short note at each of the four sites recording that the under-the-glass 
 - `onCancelButtonPress` → clear
 - `textColor: '#e2e2e2'`, `hintTextColor` at the existing placeholder grey, `tintColor: '#4ade80'`
 - `hideWhenScrolling: false`
-- `autoCapitalize` — **decide during this stage, do not set blind.** `'characters'` is right for `6E5071` and for `DEL`, and wrong if route search accepts city names. Check what the route search actually accepts first. If it takes both, `'characters'` still wins because the machine-data case is the common one.
+- `autoCapitalize: 'none'` — **decided in Stage 8, do not reopen.** This section originally assumed codes-only input and leaned to `'characters'`. Discovery showed route search accepts city names: the parser takes "Mumbai to Delhi" and "between Mumbai and Delhi" and resolves them through the city index, and `'characters'` would have capitalised every letter as a person typed a sentence. Flight-number lookup is case-insensitive at the parser, so nothing is lost. The deleted field used `'none'` and it worked.
 
 **This puts a header on the Search screen, which it does not have today.** That is an accepted layout change.
 
@@ -667,11 +667,11 @@ It exists solely to carry text from the tab bar to the search screen across a si
 
 ### 12.8 The animated placeholder
 
-`app/index.tsx` has `PLACEHOLDER_PROMPTS` and `AnimatedPlaceholder`. The tab bar carried a copy of both, and a TODO in the tab bar says the fix is to lift both into `lib/`.
+**Corrected in Stage 8.** This section said `app/index.tsx` had `PLACEHOLDER_PROMPTS` and `AnimatedPlaceholder` and that the tab bar carried a copy. Discovery found neither in Home, nor anywhere else in the tree: the only mentions were the tab bar's own comments claiming to have copied them, and a TODO proposing to lift both into `lib/`. The tab bar's copy was the only copy.
 
-**The tab bar's copy dies with the file, which resolves the duplication.** Home's original stays. **Do not lift anything into `lib/`** — there is only one copy now.
+**It dies with the file, and there is nothing to keep.** Do not lift anything into `lib/`; there is nothing to lift.
 
-A native search bar takes a static `placeholder`. **The cycling placeholder is lost on the search field.** Home keeps its own.
+A native search bar takes a static `placeholder`. **The cycling placeholder is lost on the search field**, and nothing else in the app had one.
 
 ### 12.8.1 Must not change
 
