@@ -651,12 +651,11 @@ Leave a short note at each of the four sites recording that the under-the-glass 
 **Settled configuration:**
 
 - `placement: 'integrated'`
-- `placeholder: '~/username:-$'` — a shell prompt, not an instruction. It is the app's voice, the same voice as the `>_` and `>//` marks on home, and it deliberately tells a first-time user nothing about what to type. The owner's call, made in Stage 9.
+- `placeholder` is the shell prompt `~/<name>:-$`, with the name the person is greeted by on home (`displayName ?? username`, read from the same secure store), and `~/terminal:-$` when nobody is signed in. It is re-read on the account-change signal, the same one that clears the native field. It is the app's voice, the same voice as the `>_` and `>//` marks on home, and it deliberately tells a first-time user nothing about what to type. The owner's call, made in Stage 9. Known gap: a display name typed after sign-in reaches the prompt on the next mount or account change, not at once.
 - `onChangeText` → the screen's own state
 - `onSearchButtonPress` → run the search
 - `onCancelButtonPress` → clear
-- `textColor: '#e2e2e2'`, `hintTextColor: '#4ade80'`, `tintColor: '#4ade80'`
-- **The green placeholder is the second exception to the green rule** (SPEC 1, which grants one). A prompt is neither live nor actionable; it is identity. Recorded here rather than argued again.
+- `textColor: '#e2e2e2'`, `tintColor: '#4ade80'`. **No `hintTextColor`:** react-native-screens 4.26.2 tags it `@plaform android` (sic) and iOS ignores it, so a value there would promise a green placeholder that never renders. The placeholder is the system's grey; the green on the field is the caret and the cancel button, through `tintColor`, which is actionable and inside the green rule. An earlier revision of this section recorded a green placeholder as the rule's second exception; that exception is withdrawn because it never applied.
 - `hideWhenScrolling: true` — the field shrinks and tucks away on a scroll down and returns on a scroll up. Apple's behaviour, and it is tied to scroll DIRECTION rather than position, so it restores when the scrolling stops rather than only at the top. Expected and accepted.
 - `autoCapitalize: 'none'` — **decided in Stage 8, applied in Stage 9, do not reopen.** This section originally assumed codes-only input and leaned to `'characters'`. Discovery showed route search accepts city names: the parser takes "Mumbai to Delhi" and "between Mumbai and Delhi" and resolves them through the city index, and `'characters'` would have capitalised every letter as a person typed a sentence. Flight-number lookup is case-insensitive at the parser, so nothing is lost. The deleted field used `'none'` and it worked.
 
@@ -710,7 +709,7 @@ Treat them as one stage with an intermediate checkpoint: get `NativeTabs` render
 8. **On a physical device**, the last row of content on Home, My Flights, Deck and Search is fully readable and not under the bar — **with the manual paddings removed**.
 9. The bar renders dark in both device appearance modes.
 10. Every flight card, status word, countdown and claim unchanged.
-11. Search tab presents a native search bar with the green placeholder `~/username:-$`, docked into the tab bar's search pill. A second tap on the pill focuses it; the first does not, and that is the recorded gap. Scrolling down tucks the field away and scrolling up brings it back.
+11. Search tab presents a native search bar with the placeholder `~/<name>:-$` when signed in and `~/terminal:-$` when not, docked into the tab bar's search pill. A second tap on the pill focuses it; the first does not, and that is the recorded gap. Scrolling down tucks the field away and scrolling up brings it back.
 12. Typing filters or queries as before.
 13. Return runs the search.
 14. **Return twice on the same term runs it twice.**

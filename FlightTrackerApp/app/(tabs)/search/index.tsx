@@ -41,6 +41,9 @@ import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 // The search bar's imperative handle, for the one thing the props cannot do:
 // clear the native field when the account changes. See clearResultView.
 import type { SearchBarCommands } from "react-native-screens";
+// THE NAME IN THE PROMPT, read from the same place home reads the name it
+// greets with. See promptName below.
+import * as SecureStore from 'expo-secure-store';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import {
@@ -1260,6 +1263,36 @@ export default function Search() {
   const [submitCount, setSubmitCount] = useState(0);
   const submit = useCallback(() => setSubmitCount(c => c + 1), []);
   const searchBarRef = useRef<SearchBarCommands>(null);
+
+  // THE PROMPT'S NAME. The search bar's placeholder is a shell prompt,
+  // ~/<name>:-$, and the name is whatever home greets with: displayName if the
+  // person typed one in the profile sheet, else the first name Google gave at
+  // sign-in, exactly home's `displayName ?? username`. READ FROM THE SAME
+  // STORE HOME READS, not held on a context -- lib/account.tsx deliberately
+  // holds the session and nothing else, and this is one string read at two
+  // moments: mount, and the account changing (the same signal that clears the
+  // native field, below). Signed out, the prompt says ~/terminal:-$.
+  //
+  // KNOWN GAP: a display name typed in the profile sheet AFTER sign-in is not
+  // an account change, so it reaches this prompt on the next mount or the next
+  // account change, not at once.
+  const [promptName, setPromptName] = useState<string | null>(null);
+  const readPromptName = useCallback(async () => {
+    try {
+      if (Platform.OS === 'web') {
+        setPromptName(localStorage.getItem('displayName') ?? localStorage.getItem('username'));
+        return;
+      }
+      const [display, user] = await Promise.all([
+        SecureStore.getItemAsync('displayName'),
+        SecureStore.getItemAsync('username'),
+      ]);
+      setPromptName(display || user || null);
+    } catch {
+      setPromptName(null);
+    }
+  }, []);
+  useEffect(() => { void readPromptName(); }, [readPromptName]);
   const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
   const { session } = useAccount();
@@ -1409,7 +1442,7 @@ export default function Search() {
   // THE MAP WATCHES THE SAME SIGNAL SEPARATELY, further down, where its own state
   // is declared. One effect could have done both, but it would have had to reach
   // forward four hundred lines for refs it does not otherwise touch.
-  useAccountChange(() => { clearResultView(); });
+  useAccountChange(() => { clearResultView(); void readPromptName(); });
 
   // RETURN ON THE SEARCH BAR, AND IT IS THE ONLY WAY A SEARCH RUNS. The bar's
   // onSearchButtonPress (see the Stack.Screen options in the JSX) bumps the
@@ -4145,24 +4178,28 @@ export default function Search() {
           itself. The callbacks are declared here, not in the layout, because
           they write this screen's state.
 
-          THE PLACEHOLDER IS A SHELL PROMPT, IN GREEN, and it is the app's
-          voice rather than an instruction -- the same voice as the >_ and >//
-          marks on home. It says nothing about what to type, which is the
-          trade: a person who does not already know is told nothing. That is
-          the owner's call, and it is why the green rule gets its second
-          exception (SPEC 1). hideWhenScrolling is true, so the field tucks
-          away on a scroll down and returns on a scroll up: Apple's behaviour,
-          tied to direction rather than position, so it comes back when the
-          scrolling stops. */}
+          THE PLACEHOLDER IS A SHELL PROMPT, and it is the app's voice rather
+          than an instruction -- the same voice as the >_ and >// marks on
+          home. It carries the person's name, or "terminal" when nobody is
+          signed in; see promptName. It says nothing about what to type, which
+          is the trade: a person who does not already know is told nothing.
+          That is the owner's call.
+
+          NO hintTextColor. react-native-screens tags it Android-only and iOS
+          ignores it, so setting it would promise a green placeholder that
+          never renders. The green on this field is the caret and the cancel
+          button, which is tintColor. hideWhenScrolling is true, so the field
+          tucks away on a scroll down and returns on a scroll up: Apple's
+          behaviour, tied to direction rather than position, so it comes back
+          when the scrolling stops. */}
       <Stack.Screen
         options={{
           headerSearchBarOptions: {
             ref: searchBarRef,
-            placeholder: '~/username:-$',
+            placeholder: `~/${promptName ?? 'terminal'}:-$`,
             placement: 'integrated',
             autoCapitalize: 'none',
             textColor: '#e2e2e2',
-            hintTextColor: '#4ade80',
             tintColor: '#4ade80',
             hideWhenScrolling: true,
             onChangeText: (e) => setQuery(e.nativeEvent.text),
