@@ -10,7 +10,9 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const out = mkdtempSync(join(tmpdir(), 'pending-rules-'));
-execSync(`npx tsc lib/pendingRules.ts --outDir "${out}" --module es2022 --target es2022 --moduleResolution node --skipLibCheck`, { stdio: 'inherit' });
+// --ignoreConfig: TypeScript 6 refuses a file on the command line while the
+// project tsconfig exists, and this compile must not inherit that config.
+execSync(`npx tsc --ignoreConfig lib/pendingRules.ts --outDir "${out}" --module es2022 --target es2022 --moduleResolution bundler --skipLibCheck`, { stdio: 'inherit' });
 const R = await import(pathToFileURL(join(out, 'pendingRules.js')).href);
 
 let pass = 0, fail = 0;
