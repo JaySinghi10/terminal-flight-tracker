@@ -20,6 +20,7 @@ import fr24
 # contents of people's booking emails, and the rules for that -- never logged,
 # never stored, truncated before the model sees them -- live in one file.
 import gmail_flights
+import auth
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -342,17 +343,96 @@ def _is_fixture_token(token: str) -> bool:
     return _secret_ok(token[len("fixture:"):], GMAIL_FIXTURE_TOKEN)
 
 
-@app.post("/gmail/flights")
-def gmail_flights_endpoint(req: GmailFlightsRequest):
-    if not req.gmail_token:
-        return {"error": GMAIL_ERRORS[gmail_flights.EXPIRED], "code": gmail_flights.EXPIRED, "flights": []}
+# ── THE SESSION, AND THE ACCESS TOKEN IT STANDS FOR ─────────────────────────
+#
+# THE APP NO LONGER HOLDS A GOOGLE TOKEN. It holds a session (see auth.py) and
+# sends it as a Bearer header; this server turns it into a Google access token,
+# minting one with the refresh grant when the stored one has expired. The
+# fixture inbox rides the same header: "fixture:<secret>" in place of a session.
+#
+# THE BODY FIELD gmail_token IS THE OLD APP. A raw access token from the implicit
+# flow, accepted for ONE RELEASE so an un-updated phone keeps working until its
+# hour-long token expires and the app asks it to sign in again -- through the
+# new flow. Remove the field, and this branch, in the release after.
+def _bearer(request: Request) -> str | None:
+    h = request.headers.get("authorization") or ""
+    if h[:7].lower() != "bearer ":
+        return None
+    v = h[7:].strip()
+    return v or None
+
+
+def _gmail_access(request: Request, legacy_token: str | None) -> tuple[str | None, str | None]:
+    """(token, code). token is a Google access token, or the fixture token."""
+    session = _bearer(request)
+    if session:
+        if _is_fixture_token(session):
+            return session, None
+        return auth.access_token(session)
+    if legacy_token:
+        return legacy_token, None
+    return None, gmail_flights.EXPIRED
+
+
+class AuthGoogleRequest(BaseModel):
+    code: str
+    code_verifier: str
+    redirect_uri: str
+
+
+# Fixed strings, as GMAIL_ERRORS are: the app shows them and switches on the code.
+AUTH_ERRORS = {
+    auth.BAD_REQUEST: "The sign-in did not complete. Please try again.",
+    auth.REJECTED: "Google did not accept the sign-in. Please try again.",
+    auth.NO_REFRESH: "Google did not grant lasting access. Sign in again and allow Terminal to keep it.",
+    auth.UNAVAILABLE: "Sign-in is not available right now. Please try again in a moment.",
+}
+
+
+@app.post("/auth/google")
+def auth_google(req: AuthGoogleRequest):
+    """The code, the verifier and the redirect in; a session, the email and a
+    first name out. The email and name are returned once and not stored."""
     try:
-        if _is_fixture_token(req.gmail_token):
+        r = auth.sign_in(req.code, req.code_verifier, req.redirect_uri)
+    except Exception:
+        # The traceback goes to the log; auth.py logs no secret and this
+        # catches only what it missed.
+        logger.exception("auth: sign-in failed")
+        r = {"ok": False, "code": auth.UNAVAILABLE}
+    if not r["ok"]:
+        return {"error": AUTH_ERRORS.get(r["code"], AUTH_ERRORS[auth.UNAVAILABLE]), "code": r["code"],
+                "session": None, "email": None, "name": None, "gmail": False}
+    return {"error": None, "code": None, "session": r["session"], "email": r["email"],
+            "name": r["name"], "gmail": r["gmail"]}
+
+
+@app.post("/auth/signout")
+def auth_signout(request: Request):
+    """Every session of the account, the record, and the grant at Google.
+    Idempotent: a session that is already gone is a success."""
+    session = _bearer(request)
+    removed = False
+    if session and not _is_fixture_token(session):
+        try:
+            removed = auth.sign_out(session)
+        except Exception:
+            logger.exception("auth: sign-out failed")
+    return {"ok": True, "removed": removed}
+
+
+@app.post("/gmail/flights")
+def gmail_flights_endpoint(req: GmailFlightsRequest, request: Request):
+    token, code = _gmail_access(request, req.gmail_token)
+    if token is None:
+        return {"error": GMAIL_ERRORS.get(code, GMAIL_ERROR_GENERIC), "code": code, "flights": []}
+    try:
+        if _is_fixture_token(token):
             logger.warning("gmail flights: serving the FIXTURE inbox")
             r = gmail_flights.upcoming_flights(
-                req.gmail_token, lister=gmail_flights.fixture_lister, fetch=gmail_flights.fixture_fetch)
+                token, lister=gmail_flights.fixture_lister, fetch=gmail_flights.fixture_fetch)
         else:
-            r = gmail_flights.upcoming_flights(req.gmail_token)
+            r = gmail_flights.upcoming_flights(token)
     except Exception:
         # The traceback goes to the log. Nothing from the mailbox is in it: the
         # module logs counts and codes only, and this catches what it missed.
@@ -671,8 +751,11 @@ def _parse_error(exc: Exception) -> str:
 
 
 @app.post("/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, request: Request):
     messages = [llm.user_text(req.message)]
+    # Resolved once, up front, so a chat that never touches Gmail never asks
+    # Google for anything. None means the tools answer "not signed in".
+    gmail_access, _gmail_code = _gmail_access(request, req.gmail_token)
 
     system = (
         "You are a terminal-based flight assistant. "
@@ -724,7 +807,7 @@ def chat(req: ChatRequest):
         if turn.tool_calls:
             results = []
             for call in turn.tool_calls:
-                result_text, flight_data = run_tool(call.name, call.args, req.gmail_token)
+                result_text, flight_data = run_tool(call.name, call.args, gmail_access)
                 if flight_data is not None:
                     captured_flight = flight_data
                 results.append((call, result_text))

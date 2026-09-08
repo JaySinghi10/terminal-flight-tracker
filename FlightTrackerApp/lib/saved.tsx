@@ -1257,7 +1257,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // THE EMAIL IS HYDRATED HERE, and this is the one read that moved rather than
   // being handed over.
   //
-  // The home screen's own hydration reads username, gmailToken, displayName and
+  // The home screen's own hydration reads username, session, displayName and
   // savedCollapsed in the same pass and still does; only 'email' is read again
   // here. Two reads of one key at launch is the price of the store owning the
   // account it is keyed on, and the alternative was worse in a way that is not

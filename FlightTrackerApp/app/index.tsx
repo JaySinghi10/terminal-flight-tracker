@@ -16,6 +16,7 @@ import Reanimated, {
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Google from 'expo-auth-session/providers/google';
+import { ResponseType } from 'expo-auth-session';
 import {
   Alert,
   View,
@@ -1177,7 +1178,7 @@ export default function Index() {
   // See lib/account.tsx.
   // AND READ, now that home has a use for it: the pull sends it to
   // /gmail/flights, and an expired one is cleared here on the server's word.
-  const { gmailToken, persistGmailToken } = useAccount();
+  const { session, persistSession } = useAccount();
   // EVERYTHING THIS SCREEN NEEDS TO OWN A FLIGHT CARD, and the search screen owns
   // one too. The lookup, the save, the refresh, the entry animation, the error
   // channel and the minute tick moved to lib/flightcard.tsx so that a card opened
@@ -1234,10 +1235,11 @@ export default function Index() {
   // pull sends the same dead token again and gets the same answer for ever.
   const [gmailPull, setGmailPull] = useState<GmailPull>(IDLE_PULL);
   const pullFromGmail = async () => {
-    if (gmailToken === null) {
-      // No token to send. On native the sign-in flow produces one; on web the
-      // sign-in path never has, so the row is honest about that and does not
-      // pretend to try.
+    if (session === null) {
+      // No session to send. On native the sign-in flow produces one; on web
+      // the sign-in path never has, so the row is honest about that and does
+      // not pretend to try. A phone updated from the build that held a raw
+      // Google token lands here too: signed in, no session, one tap away.
       if (Platform.OS === 'web') {
         showToast('gmail pull needs the iphone app');
         return;
@@ -1249,14 +1251,14 @@ export default function Index() {
     try {
       const response = await fetch(`${API_BASE}/gmail/flights`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gmail_token: gmailToken }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session}` },
+        body: JSON.stringify({}),
       });
       const data = await response.json() as {
         error?: string | null; code?: string | null; flights?: GmailLeg[];
       };
       if (data.code === 'gmail_expired' || data.code === 'gmail_forbidden') {
-        await persistGmailToken(null);
+        await persistSession(null);
         setGmailPull({ status: 'error', flights: [], message: data.error || 'sign in again to pull from gmail' });
         showToast('google sign-in expired');
         return;
@@ -1362,36 +1364,65 @@ export default function Index() {
     androidClientId: '970706733452-n7ki9no870k7ad1bpkb86eu7rec0an7d.apps.googleusercontent.com',
     redirectUri: 'com.googleusercontent.apps.970706733452-fmqtgg1doc0n14g8ibb8qsrsmcaot83e:/oauth2redirect',
     scopes: ['profile', 'email', 'https://www.googleapis.com/auth/gmail.readonly'],
+    // THE CODE FLOW, AND THE PHONE NEVER EXCHANGES THE CODE. It goes to our
+    // server with the PKCE verifier, the server exchanges it and keeps the
+    // refresh token (auth.py). shouldAutoExchangeCode is what stops this
+    // library doing the exchange itself the moment the code arrives.
+    // access_type=offline asks for a refresh token; prompt=consent makes
+    // Google issue one even to an account that consented before, which is
+    // exactly the account that signed in under the old flow.
+    responseType: ResponseType.Code,
+    shouldAutoExchangeCode: false,
+    usePKCE: true,
+    extraParams: { access_type: 'offline', prompt: 'consent' },
   });
 
   useEffect(() => {
     console.log('[Auth] response:', JSON.stringify(response));
     if (response?.type === 'success') {
-      const accessToken = response.authentication?.accessToken;
-      if (!accessToken) return;
+      const code = response.params?.code;
+      const verifier = request?.codeVerifier;
+      const redirectUri = request?.redirectUri;
+      if (!code || !verifier || !redirectUri) return;
       (async () => {
         try {
-          const userInfo = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-            headers: { Authorization: `Bearer ${accessToken}` },
+          // THE EXCHANGE HAPPENS ON OUR SERVER. It answers with a session, the
+          // email and a first name -- read once from Google's id token and not
+          // stored there -- so this screen no longer calls Google's userinfo
+          // endpoint, and never sees a Google token at all.
+          const resp = await fetch(`${API_BASE}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: redirectUri }),
           });
-          const user = await userInfo.json();
-          const name = user.email.split('@')[0].match(/^[a-zA-Z]+/)[0];
-          const validEmail = typeof user.email === 'string' && user.email.trim() ? user.email : null;
+          const data = await resp.json() as {
+            error?: string | null; code?: string | null; session?: string | null;
+            email?: string | null; name?: string | null; gmail?: boolean;
+          };
+          if (!resp.ok || data.error || !data.session) {
+            showToast(data.error || 'sign-in did not complete');
+            return;
+          }
+          const validEmail = typeof data.email === 'string' && data.email.trim() ? data.email : null;
+          const name = (typeof data.name === 'string' && data.name.trim())
+            ? data.name.trim()
+            : (validEmail ? (validEmail.split('@')[0].match(/^[a-zA-Z]+/)?.[0] ?? 'user') : 'user');
           await SecureStore.setItemAsync('username', name);
-          // BOTH HALVES IN ONE CALL, where this was a storage write here and a
-          // setState three lines below. The token is lib/account.tsx's now — the
-          // search screen sends it to /chat and cannot see this screen's state —
-          // and that module writes and sets together so a caller cannot do one
-          // without the other. Nothing else on these lines moved.
-          await persistGmailToken(accessToken);
+          // The session is lib/account.tsx's: the search screen sends it to
+          // /chat and cannot see this screen's state, and that module writes
+          // and sets together so a caller cannot do one without the other.
+          await persistSession(data.session);
           if (validEmail) await SecureStore.setItemAsync('email', validEmail);
           setUsername(name);
           if (validEmail) setEmail(validEmail);
+          setGmailPull(IDLE_PULL);
           clearResultView();
+          if (data.gmail === false) showToast('gmail access was not granted');
           // Sheet stays open: displayName is null here, so the first-run ask
           // effect takes over and it transitions in place.
         } catch (err) {
-          console.log('[Auth] userinfo fetch error:', err);
+          console.log('[Auth] exchange error:', err);
+          showToast('sign-in did not complete');
         }
       })();
     }
@@ -1816,10 +1847,19 @@ export default function Index() {
           }
           setUsername(null);
           setDisplayName(null);
-          // The delete came off the native branch above and went with it: this
-          // clears the key and the value together, and carries the same web guard
-          // that branch gave it. See lib/account.tsx.
-          await persistGmailToken(null);
+          // THE SERVER FIRST. Sign-out deletes the account's record, every
+          // session and the refresh token there, and revokes the grant at
+          // Google, so "disconnect" is true from Google's side too. Best
+          // effort: a phone with no signal still signs out locally, and the
+          // server's record dies with its next refresh or on the next sign-in.
+          if (session !== null && !session.startsWith('fixture:')) {
+            try {
+              await fetch(`${API_BASE}/auth/signout`, { method: 'POST', headers: { Authorization: `Bearer ${session}` } });
+            } catch {
+              // See above.
+            }
+          }
+          await persistSession(null);
           setGmailPull(IDLE_PULL);
           setEmail(null);
           clearResultView();
@@ -2054,14 +2094,14 @@ export default function Index() {
                 onPress={pullFromGmail}
                 // ── DEV ONLY: POINT THE PULL AT THE FIXTURE INBOX ──
                 // A long press asks for the server's GMAIL_FIXTURE_TOKEN and
-                // stores "fixture:<it>" as the Gmail token, so the next pull is
+                // stores "fixture:<it>" as the session, so the next pull is
                 // served the seven synthetic emails in tools/gmail_fixtures
                 // through the real extraction path. A second long press
                 // clears it. __DEV__ so it cannot ship; Alert.prompt so it is
                 // iOS-only, which is the only platform the pull runs on.
                 onLongPress={__DEV__ ? () => {
-                  if (gmailToken !== null && gmailToken.startsWith('fixture:')) {
-                    void persistGmailToken(null);
+                  if (session !== null && session.startsWith('fixture:')) {
+                    void persistSession(null);
                     setGmailPull(IDLE_PULL);
                     showToast('fixture inbox off');
                     return;
@@ -2069,7 +2109,7 @@ export default function Index() {
                   Alert.prompt('fixture inbox', 'GMAIL_FIXTURE_TOKEN on the server', (v) => {
                     const secret = (v ?? '').trim();
                     if (secret === '') return;
-                    void persistGmailToken(`fixture:${secret}`);
+                    void persistSession(`fixture:${secret}`);
                     setGmailPull(IDLE_PULL);
                     showToast('fixture inbox on');
                   });
@@ -2078,8 +2118,8 @@ export default function Index() {
               >
                 <View style={sf.rowEdge} pointerEvents="none" />
                 <Text style={gm.rowTitle}>
-                  {gmailToken === null
-                    ? 'sign in again to pull from gmail'
+                  {session === null
+                    ? 'reconnect gmail to pull flights'
                     : gmailPull.status === 'loading'
                       ? 'reading your gmail'
                       : gmailPull.status === 'done'

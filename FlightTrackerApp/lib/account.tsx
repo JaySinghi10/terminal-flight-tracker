@@ -1,18 +1,29 @@
-// THE GMAIL TOKEN, AND NOTHING ELSE.
+// THE SESSION, AND NOTHING ELSE.
 //
-// It moved because the /chat request sends it and that request is on the search
-// screen now, while everything that produces the token — the Google sign-in and
-// the logout — is in the profile modal on home. One screen writes it, another
+// WHAT THE SESSION IS. An opaque token our server handed back when the Google
+// sign-in completed. The phone never holds a Google token any more: the
+// sign-in is the authorization code flow with PKCE, the code goes to our
+// server, the server exchanges it and keeps the refresh token, and this is
+// what it gives the phone in return. A Gmail pull and a chat send it as a
+// Bearer header, and the server turns it into a Google access token on its
+// side. See auth.py on the server for the whole design.
+//
+// It lives here because the /chat request sends it and that request is on the
+// search screen, while everything that produces it -- the sign-in and the
+// logout -- is in the profile modal on home. One screen writes it, another
 // reads it, and neither can see the other's state.
 //
 // DELIBERATELY NOT `username`, `displayName` OR `profileOpen`. Nothing is broken
 // about those: they are written on home and read on home, and moving them here
-// on the argument that something might want them one day is guessing. If one of
-// them ever has to cross a screen, that is a smaller job then than it is now.
+// on the argument that something might want them one day is guessing. `email`
+// is not here either -- lib/saved.tsx owns that, because the saved list is
+// keyed on it, and the session changes nothing about that key.
 //
-// SO THIS FILE IS ONE VALUE. It holds the token, reads it back at launch, and
-// writes it through on the two occasions it changes. `email` is not here either
-// — lib/saved.tsx owns that, because the saved list is keyed on it.
+// THE OLD TOKEN. Builds before the session stored a raw Google access token
+// under 'gmailToken'. It expired within the hour anyway; at launch this file
+// deletes it, so a phone updated from that build is simply signed in with no
+// session, and the pull row offers to reconnect. Nothing else is migrated,
+// because nothing else changed.
 import {
   createContext, useContext, useState, useEffect, useCallback, useMemo,
   type ReactNode,
@@ -20,11 +31,14 @@ import {
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
+const SESSION_KEY = 'session';
+const LEGACY_TOKEN_KEY = 'gmailToken';
+
 type AccountContextValue = {
-  gmailToken: string | null;
-  // Sets the token and puts it on disk, or clears both. One function rather than
-  // a setter and a writer, so a caller cannot do half of it.
-  persistGmailToken: (token: string | null) => Promise<void>;
+  session: string | null;
+  // Sets the session and puts it on disk, or clears both. One function rather
+  // than a setter and a writer, so a caller cannot do half of it.
+  persistSession: (session: string | null) => Promise<void>;
 };
 
 const AccountContext = createContext<AccountContextValue | null>(null);
@@ -36,42 +50,34 @@ export function useAccount(): AccountContextValue {
 }
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-  const [gmailToken, setGmailToken] = useState<string | null>(null);
+  const [session, setSession] = useState<string | null>(null);
 
-  // ITS OWN EFFECT NOW, where it was one member of home's four-way Promise.all.
-  // Nothing waited on it: authHydrated gates the collapse state and the first-run
-  // ask, and neither reads the token, so taking it out of that batch changes when
-  // the flag is set by one storage read and changes nothing that reads the flag.
+  // ITS OWN EFFECT, and nothing waits on it: authHydrated gates the collapse
+  // state and the first-run ask, and neither reads the session.
   //
-  // The web guard is home's own: SecureStore is native-only, and the web sign-in
-  // path never produced a token to store.
+  // The web guard is home's own: SecureStore is native-only, and the web
+  // sign-in path never produces a session.
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    SecureStore.getItemAsync('gmailToken').then(t => {
-      if (t) setGmailToken(t);
+    SecureStore.getItemAsync(SESSION_KEY).then(s => {
+      if (s) setSession(s);
     });
+    // The pre-session token, if this phone still has one. Gone, unread.
+    void SecureStore.deleteItemAsync(LEGACY_TOKEN_KEY).catch(() => {});
   }, []);
 
-  // THE SHAPE persistDisplayName ALREADY HAS on the home screen: write, then set.
-  //
-  // ONE GUARD RATHER THAN TWO DIFFERENT ONES, and it is the only edit the move
-  // forced. index.tsx wrote the token on sign-in with no Platform test and
-  // deleted it on logout inside one, which was an asymmetry rather than a
-  // decision: the unguarded write sits in the expo-auth-session path, and that
-  // path is native-only because the web sign-in button calls Google's own script
-  // instead. So the write could never reach a browser, and guarding it changes
-  // nothing that can happen while keeping the clear exactly as guarded as it was.
-  const persistGmailToken = useCallback(async (token: string | null) => {
+  // Write, then set, the shape persistDisplayName has on the home screen.
+  const persistSession = useCallback(async (next: string | null) => {
     if (Platform.OS !== 'web') {
-      if (token === null) await SecureStore.deleteItemAsync('gmailToken');
-      else await SecureStore.setItemAsync('gmailToken', token);
+      if (next === null) await SecureStore.deleteItemAsync(SESSION_KEY);
+      else await SecureStore.setItemAsync(SESSION_KEY, next);
     }
-    setGmailToken(token);
+    setSession(next);
   }, []);
 
   const value = useMemo(
-    () => ({ gmailToken, persistGmailToken }),
-    [gmailToken, persistGmailToken],
+    () => ({ session, persistSession }),
+    [session, persistSession],
   );
 
   return (

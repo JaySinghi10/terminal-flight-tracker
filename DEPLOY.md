@@ -94,6 +94,47 @@ PARSE_MODEL=claude-haiku-4-5
 service's entire environment, which would silently drop `RAPIDAPI_KEY` and
 `ALERTS_BUCKET` and break flight lookups and alerts along with it.
 
+## Google sign-in: `TOKEN_KEY` and `GOOGLE_IOS_CLIENT_ID`
+
+The app signs in with Google through the authorization code flow with PKCE
+and never exchanges the code itself: `POST /auth/google` does, keeps the
+refresh token, and hands back a session. `auth.py` has the design. Two
+settings make it work, and both are already on the service.
+
+| Variable | What it is | Where it lives |
+|---|---|---|
+| `GOOGLE_IOS_CLIENT_ID` | the iOS OAuth client id, which is public | plain env var |
+| `TOKEN_KEY` | 32 random bytes, base64, the AES-256-GCM key for the refresh and access tokens at rest | Secret Manager secret `token-key`, mounted with `--update-secrets` |
+
+There is **no client secret**, and that is correct: Google issues none for the
+iOS client type, and PKCE is the binding instead.
+
+```bash
+# One-time. The key is generated into the secret and never printed.
+python -c "import secrets,base64,sys; sys.stdout.write(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"   | gcloud secrets create token-key --data-file=- --replication-policy=automatic
+gcloud secrets add-iam-policy-binding token-key   --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com"   --role=roles/secretmanager.secretAccessor
+gcloud run services update "$SERVICE" --region "$REGION"   --update-secrets TOKEN_KEY=token-key:latest   --update-env-vars GOOGLE_IOS_CLIENT_ID=<the iOS client id>
+```
+
+**Rotating the key.** Add a new secret version, then for one deploy set
+`TOKEN_KEY` to the new version and `TOKEN_KEY_PREVIOUS` to the old one. Every
+ciphertext carries a version prefix; a record written under the old key still
+opens, and is re-encrypted under the new key the next time it is used. Once
+no record has been touched for longer than you care about, drop
+`TOKEN_KEY_PREVIOUS`. Records still under the old key at that point are dead:
+their owners sign in again.
+
+**Losing the key** has the same effect for everyone: every refresh token is
+unreadable, every pull answers `gmail_expired`, and every person signs in
+again. Nothing else is lost; the saved lists are on the phones.
+
+**What is on the bucket.** `users/<sub>.json` per Google account and
+`sessions/<hash>.json` per live session. Sign-out deletes both and revokes
+the grant at Google. The privacy policy describes these objects; if their
+contents change, that page changes first.
+
+---
+
 ## Landing detection: `FR24_API_TOKEN`
 
 | variable | required | what it is |

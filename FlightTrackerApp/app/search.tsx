@@ -1240,7 +1240,7 @@ export default function Search() {
   const { query, setQuery, submitCount } = useQuery();
   const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
-  const { gmailToken } = useAccount();
+  const { session } = useAccount();
   // EVERYTHING A SCREEN NEEDS TO OWN A FLIGHT CARD. One copy, shared with home,
   // so a card opened from a route row and a card opened from a watchlist row are
   // driven by the same lookup, the same save and the same entry animation.
@@ -1697,8 +1697,13 @@ export default function Search() {
     try {
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: query, gmail_token: gmailToken }),
+        headers: {
+          'Content-Type': 'application/json',
+          // The session, when there is one; the server turns it into Gmail
+          // access for the assistant's next-flight tools. See lib/account.tsx.
+          ...(session !== null ? { Authorization: `Bearer ${session}` } : {}),
+        },
+        body: JSON.stringify({ message: query }),
       });
       const data = await response.json();
 
