@@ -44,12 +44,12 @@ import {
   SavedFlight,
   savedFlightFromApi,
   ISO_DAY_RE,
-} from '../lib/storage';
+} from '../../lib/storage';
 // zonedIsoToTs and clock24 moved to lib/time.ts, which is now the one place
 // either kind of ISO is read. The reasoning that used to sit above them here
 // moved with them, because it is the reasoning that stops the next person
 // calling new Date() on a flight DTO field.
-import { clock24 } from '../lib/time';
+import { clock24 } from '../../lib/time';
 // THE STORE. The saved list, the account email, the refresh loop and its caps,
 // the undo window and the reminder scheduling all moved to lib/saved.tsx, so the
 // tab bar and every screen after it can reach the same records rather than a
@@ -68,7 +68,7 @@ import {
   isArchived,
   isOwned,
   sortSavedByRelevance,
-} from '../lib/saved';
+} from '../../lib/saved';
 // WHAT A FLIGHT IS DOING, AND HOW LONG UNTIL IT DOES IT. The status colour, the
 // countdown line and the formatters the three surfaces that render it share all
 // moved to lib/flightstatus.tsx, unchanged. They are imported back here because
@@ -81,7 +81,7 @@ import {
   // WEEKDAYS and MONTHS went with it: formatClock was their only reader here.
   formatClock,
   StatusLine,
-} from '../lib/flightstatus';
+} from '../../lib/flightstatus';
 // THE SWIPE, AND EVERY PIECE IT IS MADE OF. The button, the expanding box, the
 // threshold's haptic, the geometry, the spring, the fills, the glyphs and the
 // exit timings all moved to components/swipe.tsx, unchanged. They come back here
@@ -104,7 +104,7 @@ import {
   ICON_ARCHIVE,
   ICON_REMIND,
   notImplemented,
-} from '../components/swipe';
+} from '../../components/swipe';
 // THE MATERIAL, and it is no longer declared here. Every constant and the
 // GlassLayers component moved to lib/glass.tsx unchanged, so the tab bar can
 // render the same glass without importing a screen. The comments that specify
@@ -119,24 +119,24 @@ import {
   EASE_OUT, EASE_IN, CAL_RISE,
   CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
   g,
-} from '../lib/glass';
+} from '../../lib/glass';
 // THE FLAT SURFACES, and they are not glass. See the note at the top of that
 // file for why the card vocabulary did not go in beside the blur.
 import {
   CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c,
   SURFACE_2, SURFACE_EDGE,
-} from '../lib/cards';
+} from '../../lib/cards';
 // THE TWO BANNERS, AND THE CARD'S OWN MACHINERY. Both moved out of this screen
 // because the search screen needs them too, and neither may be imported from a
 // screen. See the notes at the top of each.
-import { useToast } from '../lib/toast';
-import { useFlightCardHost, FlightError } from '../lib/flightcard';
+import { useToast } from '../../lib/toast';
+import { useFlightCardHost, FlightError } from '../../lib/flightcard';
 // THE GMAIL TOKEN, and it is the only thing in there. Sign-in and logout are on
 // this screen and the /chat request that sends it is on the search screen, so it
 // is the one piece of the account that had to stop being one screen's.
-import { useAccount } from '../lib/account';
+import { useAccount } from '../../lib/account';
 // A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
-import { pendingFromLeg } from '../lib/pendingRules';
+import { pendingFromLeg } from '../../lib/pendingRules';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -162,7 +162,7 @@ import {
   scheduledDuration,
   airportFullLabel,
   flightDataFromApi,
-} from '../components/FlightCard';
+} from '../../components/FlightCard';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';

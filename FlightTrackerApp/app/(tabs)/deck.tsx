@@ -6,14 +6,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // HOME'S HEADER LINE. Imported rather than restated, and from lib rather than
 // from a screen -- see the note where it lives.
-import { formatClock } from '../lib/flightstatus';
+import { formatClock } from '../../lib/flightstatus';
 // THE PAGE AND THE ELEVATION SCALE. See lib/cards.ts.
 import {
   PAGE_BG, SURFACE_1, SURFACE_2, CARD_RADIUS, CARD_GAP, CARD_PAD,
-} from '../lib/cards';
+} from '../../lib/cards';
 // THE DATASET. allDining is never called here: diningAt filters the one airport
 // on screen, and the picker reads the airport codes out of it once.
-import { diningAt, allDining, Dining, HoursWindow } from '../lib/dining';
+import { diningAt, allDining, Dining, HoursWindow } from '../../lib/dining';
 // THE JOURNEY, FROM THE ONE PLACE THAT KNOWS IT. currentLegIndex moved out of
 // app/flights.tsx for this screen -- see its note in lib/saved.tsx. Nothing
 // about which leg a traveller is on is computed twice.
@@ -26,24 +26,24 @@ import {
   // WHETHER A LEG HAS LANDED, AND WHEN IT ARRIVED. whereAmI asks the first and
   // budgetFor the second; neither is computed here any more.
   effectiveStatus, arrivalTs,
-} from '../lib/saved';
+} from '../../lib/saved';
 // THE RECORD ITSELF comes from storage, which is where it is declared -- saved
 // re-exports nothing and a type imported from the wrong file is a second name
 // for one thing.
-import { SavedFlight } from '../lib/storage';
-import { airportByCode, findAirports, Airport } from '../lib/airports';
+import { SavedFlight } from '../../lib/storage';
+import { airportByCode, findAirports, Airport } from '../../lib/airports';
 // THE SCHEMATIC. Terminal geometry is a separate dataset from dining for the
 // same reason airports.ts is separate from both: it is a different source with a
 // different licence, and it is absent for most airports.
-import { terminalOf, terminalsAt, Gate } from '../lib/terminals';
-import CorridorView from '../components/CorridorView';
+import { terminalOf, terminalsAt, Gate } from '../../lib/terminals';
+import CorridorView from '../../components/CorridorView';
 // THE JOIN AND THE ARITHMETIC MOVED OUT OF THE COMPONENT. Where a restaurant is
 // is a fact about the data, not about a view, and the map is now the third
 // thing that wants it -- see lib/terminalgeo.
-import { placeDining, Placed } from '../lib/terminalgeo';
+import { placeDining, Placed } from '../../lib/terminalgeo';
 // PROJECTING ONTO A PIER, not measuring across a floor. Distance now means
 // distance ALONG the corridor, which is the distance somebody actually walks.
-import { drawablePiers, gatesOn, projectOnto, metresWord } from '../lib/piers';
+import { drawablePiers, gatesOn, projectOnto, metresWord } from '../../lib/piers';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';

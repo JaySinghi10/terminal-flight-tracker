@@ -30,7 +30,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import {
   SavedFlight, savedFlightFromApi, ISO_DAY_RE, MAX_MAP_ROUTES,
-} from '../lib/storage';
+} from '../../lib/storage';
 // THE STORE AND ITS RULES. tripsOf, isOwned and isArchived are pure functions of
 // a list and a clock; the two callbacks are the only things here that write.
 import {
@@ -65,17 +65,17 @@ import {
   currentLegIndex,
   departureTs,
   OWN_MSG,
-} from '../lib/saved';
+} from '../../lib/saved';
 // WHICH ROUTES ARE DRAWN, and the one conversion that builds a route from a
 // record. mapRouteFor is imported rather than restated: its own note says the
 // departureTs/arrivalTs conversion must never be done twice by two pieces of
 // code, and a second copy here would break that on the first read.
-import { useMapRoutes } from '../lib/maproutes';
-import { mapRouteFor } from '../lib/flightcard';
+import { useMapRoutes } from '../../lib/maproutes';
+import { mapRouteFor } from '../../lib/flightcard';
 // THE COUNTRY OF AN AIRPORT, which is the only thing this screen asks of the
 // dataset. airportByCode is the accessor; the rows are not exported and must
 // not be. See showsBelt.
-import { airportByCode } from '../lib/airports';
+import { airportByCode } from '../../lib/airports';
 // formatClock IS HOME'S HEADER LINE, and it is imported rather than restated
 // because this screen now wears the same header. See the note where it lives.
 // CD_LATE JOINS CD_GREEN for the folder's accent. They are the app's one pair
@@ -83,14 +83,14 @@ import { airportByCode } from '../lib/airports';
 // two -- so the folder cannot come to disagree with the leg inside it.
 import {
   StatusLine, routeDateLabel, formatClock, CD_GREEN, CD_LATE,
-} from '../lib/flightstatus';
+} from '../../lib/flightstatus';
 // SURFACE_1 AND SURFACE_2 JOIN THEM FOR THE FOLDER HEADERS. See the scale in
 // lib/cards: level is decided by what sits UNDERNEATH, so a header on the page
 // takes SURFACE_1 and the date block inside one takes SURFACE_2.
 import {
   CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, SURFACE_EDGE,
   SURFACE_1, SURFACE_2,
-} from '../lib/cards';
+} from '../../lib/cards';
 import {
   GlassLayers, g,
   EASE_OUT, EASE_IN, CAL_RISE,
@@ -98,13 +98,13 @@ import {
   // THE SMALL PANEL'S OWN MOTION. A menu is not a sheet: it travels less and
   // arrives quicker. See Menu.
   OVERLAY_RISE, PANEL_IN_MS, PANEL_OUT_MS,
-} from '../lib/glass';
-import { useToast } from '../lib/toast';
+} from '../../lib/glass';
+import { useToast } from '../../lib/toast';
 // THE APP'S ONE HAPTIC. components/swipe fires it when a full swipe arms and
 // when a long press becomes a menu -- both moments where a gesture turns into an
 // offer. Opening this menu is the same kind of moment, and a second weight for
 // it would be a second vocabulary.
-import { EXPAND_HAPTIC } from '../components/swipe';
+import { EXPAND_HAPTIC } from '../../components/swipe';
 // THE CARD ITSELF, one per leg, and the adapter that builds one from a stored
 // record. flightDataFromSaved is what the map's own card already uses -- see the
 // note there: every RULE it needs is exported and it is field mapping alone.
@@ -112,7 +112,7 @@ import { EXPAND_HAPTIC } from '../components/swipe';
 // THREE NAMES CAME OFF THIS IMPORT AND lib/time's. hasTime, movementTimeCell and
 // clock24 served the collapsed leg's departure clock and nothing else here; the
 // row has gone and so have they. See CollapsedLeg.
-import { FlightCard, flightDataFromSaved } from '../components/FlightCard';
+import { FlightCard, flightDataFromSaved } from '../../components/FlightCard';
 
 // Declared here rather than imported from a screen or a component, exactly as
 // every module in lib/ declares its own. These are the family names _layout

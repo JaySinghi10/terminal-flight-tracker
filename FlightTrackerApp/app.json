@@ -9,7 +9,7 @@
       "terminal",
       "com.googleusercontent.apps.970706733452-fmqtgg1doc0n14g8ibb8qsrsmcaot83e"
     ],
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.terminal.flighttrackerapp",
@@ -42,9 +42,9 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#0a0a0a",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#0a0a0a"
           }
         }
       ],

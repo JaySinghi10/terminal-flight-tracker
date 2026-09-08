@@ -58,9 +58,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   savedFlightFromApi, makeFlightId, ISO_DAY_RE,
-} from '../lib/storage';
-import { airlineFromFlightNumber } from '../lib/airlines';
-import { clock24 } from '../lib/time';
+} from '../../lib/storage';
+import { airlineFromFlightNumber } from '../../lib/airlines';
+import { clock24 } from '../../lib/time';
 import {
   useSaved,
   useAccountChange,
@@ -72,7 +72,7 @@ import {
   departureTs,
   arrivalTs,
   localIsoDate,
-} from '../lib/saved';
+} from '../../lib/saved';
 import {
   getStatusColor,
   WEEKDAYS,
@@ -80,34 +80,34 @@ import {
   routeDateLabel,
   stripZoneLabel,
   formatCountdown,
-} from '../lib/flightstatus';
+} from '../../lib/flightstatus';
 import {
   SHEET_RADIUS, SHEET_EDGE, SHEET_SCRIM,
   GlassLayers,
   EASE_OUT, EASE_IN, OVERLAY_RISE, CAL_RISE,
   PANEL_IN_MS, PANEL_OUT_MS, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
   g,
-} from '../lib/glass';
+} from '../../lib/glass';
 import {
   CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c,
   PAGE_RGB, SURFACE_EDGE,
-} from '../lib/cards';
+} from '../../lib/cards';
 // WHAT THE TAB BAR'S FIELD HAS BEEN GIVEN. This screen reads it and never writes
 // it, except to clear it — see clearResultView.
-import { useQuery } from '../lib/query';
-import { useToast } from '../lib/toast';
-import { useFlightCardHost, FlightError } from '../lib/flightcard';
+import { useQuery } from '../../lib/query';
+import { useToast } from '../../lib/toast';
+import { useFlightCardHost, FlightError } from '../../lib/flightcard';
 import {
   FlightCard,
   resultWrap,
   trimAirportName,
   flightDataFromApi,
   flightDataFromSaved,
-} from '../components/FlightCard';
+} from '../../components/FlightCard';
 // THE MAP BEHIND EVERYTHING. Geometry and place names, absoluteFill under the
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
-import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../components/GlobeMap';
+import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../../components/GlobeMap';
 // READ, NOT TOUCHED. The bar is drawn by the navigator outside this screen and
 // floats over whatever the screen puts at the bottom; the expanded card pads for
 // it so nothing is hidden underneath. See the note at the overlay.
@@ -119,12 +119,12 @@ import {
   // stays true when one of them is retuned.
   TAB_PRESS_SPRING,
   TAB_PRESS_SCALE,
-} from '../components/GlassTabBar';
+} from '../../components/GlassTabBar';
 // THE APP'S ONE HAPTIC. components/swipe fires it when a full swipe arms and
 // when a long press opens the map menu -- both moments where a gesture becomes
 // a result. Tapping a hairline arc and having a panel appear is the same kind of
 // moment, and a second weight for it would be a second vocabulary.
-import { EXPAND_HAPTIC } from '../components/swipe';
+import { EXPAND_HAPTIC } from '../../components/swipe';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 // runOnJS ALONE. This screen's animations are React Native's Animated
 // throughout; the one thing it needs from Reanimated is the hop back to the JS
@@ -134,22 +134,22 @@ import Reanimated, {
 } from 'react-native-reanimated';
 // WHICH ROUTES ARE DRAWN. A store rather than a derivation from the watchlist —
 // the map shows what was asked for and nothing else.
-import { useMapRoutes } from '../lib/maproutes';
+import { useMapRoutes } from '../../lib/maproutes';
 // THE CHROME'S OWN FLAG. This screen is the only thing that knows a drag is
 // happening; the tab bar is the only thing that needs to. Neither can reach the
 // other, so the value goes through a context both are inside. See lib/chrome.
-import { useChrome } from '../lib/chrome';
+import { useChrome } from '../../lib/chrome';
 // WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
   timezoneHome, loadHome, saveHome, clearHome,
   loadConsent, saveConsent, LOCATION_TIMEOUT_MS,
   type HomeView,
-} from '../lib/home';
+} from '../../lib/home';
 import * as Location from 'expo-location';
 // THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
 // sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
-import { useAccount } from '../lib/account';
+import { useAccount } from '../../lib/account';
 import {
   Airport,
   airportByCode,
@@ -159,7 +159,7 @@ import {
   resolveAirportName,
   isKnownPlace,
   normalizeTerm,
-} from '../lib/airports';
+} from '../../lib/airports';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
