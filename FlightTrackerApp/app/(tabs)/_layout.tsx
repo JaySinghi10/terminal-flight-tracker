@@ -56,7 +56,8 @@ export default function TabsLayout() {
   // labels are human words, and San Francisco is the decision (SPEC 12.1).
   //
   // THE ICONS ARE SETTLED. Home, Deck and Search are the symbols SPEC 12.1
-  // names. My Flights was to keep the hand-drawn aeroplane, and could not:
+  // names; Deck's was a placeholder and became creditcard in Stage 9. My
+  // Flights was to keep the hand-drawn aeroplane, and could not:
   // Icon.src takes a bitmap image source, a VectorIcon font glyph or a promise
   // loader, and warns and drops an SVG element. The owner reversed the
   // instruction rather than rasterise a bitmap, so it is the SF Symbol
@@ -80,11 +81,19 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>My Flights</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="deck">
-        {/* A placeholder by the owner's instruction; it will change. */}
-        <NativeTabs.Trigger.Icon sf={{ default: 'building.2', selected: 'building.2.fill' }} />
+        <NativeTabs.Trigger.Icon sf={{ default: 'creditcard', selected: 'creditcard.fill' }} />
         <NativeTabs.Trigger.Label>Deck</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="search">
+      {/* role="search" IS WHAT MAKES THIS THE SEARCH TAB ON iOS 26. The
+          library maps it to UIKit's legacy system item, and SPEC.md once said
+          that meant only a system glyph and an uncustomisable title. On iOS 26
+          the system applies its new treatment to that item anyway: the tab
+          separates into its own pill, and the search bar this route hangs on
+          its Stack header (app/(tabs)/search) docks into it. THE GAP: the field
+          does not take focus when the tab is tapped, because the library uses
+          UITabBarItem(systemItem: .search) rather than UISearchTab, and only
+          the latter auto-activates. A second tap on the pill focuses it. */}
+      <NativeTabs.Trigger name="search" role="search">
         <NativeTabs.Trigger.Icon sf="magnifyingglass" />
         <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>

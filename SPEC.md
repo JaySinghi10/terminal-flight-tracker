@@ -65,7 +65,9 @@ Read from the packages resolved in `package-lock.json`, downloaded and inspected
 
 `Icon`, `Label`, `Badge` and `VectorIcon` are **not** top-level named exports in this version. Documentation showing `import { NativeTabs, Icon, Label }` describes SDK 54 and does not apply. Use the compound form.
 
-**`role="search"` does not give a search field.** `role` is typed `NativeTabsTabBarItemRole`, whose union is exactly `'bookmarks' | 'contacts' | 'downloads' | 'favorites' | 'featured' | 'history' | 'more' | 'mostRecent' | 'mostViewed' | 'recents' | 'search' | 'topRated'`. Its own doc comment points at `UITabBarItem.systemItem` and states the system-defined title cannot be customized. This is UIKit's legacy system tab item, not the iOS 26 search-tab morph. A full text search of the native-tabs build for "search" returns two hits, both that enum. **There is no search-field-in-the-tab-bar primitive in expo-router 57.** Stage 9 uses `headerSearchBarOptions` instead.
+**`role="search"` does give the iOS 26 search tab, and earlier versions of this section were wrong.** `role` is typed `NativeTabsTabBarItemRole`, whose union is exactly `'bookmarks' | 'contacts' | 'downloads' | 'favorites' | 'featured' | 'history' | 'more' | 'mostRecent' | 'mostViewed' | 'recents' | 'search' | 'topRated'`, and the library maps it to UIKit's legacy `UITabBarItem(systemItem:)`. The earlier reading was that this could only yield a system glyph and an uncustomisable title. On iOS 26 the system applies its new treatment to that legacy item anyway: the tab separates into its own pill, and a `UISearchController` hung on the selected route's navigation item with `placement: 'integrated'` docks into that pill. Verified against Expo's native tabs documentation and react-native-screens discussion #4000. So Stage 9 uses both: `role="search"` on the trigger and `headerSearchBarOptions` on a Stack around the search route.
+
+**The auto-activation gap.** The field does not take focus when the tab is tapped, because the library uses `UITabBarItem(systemItem: .search)` rather than `UISearchTab`, and only the latter auto-activates. A second tap on the pill focuses the field. There is no prop for this in expo-router 57; it is recorded, not worked around.
 
 **`NativeTabsProps` surface, verified:** `unstable_screenErrorBoundary`, `labelStyle`, `iconColor`, `tintColor`, `backgroundColor`, `badgeBackgroundColor`, `hidden`, `minimizeBehavior`, `blurEffect`, `shadowColor`, `titlePositionAdjustment`, `disableTransparentOnScrollEdge`, `sidebarAdaptable`, `disableIndicator`, `backBehavior`, `labelVisibilityMode`, `rippleColor`, `indicatorColor`, `badgeTextColor`, `tabBarRespectsIMEInsets`, `screenListeners`, `unstable_nativeProps`. `labelStyle` and `iconColor` each accept a flat value or `{ default, selected }`.
 
@@ -569,10 +571,10 @@ In `components/GlassTabBar.tsx`, locate and list every construct named in 12.4 b
 |---|---|---|---|
 | 1 | `index` | Home | `sf={{ default: 'house', selected: 'house.fill' }}` |
 | 2 | `flights` | My Flights | `sf={{ default: 'airplane', selected: 'airplane' }}` |
-| 3 | `deck` | Deck | `sf={{ default: 'building.2', selected: 'building.2.fill' }}` |
+| 3 | `deck` | Deck | `sf={{ default: 'creditcard', selected: 'creditcard.fill' }}` |
 | 4 | `search` | Search | `sf="magnifyingglass"` |
 
-Rationale, recorded so it is not relitigated. My Flights was to keep its hand-drawn airplane, and could not: `Icon.src` accepts only bitmap image sources, `VectorIcon` elements, promise loaders and `xcasset` names, and warns and drops an SVG element. Rasterising the path into template bitmaps was declined. So the tab is the SF Symbol `airplane`, which has no filled variant; the green tint carries selection there exactly as it does on the other three. The airplane tab and the in-air card will read similarly, and that is accepted. The drawn path survives in `lib/icons.ts`. Deck is a place, not a map, and `map` would read as the globe on the Search tab.
+Rationale, recorded so it is not relitigated. My Flights was to keep its hand-drawn airplane, and could not: `Icon.src` accepts only bitmap image sources, `VectorIcon` elements, promise loaders and `xcasset` names, and warns and drops an SVG element. Rasterising the path into template bitmaps was declined. So the tab is the SF Symbol `airplane`, which has no filled variant; the green tint carries selection there exactly as it does on the other three. The airplane tab and the in-air card will read similarly, and that is accepted. The drawn path survives in `lib/icons.ts`. Deck's `building.2` was a placeholder from Stage 8; the owner replaced it with `creditcard` in Stage 9, and it fills on selection.
 
 Compound form, verified:
 
@@ -589,7 +591,7 @@ Compound form, verified:
 - `hidden={retracted}` reading `useChrome()` from `lib/chrome.tsx`
 - **`labelStyle` unset.** San Francisco for tab labels is the decision.
 
-**Do not use `role="search"`.** See Section 2. It would give an uncustomisable system title.
+**Use `role="search"` on the fourth trigger.** See Section 2 for what it does on iOS 26 and the auto-activation gap.
 
 ### 12.2 No rename
 
@@ -642,18 +644,21 @@ Leave a short note at each of the four sites recording that the under-the-glass 
 
 ### 12.6 Stage 9 — search
 
-**The search field does not go into the tab bar.** `app/(tabs)/search.tsx` gains a native stack header carrying a real `UISearchController` via `headerSearchBarOptions`.
+**The search field goes into the tab bar on iOS 26, and it gets there through a header.** Earlier versions of this section said the field could not go in the bar; Section 2 records the correction. The search route becomes `app/(tabs)/search/index.tsx` inside a Stack of its own (`app/(tabs)/search/_layout.tsx`), because a native search bar is a navigation-item property and needs a native stack header to hang on. That header stays enabled, transparent and untitled: on iOS 26, with `role="search"` on the trigger and `placement: 'integrated'`, the field docks into the tab bar's search pill and the header itself adds nothing visible, so the screen's own top-of-page arithmetic is untouched. On an earlier iOS the field falls back into that header. The options are declared from the screen through `Stack.Screen`, because the callbacks write the screen's state.
+
+**The auto-activation gap applies here.** Tapping the Search tab shows the pill but does not focus the field; a second tap does. See Section 2.
 
 **Settled configuration:**
 
 - `placement: 'integrated'`
-- `placeholder: 'flight number or route'`
+- `placeholder: '~/username:-$'` — a shell prompt, not an instruction. It is the app's voice, the same voice as the `>_` and `>//` marks on home, and it deliberately tells a first-time user nothing about what to type. The owner's call, made in Stage 9.
 - `onChangeText` → the screen's own state
 - `onSearchButtonPress` → run the search
 - `onCancelButtonPress` → clear
-- `textColor: '#e2e2e2'`, `hintTextColor` at the existing placeholder grey, `tintColor: '#4ade80'`
-- `hideWhenScrolling: false`
-- `autoCapitalize: 'none'` — **decided in Stage 8, do not reopen.** This section originally assumed codes-only input and leaned to `'characters'`. Discovery showed route search accepts city names: the parser takes "Mumbai to Delhi" and "between Mumbai and Delhi" and resolves them through the city index, and `'characters'` would have capitalised every letter as a person typed a sentence. Flight-number lookup is case-insensitive at the parser, so nothing is lost. The deleted field used `'none'` and it worked.
+- `textColor: '#e2e2e2'`, `hintTextColor: '#4ade80'`, `tintColor: '#4ade80'`
+- **The green placeholder is the second exception to the green rule** (SPEC 1, which grants one). A prompt is neither live nor actionable; it is identity. Recorded here rather than argued again.
+- `hideWhenScrolling: true` — the field shrinks and tucks away on a scroll down and returns on a scroll up. Apple's behaviour, and it is tied to scroll DIRECTION rather than position, so it restores when the scrolling stops rather than only at the top. Expected and accepted.
+- `autoCapitalize: 'none'` — **decided in Stage 8, applied in Stage 9, do not reopen.** This section originally assumed codes-only input and leaned to `'characters'`. Discovery showed route search accepts city names: the parser takes "Mumbai to Delhi" and "between Mumbai and Delhi" and resolves them through the city index, and `'characters'` would have capitalised every letter as a person typed a sentence. Flight-number lookup is case-insensitive at the parser, so nothing is lost. The deleted field used `'none'` and it worked.
 
 **This puts a header on the Search screen, which it does not have today.** That is an accepted layout change.
 
@@ -663,7 +668,7 @@ Leave a short note at each of the four sites recording that the under-the-glass 
 
 It exists solely to carry text from the tab bar to the search screen across a sibling boundary. Once the field and the screen are the same route, there is no boundary. Delete the file, remove `QueryProvider` from `app/_layout.tsx`, remove every `useQuery` import.
 
-**One rule in it deserves a decision, not a deletion.** `lib/query.tsx` uses a submit *counter* rather than a boolean, "because a boolean cannot say 'again'. Two identical searches in a row are two presses and must run twice." **Verify `onSearchButtonPress` fires on a repeated identical search.** If it does, the counter retires. If it does not, keep the counter.
+**One rule in it deserved a decision, not a deletion, and the decision is made.** `lib/query.tsx` used a submit *counter* rather than a boolean, "because a boolean cannot say 'again'. Two identical searches in a row are two presses and must run twice." Stage 9 verified in react-native-screens' iOS source that `searchBarSearchButtonClicked` emits `onSearchButtonPress` on every Return with no guard on the text, so a repeated identical search is already a second event and that reason retired (R10). The counter itself survives as a local in the screen, for a different reason recorded as S-15: `handleSearch` reads the query state in seven places, and a submit must run after the field's last `onChangeText` write has flushed. Device item 14 confirms the native behaviour.
 
 ### 12.8 The animated placeholder
 
@@ -696,7 +701,7 @@ Treat them as one stage with an intermediate checkpoint: get `NativeTabs` render
 ### 12.10 Verify
 
 1. Four tabs in order: Home, My Flights, Deck, Search.
-2. Icons are `house`, `airplane`, `building.2`, `magnifyingglass`. Home and Deck fill on selection; `airplane` has no filled variant and does not fill, which is expected, and `magnifyingglass` is a single form.
+2. Icons are `house`, `airplane`, `creditcard`, `magnifyingglass`. Home and Deck fill on selection; `airplane` has no filled variant and does not fill, which is expected, and `magnifyingglass` is a single form.
 3. Selected tab is `#4ade80`; unselected are not.
 4. Apple's selection animation runs. No pill, no wave. Expected.
 5. Tapping the active tab scrolls that screen to the top.
@@ -705,7 +710,7 @@ Treat them as one stage with an intermediate checkpoint: get `NativeTabs` render
 8. **On a physical device**, the last row of content on Home, My Flights, Deck and Search is fully readable and not under the bar — **with the manual paddings removed**.
 9. The bar renders dark in both device appearance modes.
 10. Every flight card, status word, countdown and claim unchanged.
-11. Search tab presents a native search bar with the placeholder `flight number or route`.
+11. Search tab presents a native search bar with the green placeholder `~/username:-$`, docked into the tab bar's search pill. A second tap on the pill focuses it; the first does not, and that is the recorded gap. Scrolling down tucks the field away and scrolling up brings it back.
 12. Typing filters or queries as before.
 13. Return runs the search.
 14. **Return twice on the same term runs it twice.**
@@ -912,7 +917,7 @@ Every rule below is deleted along with its code. Each needs a one-line note at t
 | R7 | Home's clearance reason 3: content must pass under the bar because "a blur with nothing behind it is a grey pill" | `app/index.tsx` | The bar is Apple's material with Apple's scroll-edge behaviour, and the scene is inset |
 | R8 | `g.sheetHeadSpacer`'s width arithmetic, existing to optically centre a title against a close button | `lib/glass.tsx` | A native header centres its own title |
 | R9 | "dimezisBlurView is not optional on Android" | `lib/glass.tsx`, `components/FlightCard.tsx` | Android was dropped from scope |
-| R10 | The submit-counter rule in `lib/query.tsx`, "a boolean cannot say 'again'" | `lib/query.tsx` | **Conditional.** Retires only if `onSearchButtonPress` fires on a repeated identical search. Verify first; if it does not, this rule moves to Section 17 instead |
+| R10 | The submit-counter rule in `lib/query.tsx`, "a boolean cannot say 'again'" | `lib/query.tsx` | **Retired in Stage 9.** The native search bar emits `onSearchButtonPress` on every Return with no guard on the text (react-native-screens, `searchBarSearchButtonClicked`), so a repeat press is already a second event. The counter itself survives locally for a different reason; see S-15. Device item 14 confirms |
 
 ---
 
@@ -936,6 +941,7 @@ Every rule below outlives the code that documents it. **Each must be physically 
 | S-12 | `Keyboard.dismiss()` is asynchronous and "DOES NOT FIX THE ARITHMETIC" | `app/search.tsx` | Stays in place. Read before touching the surrounding code |
 | S-13 | `BottomTabBarProps` and navigation types come from `expo-router`, not `@react-navigation/*` | `components/GlassTabBar.tsx` | Comment in `app/(tabs)/_layout.tsx` |
 | S-14 | The leading-digit regex assumption is a recurring bug shape — five known instances | `CONTEXT.md` | Stays. Referenced by 12.8.2 |
+| S-15 | A submit must run after the field's last text write has flushed: the search reads query state in seven places, so the submit bumps a counter and an effect acts on the change | `lib/query.tsx`, in a different form | The search screen, as local state, with the comment above it. Added in Stage 9 |
 
 ---
 
@@ -991,5 +997,5 @@ Stages 2 through 7 are independent of each other and may be reordered freely. St
 
 Two things no type file answers. Both are settled on a device during Stage 9.
 
-1. **Does `onSearchButtonPress` fire on a repeated identical search?** Decides whether `lib/query.tsx`'s submit counter dies (R10) or survives (moves to Section 17).
-2. **What does route search actually accept — codes only, or city names too?** Decides `autoCapitalize`. See 12.6.
+1. **Does `onSearchButtonPress` fire on a repeated identical search?** Settled from the native source in Stage 9: yes, unconditionally. R10 retired; the counter survives locally as S-15. Device item 14 confirms.
+2. **What does route search actually accept — codes only, or city names too?** Settled in Stage 8: both. `autoCapitalize` is `'none'`. See 12.6.

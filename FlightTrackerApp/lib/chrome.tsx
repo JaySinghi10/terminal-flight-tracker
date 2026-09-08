@@ -10,14 +10,15 @@
 //
 // WHY A PROVIDER AT ALL. The bar is a sibling of every screen, not a child of
 // one, so a prop cannot reach it and a ref would mean the screen holding a
-// handle on the navigator's furniture. lib/query.tsx already solves exactly this
-// shape for the command line -- the bar reads the query from a context the
-// search screen writes -- and this is the same arrangement for a second value.
+// handle on the navigator's furniture. lib/query.tsx solved exactly this shape
+// for the command line while the field lived in the bar (it is gone since the
+// field became the search screen's own), and this is the same arrangement for
+// a second value.
 //
-// SEPARATE FROM QUERY, for the reason _layout gives for keeping query out of the
-// saved list: this changes on every touch-down and touch-up on the map, and the
-// query changes on every keystroke. A consumer of either must not be woken by
-// the other.
+// SEPARATE FROM THE SAVED LIST, for the reason the old query provider had for
+// the same separation: this changes on every touch-down and touch-up on the
+// map, and the saved list changes a handful of times a session. A consumer of
+// either must not be woken by the other.
 import {
   createContext, useContext, useState, useCallback, useMemo,
   type ReactNode,

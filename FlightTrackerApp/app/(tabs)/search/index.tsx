@@ -5,18 +5,19 @@
 // the home screen does: the field is the tab bar's, the tab bar navigates here,
 // and home is the watchlist.
 //
-// THERE IS NO INPUT ON THIS SCREEN, and there must not be. What has been typed
-// arrives through lib/query.tsx, which the tab bar's field writes to. The prompt,
-// the TextInput, the animated placeholder and the underline that used to sit at
-// the top of home were deleted rather than moved, because the bar already renders
-// all four.
+// THE INPUT IS A SYSTEM SEARCH BAR ON THIS ROUTE'S OWN STACK HEADER (Stage 9
+// of the native conversion; see app/(tabs)/search/_layout.tsx). It used to be
+// the tab bar's field, with the typed text arriving through a query provider
+// across a sibling boundary; the field is this screen's now and the text is
+// plain state. The prompt, the TextInput, the animated placeholder and the
+// underline that once sat at the top of home stay deleted: the search bar
+// renders its own.
 //
-// SO EXECUTE IS THE TRIGGER, and it is the only one. The bar's field has no
-// submit wiring and this screen may not add any, so the button below is what
-// spends units — which is what the natural-language rung needs anyway: the first
-// press buys the reading, the second spends. Everything free happens without a
-// press, exactly as it did, because parseSearchQuery runs during render off the
-// query. Pressing Return on the keyboard now dismisses it and searches nothing.
+// RETURN ON THE SEARCH BAR IS THE TRIGGER, and it is the only one. It is what
+// spends units — which is what the natural-language rung needs anyway: the
+// first press buys the reading, the second spends. Everything free happens
+// without a press, exactly as it did, because parseSearchQuery runs during
+// render off the query.
 //
 // THE FOUR EDITS THE MOVE FORCED.
 //
@@ -36,13 +37,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 // COMING BACK TO THIS TAB IS A FOCUS EVENT, NOT A MOUNT. The tabs navigator keeps
 // this screen mounted when it loses focus, so nothing else can see the return.
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+// The search bar's imperative handle, for the one thing the props cannot do:
+// clear the native field when the account changes. See clearResultView.
+import type { SearchBarCommands } from "react-native-screens";
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -59,9 +62,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   savedFlightFromApi, makeFlightId, ISO_DAY_RE,
-} from '../../lib/storage';
-import { airlineFromFlightNumber } from '../../lib/airlines';
-import { clock24 } from '../../lib/time';
+} from '../../../lib/storage';
+import { airlineFromFlightNumber } from '../../../lib/airlines';
+import { clock24 } from '../../../lib/time';
 import {
   useSaved,
   useAccountChange,
@@ -73,7 +76,7 @@ import {
   departureTs,
   arrivalTs,
   localIsoDate,
-} from '../../lib/saved';
+} from '../../../lib/saved';
 import {
   getStatusColor,
   WEEKDAYS,
@@ -81,39 +84,36 @@ import {
   routeDateLabel,
   stripZoneLabel,
   formatCountdown,
-} from '../../lib/flightstatus';
+} from '../../../lib/flightstatus';
 import {
   SHEET_RADIUS, SHEET_EDGE, SHEET_SCRIM,
   GlassLayers,
   EASE_OUT, EASE_IN, OVERLAY_RISE, CAL_RISE,
   PANEL_IN_MS, PANEL_OUT_MS, CAL_IN_MS, CAL_OUT_MS, SCRIM_IN_MS, SCRIM_OUT_MS,
   g,
-} from '../../lib/glass';
+} from '../../../lib/glass';
 import {
   CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, c,
   PAGE_RGB, SURFACE_EDGE,
-} from '../../lib/cards';
-// WHAT THE TAB BAR'S FIELD HAS BEEN GIVEN. This screen reads it and never writes
-// it, except to clear it — see clearResultView.
-import { useQuery } from '../../lib/query';
-import { useToast } from '../../lib/toast';
-import { useFlightCardHost, FlightError } from '../../lib/flightcard';
+} from '../../../lib/cards';
+import { useToast } from '../../../lib/toast';
+import { useFlightCardHost, FlightError } from '../../../lib/flightcard';
 import {
   FlightCard,
   resultWrap,
   trimAirportName,
   flightDataFromApi,
   flightDataFromSaved,
-} from '../../components/FlightCard';
+} from '../../../components/FlightCard';
 // THE MAP BEHIND EVERYTHING. Geometry and place names, absoluteFill under the
 // whole screen, with its own pan and pinch. See the note at the call site for
 // what that means for touches.
-import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../../components/GlobeMap';
+import GlobeMap, { type GlobeMapHandle, type MapFlight } from '../../../components/GlobeMap';
 // THE APP'S ONE HAPTIC. components/swipe fires it when a full swipe arms and
 // when a long press opens the map menu -- both moments where a gesture becomes
 // a result. Tapping a hairline arc and having a panel appear is the same kind of
 // moment, and a second weight for it would be a second vocabulary.
-import { EXPAND_HAPTIC } from '../../components/swipe';
+import { EXPAND_HAPTIC } from '../../../components/swipe';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 // runOnJS ALONE. This screen's animations are React Native's Animated
 // throughout; the one thing it needs from Reanimated is the hop back to the JS
@@ -123,22 +123,22 @@ import Reanimated, {
 } from 'react-native-reanimated';
 // WHICH ROUTES ARE DRAWN. A store rather than a derivation from the watchlist —
 // the map shows what was asked for and nothing else.
-import { useMapRoutes } from '../../lib/maproutes';
+import { useMapRoutes } from '../../../lib/maproutes';
 // THE CHROME'S OWN FLAG. This screen is the only thing that knows a drag is
 // happening; the tab bar is the only thing that needs to. Neither can reach the
 // other, so the value goes through a context both are inside. See lib/chrome.
-import { useChrome } from '../../lib/chrome';
+import { useChrome } from '../../../lib/chrome';
 // WHERE THE MAP OPENS AND HOW IT REMEMBERS. The timezone answer is synchronous
 // and always available; location only ever improves on it. See lib/home.ts.
 import {
   timezoneHome, loadHome, saveHome, clearHome,
   loadConsent, saveConsent, LOCATION_TIMEOUT_MS,
   type HomeView,
-} from '../../lib/home';
+} from '../../../lib/home';
 import * as Location from 'expo-location';
 // THE GMAIL TOKEN, for the /chat request below. It is written on home, by the
 // sign-in and the logout in the profile modal, and read here. See lib/account.tsx.
-import { useAccount } from '../../lib/account';
+import { useAccount } from '../../../lib/account';
 import {
   Airport,
   airportByCode,
@@ -148,7 +148,7 @@ import {
   resolveAirportName,
   isKnownPlace,
   normalizeTerm,
-} from '../../lib/airports';
+} from '../../../lib/airports';
 
 // THE PIN'S PRESS, WHICH USED TO BE THE BAR'S. These were TAB_PRESS_SPRING and
 // TAB_PRESS_SCALE, exported by components/GlassTabBar.tsx so the map pin grew by
@@ -1241,12 +1241,25 @@ function routeEndLabel(code: string, name: string, cap: number): string {
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
 export default function Search() {
-  // THE QUERY WAS THE BAR'S, and this screen only read it. The bar is native
-  // now (Stage 8) and has no field, so until Stage 9 puts a system search bar
-  // in this screen's header the CHECKPOINT STUB below writes the query and
-  // raises the submit, through the same lib/query.tsx the bar used -- which is
-  // why the submit effect under this line is untouched. SPEC 12.9.
-  const { query, setQuery, submitCount, submit } = useQuery();
+  // THE QUERY IS THIS SCREEN'S OWN. It was the tab bar's, carried here through
+  // lib/query.tsx across a sibling boundary; the field is a system search bar
+  // on this route's own header now (Stage 9), so the text is plain state and
+  // the provider is gone.
+  //
+  // THE SUBMIT IS STILL A COUNTER, FOR A NEW REASON. The old reason -- "a
+  // boolean cannot say again" -- retired with the bar: the native search bar
+  // emits onSearchButtonPress on every Return, unconditionally (react-native-
+  // screens' searchBarSearchButtonClicked emits with no guard on the text), so
+  // a repeat press is already a second event. What the counter buys now is
+  // ORDER. onChangeText writes `query`; a submit must run handleSearch after
+  // that write has flushed, and handleSearch reads `query` in seven places.
+  // Bumping a counter and acting on its change in the effect below is the one
+  // pattern that guarantees the search sees the text the field holds. SPEC
+  // 17, S-15.
+  const [query, setQuery] = useState('');
+  const [submitCount, setSubmitCount] = useState(0);
+  const submit = useCallback(() => setSubmitCount(c => c + 1), []);
+  const searchBarRef = useRef<SearchBarCommands>(null);
   const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
   const { session } = useAccount();
@@ -1398,18 +1411,13 @@ export default function Search() {
   // forward four hundred lines for refs it does not otherwise touch.
   useAccountChange(() => { clearResultView(); });
 
-  // RETURN ON THE TAB BAR'S FIELD, AND IT IS THE ONLY WAY A SEARCH RUNS.
+  // RETURN ON THE SEARCH BAR, AND IT IS THE ONLY WAY A SEARCH RUNS. The bar's
+  // onSearchButtonPress (see the Stack.Screen options in the JSX) bumps the
+  // counter; this watches it and performs the search.
   //
-  // The bar cannot call handleSearch — it must not know what a search is, and it
-  // has no callback prop to be handed one through. So it increments a counter on
-  // lib/query.tsx and this watches it. The bar states the intent; this performs
-  // it.
-  //
-  // ON THE CHANGE, NOT THE VALUE, which is what makes two identical searches in
-  // a row two searches. The ref is seeded with the count as it stands at mount,
-  // so mounting is not a press: this screen mounts when the Search tab is first
-  // opened, long after the provider, and running a search on arrival would spend
-  // units nobody asked for.
+  // ON THE CHANGE, NOT THE VALUE. The ref is seeded with the count as it
+  // stands at mount, so mounting is not a press: running a search on arrival
+  // would spend units nobody asked for.
   //
   // AN EMPTY QUERY COSTS NOTHING, and no guard is added here for it.
   // handleSearch dismisses the keyboard, clears the view and returns on its own
@@ -4122,10 +4130,47 @@ export default function Search() {
     setSaveError("");
     setError("");
     setQuery("");
+    // THE NATIVE FIELD HOLDS ITS OWN TEXT. Clearing the state clears what the
+    // search reads; this clears what the person sees.
+    searchBarRef.current?.clearText();
   };
 
   return (
     <View style={s.root}>
+      {/* ── THE SEARCH BAR (SPEC 12.6). A real UISearchController on this
+          route's Stack header. On iOS 26, with role="search" on the tab and
+          placement 'integrated', it docks into the tab bar's search pill.
+          autoCapitalize 'none' is the Stage 8 decision: route search accepts
+          "Mumbai to Delhi", and the flight-number parser upper-cases for
+          itself. The callbacks are declared here, not in the layout, because
+          they write this screen's state.
+
+          THE PLACEHOLDER IS A SHELL PROMPT, IN GREEN, and it is the app's
+          voice rather than an instruction -- the same voice as the >_ and >//
+          marks on home. It says nothing about what to type, which is the
+          trade: a person who does not already know is told nothing. That is
+          the owner's call, and it is why the green rule gets its second
+          exception (SPEC 1). hideWhenScrolling is true, so the field tucks
+          away on a scroll down and returns on a scroll up: Apple's behaviour,
+          tied to direction rather than position, so it comes back when the
+          scrolling stops. */}
+      <Stack.Screen
+        options={{
+          headerSearchBarOptions: {
+            ref: searchBarRef,
+            placeholder: '~/username:-$',
+            placement: 'integrated',
+            autoCapitalize: 'none',
+            textColor: '#e2e2e2',
+            hintTextColor: '#4ade80',
+            tintColor: '#4ade80',
+            hideWhenScrolling: true,
+            onChangeText: (e) => setQuery(e.nativeEvent.text),
+            onSearchButtonPress: (e) => { setQuery(e.nativeEvent.text); submit(); },
+            onCancelButtonPress: () => setQuery(''),
+          },
+        }}
+      />
       {/* THE MAP, AND IT IS THE FIRST CHILD SO EVERYTHING ELSE PAINTS OVER IT.
           absoluteFill, under the whole screen.
 
@@ -4384,25 +4429,6 @@ export default function Search() {
         style={{ flex: 1, paddingTop: insets.top + 12 }}
         pointerEvents="box-none"
       >
-        {/* ── THE CHECKPOINT STUB (SPEC 12.9). A plain field standing in for
-            the search field that lived in the deleted tab bar, so Stage 8 can
-            be verified with search still working. Stage 9 replaces it with
-            headerSearchBarOptions and deletes it. It carries the old field's
-            input props so nothing about typing changes in between; the
-            placeholder is the settled one. Not the app's design. */}
-        <TextInput
-          style={s.stubField}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={submit}
-          placeholder="flight number or route"
-          placeholderTextColor="rgba(226,226,226,0.35)"
-          returnKeyType="search"
-          autoCapitalize="none"
-          autoCorrect={false}
-          selectionColor="#4ade80"
-          blurOnSubmit
-        />
         {/* THE BOTTOM CLEARANCE WAS REMOVED WHEN THE BAR BECAME NATIVE. It
             was insets.bottom + 24, and deliberately not enough: the list was
             meant to end under the glass so the blur had something moving
@@ -5692,12 +5718,6 @@ const hm = StyleSheet.create({
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: PAGE_BG },
   scroll: { paddingHorizontal: 20 },
-  // The checkpoint stub's one style. Dies with it in Stage 9.
-  stubField: {
-    marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10,
-    borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.16)',
-    fontFamily: MONO, fontSize: 15, color: '#e2e2e2',
-  },
 
   searchBtn: {
     paddingVertical: 8, paddingHorizontal: 0,

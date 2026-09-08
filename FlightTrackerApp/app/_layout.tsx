@@ -8,10 +8,10 @@ import { useEffect } from "react";
 // and the Google OAuth redirect both rely on.
 //
 // DarkTheme, ThemeProvider and Stack come from expo-router's own surface, not
-// from @react-navigation/* directly, for the reason recorded above the
-// BottomTabBarProps import in components/GlassTabBar.tsx: expo-router pins
-// and re-exports the navigation packages it was built against, and importing
-// the same names from the underlying package is how two copies end up loaded.
+// from @react-navigation/* directly, for the reason recorded as S-13 at the top
+// of app/(tabs)/_layout.tsx: expo-router vendors and re-exports the navigation
+// packages it was built against, and importing the same names from the
+// underlying package is how two copies end up loaded.
 import { Stack, useRouter, ThemeProvider, DarkTheme } from "expo-router";
 // THE STATUS BAR, FROM THE PACKAGE THAT IS ACTUALLY IN app.json's PLUGINS.
 // expo-status-bar was installed and configured and never imported; the RN
@@ -31,14 +31,10 @@ import * as Notifications from "expo-notifications";
 // presented as a sibling of the tab group must reach every one of these. A
 // provider mounted inside app/(tabs)/ would be out of a sheet's reach.
 import { SavedProvider } from "../lib/saved";
-// AND THE QUERY, SEPARATELY. Two providers rather than one value with both
-// on it: the saved list changes a handful of times a session and the query
-// changes on every keystroke, and a consumer of either must not be woken by
-// the other. See the note at the top of lib/query.tsx.
-//
-// INSIDE SavedProvider, and the nesting order carries no meaning: neither
-// reads the other, so this is only a place to stand.
-import { QueryProvider } from "../lib/query";
+// THE QUERY PROVIDER IS GONE (Stage 9). It existed to carry typed text from
+// the tab bar's field to the search screen across a sibling boundary. The
+// field is the search screen's own now, so there is no boundary to cross and
+// nothing to provide.
 // AND THE TWO BANNERS. Inside SavedProvider because undo reaches the store, and
 // wrapping the navigator because the screen that RAISES a toast is not always
 // the screen that would have drawn it: the search screen saves, unsaves and
@@ -147,8 +143,7 @@ export default function Layout() {
   //
   // PROVIDER ORDER. SavedProvider must contain MapRoutesProvider (reads the
   // account email from it) and ToastProvider (undo reaches the store).
-  // ChromeProvider and QueryProvider carry no ordering meaning. See each
-  // import's note above.
+  // ChromeProvider carries no ordering meaning. See each import's note above.
   //
   // THE STACK HAS NO HEADER AND PAINTS THE PAGE. Its one screen today is the
   // tab group. Sheets join it as siblings from Stage 2, each declaring its own
@@ -160,14 +155,12 @@ export default function Layout() {
           <SavedProvider>
             <MapRoutesProvider>
               <ChromeProvider>
-              <QueryProvider>
                 <ToastProvider>
                   <StatusBar style="light" />
                   <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: PAGE_BG } }}>
                     <Stack.Screen name="(tabs)" />
                   </Stack>
                 </ToastProvider>
-              </QueryProvider>
               </ChromeProvider>
             </MapRoutesProvider>
           </SavedProvider>
