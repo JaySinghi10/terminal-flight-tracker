@@ -1,0 +1,33 @@
+Subject: Your booking confirmation ZK9P2Q
+From: British Airways <no-reply@britishairways.com>
+To: Jay Singhi <jay@example.com>
+Date: Sat, 15 Aug 2026 18:02:00 +0100
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============5136520485344707496=="
+
+--===============5136520485344707496==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Booking reference: ZK9P2Q
+
+Flight BA1502  Operated by American Airlines
+London Heathrow (LHR) Terminal 3  12 Nov 2026 16:45
+Los Angeles (LAX) Terminal 4     12 Nov 2026 20:10
+Passenger: Mr Jay Singhi   Class: Economy (O)
+e-ticket 125-2231998877
+
+--===============5136520485344707496==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><p>Booking reference <b>ZK9P2Q</b></p>
+<table><tr><td><b>BA1502</b></td><td>LHR T3 12 Nov 2026 16:45</td><td>LAX T4 =
+12 Nov 2026 20:10</td></tr>
+<tr><td colspan=3D"3" style=3D"font-size:11px;color:#666">Operated by America=
+n Airlines. Check in with the operating carrier.</td></tr></table>
+<p>e-ticket 125-2231998877</p></body></html>
+
+--===============5136520485344707496==--
