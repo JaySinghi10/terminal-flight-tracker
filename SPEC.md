@@ -568,11 +568,11 @@ In `components/GlassTabBar.tsx`, locate and list every construct named in 12.4 b
 | Order | `name` | Label | Icon |
 |---|---|---|---|
 | 1 | `index` | Home | `sf={{ default: 'house', selected: 'house.fill' }}` |
-| 2 | `flights` | My Flights | `sf={{ default: 'bookmark', selected: 'bookmark.fill' }}` |
+| 2 | `flights` | My Flights | `sf={{ default: 'airplane', selected: 'airplane' }}` |
 | 3 | `deck` | Deck | `sf={{ default: 'building.2', selected: 'building.2.fill' }}` |
 | 4 | `search` | Search | `sf="magnifyingglass"` |
 
-Rationale, recorded so it is not relitigated: the hand-drawn My Flights icon is a bookmark today, and an airplane there would collide with the in-air card. Deck is a place, not a map, and `map` would read as the globe on the Search tab.
+Rationale, recorded so it is not relitigated. My Flights was to keep its hand-drawn airplane, and could not: `Icon.src` accepts only bitmap image sources, `VectorIcon` elements, promise loaders and `xcasset` names, and warns and drops an SVG element. Rasterising the path into template bitmaps was declined. So the tab is the SF Symbol `airplane`, which has no filled variant; the green tint carries selection there exactly as it does on the other three. The airplane tab and the in-air card will read similarly, and that is accepted. The drawn path survives in `lib/icons.ts`. Deck is a place, not a map, and `map` would read as the globe on the Search tab.
 
 Compound form, verified:
 
@@ -696,7 +696,7 @@ Treat them as one stage with an intermediate checkpoint: get `NativeTabs` render
 ### 12.10 Verify
 
 1. Four tabs in order: Home, My Flights, Deck, Search.
-2. Icons are `house`, `bookmark`, `building.2`, `magnifyingglass`, each filling on selection where a filled variant is specified.
+2. Icons are `house`, `airplane`, `building.2`, `magnifyingglass`. Home and Deck fill on selection; `airplane` has no filled variant and does not fill, which is expected, and `magnifyingglass` is a single form.
 3. Selected tab is `#4ade80`; unselected are not.
 4. Apple's selection animation runs. No pill, no wave. Expected.
 5. Tapping the active tab scrolls that screen to the top.
