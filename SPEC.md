@@ -590,7 +590,7 @@ Compound form, verified:
 - `blurEffect: 'systemChromeMaterialDark'` — the same string the hand-built bar uses. The material carries over by name.
 - `backgroundColor: PAGE_BG`
 - `minimizeBehavior: 'onScrollDown'`
-- `hidden={retracted}` reading `useChrome()` from `lib/chrome.tsx`
+- **No `hidden`.** An earlier revision fed `lib/chrome.tsx`'s `retracted` into it, reproducing the hand-built bar's habit of standing aside while the globe was dragged. On a device that was wrong twice: `hidden` removes the tab bar outright rather than retracting it, so on Search the bar vanished mid-scroll and returned at rest, which reads as a glitch; and it duplicates `minimizeBehavior`, which is the system's own answer to the same question. The bar is now never hidden. `lib/chrome.tsx` and the globe's `onDrag` that writes to it are left in place and unread, so the signal stays available to a future consumer that should genuinely stand aside.
 - **`labelStyle` unset.** San Francisco for tab labels is the decision.
 
 **Use `role="search"` on the fourth trigger.** See Section 2 for what it does on iOS 26 and the auto-activation gap.

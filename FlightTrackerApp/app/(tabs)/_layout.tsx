@@ -38,16 +38,26 @@
 // The five gesture rules that SURVIVE the bar (S-1 to S-5) moved to the top of
 // components/swipe.tsx, which still owns a gesture.
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-// WHETHER THE CHROME SHOULD STAND ASIDE. The globe's drag raises the flag on
-// the search screen; this is the one consumer, and it was the only thing about
-// retraction that changed: the bar used to animate itself out of the way, and
-// now the system hides it. lib/chrome.tsx and the wiring are untouched.
-import { useChrome } from "../../lib/chrome";
+// ── THE CHROME FLAG IS NO LONGER READ HERE, AND THE BAR IS NEVER HIDDEN ────
+//
+// The hand-built bar animated itself out of the way while the globe was being
+// dragged, and this layout reproduced that by feeding lib/chrome.tsx's
+// `retracted` into NativeTabs' `hidden`. On a device that was wrong twice
+// over. `hidden` is not a retraction: it removes the tab bar outright, so on
+// Search the bar VANISHED during a scroll and reappeared at rest, which reads
+// as a glitch rather than as deference. And it is redundant: minimizeBehavior
+// already gives the system's own answer to the same question, shrinking the
+// bar on the way down and restoring it on the way up, which is what the
+// retraction was for.
+//
+// SO NOTHING IS HIDDEN, EVER. lib/chrome.tsx and the globe's onDrag that
+// writes to it are deliberately LEFT IN PLACE and unread: the provider still
+// mounts, the search screen still raises the flag, and nothing else changes.
+// A future consumer -- a control that really should stand aside while the map
+// is being dragged -- has the signal already wired and can read it.
 import { PAGE_BG } from "../../lib/cards";
 
 export default function TabsLayout() {
-  const { retracted } = useChrome();
-
   // THE ONE SANCTIONED EXCEPTION TO THE GREEN RULE. Green is for live or
   // actionable, and the selected tab is where the app currently IS -- the
   // actionable position -- so it is the tint. Nothing else in the bar is
@@ -70,7 +80,6 @@ export default function TabsLayout() {
       blurEffect="systemChromeMaterialDark"
       backgroundColor={PAGE_BG}
       minimizeBehavior="onScrollDown"
-      hidden={retracted}
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon sf={{ default: 'house', selected: 'house.fill' }} />
