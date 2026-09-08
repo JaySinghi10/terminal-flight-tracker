@@ -45,7 +45,7 @@ import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
-import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import {
   View,
   Text,

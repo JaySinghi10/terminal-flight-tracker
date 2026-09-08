@@ -39,7 +39,7 @@ import { terminalOf, terminalsAt, Gate } from '../../lib/terminals';
 import CorridorView from '../../components/CorridorView';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
-import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 // THE JOIN AND THE ARITHMETIC MOVED OUT OF THE COMPONENT. Where a restaurant is
 // is a fact about the data, not about a view, and the map is now the third
 // thing that wants it -- see lib/terminalgeo.

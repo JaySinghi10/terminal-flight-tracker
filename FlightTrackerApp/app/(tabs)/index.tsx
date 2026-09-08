@@ -17,7 +17,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
-import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import * as Google from 'expo-auth-session/providers/google';
 import { ResponseType } from 'expo-auth-session';
 import {
@@ -2030,14 +2030,27 @@ export default function Index() {
             takes the space the scroll view took, and the scroll view fills it
             through its own flexGrow.
 
-            THE DEEP IMPORT PATH IS DELIBERATE. The component lives in
-            react-native-screens' gamma tree and is not on the package's public
-            export. The package declares no exports map, `src/` ships, and of
-            the four shipped trees it is the only one carrying types beside the
-            implementation -- a lib/module import compiles but has no
-            declaration file. Its native half is built only when
-            RNS_GAMMA_ENABLED is set, which expo-router's own config plugin
-            writes into the Podfile at prebuild. */}
+            THE IMPORT IS THE SUBPATH THE MAINTAINERS NAME. The component
+            lives in react-native-screens' gamma tree, and the package exposes
+            that tree through `react-native-screens/experimental`: a directory
+            with its own package.json pointing `react-native` at
+            src/experimental and `types` at lib/typescript/experimental, both
+            of which re-export this component. This file once imported
+            'react-native-screens/src/components/gamma/scroll-view-marker'
+            instead. That resolved to the same module -- the subpath's index
+            does nothing but re-export it -- and it did carry types, but it
+            bound four screens to the library's internal directory layout, and
+            a layout is not a promise. The subpath is.
+
+            EXPERIMENTAL IS NOT A HEDGE, IT IS THE NAME. The declaration file
+            opens by saying every symbol it exposes may break without notice
+            and without a major version. Nothing else in this app imports from
+            it, so a break lands here and at the three sibling markers and
+            nowhere else, which is the whole of the exposure.
+
+            The marker's native half is built only when RNS_GAMMA_ENABLED is
+            set, which expo-router's own config plugin writes into the Podfile
+            at prebuild. That is unchanged by which path imports it. */}
         <ScrollViewMarker style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={s.scroll}

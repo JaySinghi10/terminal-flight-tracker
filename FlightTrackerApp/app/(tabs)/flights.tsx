@@ -30,7 +30,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
-import { ScrollViewMarker } from 'react-native-screens/src/components/gamma/scroll-view-marker';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import {
   SavedFlight, savedFlightFromApi, ISO_DAY_RE, MAX_MAP_ROUTES,
 } from '../../lib/storage';
