@@ -41,9 +41,6 @@ import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 // The search bar's imperative handle, for the one thing the props cannot do:
 // clear the native field when the account changes. See clearResultView.
 import type { SearchBarCommands } from "react-native-screens";
-// THE NAME IN THE PROMPT, read from the same place home reads the name it
-// greets with. See promptName below.
-import * as SecureStore from 'expo-secure-store';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import {
@@ -1263,39 +1260,18 @@ export default function Search() {
   const [submitCount, setSubmitCount] = useState(0);
   const submit = useCallback(() => setSubmitCount(c => c + 1), []);
   const searchBarRef = useRef<SearchBarCommands>(null);
-
-  // THE PROMPT'S NAME. The search bar's placeholder is a shell prompt,
-  // ~/<name>:-$, and the name is whatever home greets with: displayName if the
-  // person typed one in the profile sheet, else the first name Google gave at
-  // sign-in, exactly home's `displayName ?? username`. READ FROM THE SAME
-  // STORE HOME READS, not held on a context -- lib/account.tsx deliberately
-  // holds the session and nothing else, and this is one string read at two
-  // moments: mount, and the account changing (the same signal that clears the
-  // native field, below). Signed out, the prompt says ~/terminal:-$.
-  //
-  // KNOWN GAP: a display name typed in the profile sheet AFTER sign-in is not
-  // an account change, so it reaches this prompt on the next mount or the next
-  // account change, not at once.
-  const [promptName, setPromptName] = useState<string | null>(null);
-  const readPromptName = useCallback(async () => {
-    try {
-      if (Platform.OS === 'web') {
-        setPromptName(localStorage.getItem('displayName') ?? localStorage.getItem('username'));
-        return;
-      }
-      const [display, user] = await Promise.all([
-        SecureStore.getItemAsync('displayName'),
-        SecureStore.getItemAsync('username'),
-      ]);
-      setPromptName(display || user || null);
-    } catch {
-      setPromptName(null);
-    }
-  }, []);
-  useEffect(() => { void readPromptName(); }, [readPromptName]);
   const { savedFlights, email, saveRecord, refreshOne } = useSaved();
   const { showToast } = useToast();
-  const { session } = useAccount();
+  // THE SESSION, AND THE PROMPT'S NAME. The search bar's placeholder is a
+  // shell prompt, ~/<name>:-$, and the name is whatever home greets with:
+  // displayName if the person typed one in the profile sheet, else the first
+  // name Google gave at sign-in -- home's own `displayName ?? username`, read
+  // from the same context home reads it from, so a name saved in the profile
+  // sheet is in this prompt on the same render it is in the greeting. Signed
+  // out, the prompt says ~/terminal:-$. See the note at the head of
+  // lib/account.tsx for why the names live there now.
+  const { session, username, displayName } = useAccount();
+  const promptName = displayName ?? username;
   // EVERYTHING A SCREEN NEEDS TO OWN A FLIGHT CARD. One copy, shared with home,
   // so a card opened from a route row and a card opened from a watchlist row are
   // driven by the same lookup, the same save and the same entry animation.
@@ -1442,7 +1418,7 @@ export default function Search() {
   // THE MAP WATCHES THE SAME SIGNAL SEPARATELY, further down, where its own state
   // is declared. One effect could have done both, but it would have had to reach
   // forward four hundred lines for refs it does not otherwise touch.
-  useAccountChange(() => { clearResultView(); void readPromptName(); });
+  useAccountChange(() => { clearResultView(); });
 
   // RETURN ON THE SEARCH BAR, AND IT IS THE ONLY WAY A SEARCH RUNS. The bar's
   // onSearchButtonPress (see the Stack.Screen options in the JSX) bumps the

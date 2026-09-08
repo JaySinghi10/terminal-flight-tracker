@@ -1178,7 +1178,15 @@ export default function Index() {
   // See lib/account.tsx.
   // AND READ, now that home has a use for it: the pull sends it to
   // /gmail/flights, and an expired one is cleared here on the server's word.
-  const { session, persistSession } = useAccount();
+  // THE SESSION AND THE TWO NAMES, from the one place that holds them. The
+  // names were this screen's own state until Stage 9 of the native conversion
+  // needed them on the search screen's prompt in the same render they reach
+  // the greeting here; see the note at the head of lib/account.tsx. Every
+  // read below is what it was, and every write goes through a persist that
+  // stores and sets together, as this screen's own setters did.
+  const {
+    session, persistSession, username, displayName, persistUsername, persistDisplayName,
+  } = useAccount();
   // EVERYTHING THIS SCREEN NEEDS TO OWN A FLIGHT CARD, and the search screen owns
   // one too. The lookup, the save, the refresh, the entry animation, the error
   // channel and the minute tick moved to lib/flightcard.tsx so that a card opened
@@ -1203,8 +1211,6 @@ export default function Index() {
     runFlightLookup,
   } = useFlightCardHost();
   const [profileOpen, setProfileOpen] = useState(false);
-  const [username, setUsername] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState<string | null>(null);
   // Persisted under 'savedCollapsed'. Starts true so an absent key means
   // collapsed; hydration only overrides it when the key exists.
   const [savedCollapsed, setSavedCollapsed] = useState(true);
@@ -1407,13 +1413,18 @@ export default function Index() {
           const name = (typeof data.name === 'string' && data.name.trim())
             ? data.name.trim()
             : (validEmail ? (validEmail.split('@')[0].match(/^[a-zA-Z]+/)?.[0] ?? 'user') : 'user');
-          await SecureStore.setItemAsync('username', name);
+          // THE STORE WRITES KEEP THEIR ORDER: username, session, email, and
+          // setEmail last, because setEmail is the account-change signal every
+          // other screen watches and the stores must be current before it
+          // fires. persistUsername writes and sets together, so the name state
+          // is set here rather than after the email write; nothing reads it in
+          // between.
+          await persistUsername(name);
           // The session is lib/account.tsx's: the search screen sends it to
           // /chat and cannot see this screen's state, and that module writes
           // and sets together so a caller cannot do one without the other.
           await persistSession(data.session);
           if (validEmail) await SecureStore.setItemAsync('email', validEmail);
-          setUsername(name);
           if (validEmail) setEmail(validEmail);
           setGmailPull(IDLE_PULL);
           clearResultView();
@@ -1428,34 +1439,18 @@ export default function Index() {
     }
   }, [response]);
 
+  // 'username' AND 'displayName' ARE NOT READ HERE ANY MORE. lib/account.tsx
+  // hydrates both, together, and this screen reads them off the hook. 'email'
+  // left earlier for the same reason: lib/saved.tsx owns the account the list
+  // is keyed on. Sign-in and logout still WRITE all three, through the
+  // persists and setEmail. What is left is this screen's own collapse state,
+  // resolved before authHydrated, which gates the saved-list load, so the
+  // section never renders expanded and then snaps shut.
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      const u = localStorage.getItem('username');
-      if (u) setUsername(u);
-      const dn = localStorage.getItem('displayName');
-      if (dn) setDisplayName(dn);
-      // Resolved before authHydrated, which gates the saved-list load, so the
-      // section never renders expanded and then snaps shut.
-      AsyncStorage.getItem('savedCollapsed').then(c => {
-        if (c !== null) setSavedCollapsed(c === 'true');
-        setAuthHydrated(true);
-      });
-    } else {
-      // 'email' IS NOT READ HERE ANY MORE. lib/saved.tsx reads it itself, because
-      // the store owns the account it is keyed on; leaving it here would have
-      // made this screen the authority on when the store is ready. Sign-in and
-      // logout still WRITE it, through setEmail off the hook.
-      Promise.all([
-        SecureStore.getItemAsync('username'),
-        SecureStore.getItemAsync('displayName'),
-        AsyncStorage.getItem('savedCollapsed'),
-      ]).then(([u, dn, c]) => {
-        if (u) setUsername(u);
-        if (dn) setDisplayName(dn);
-        if (c !== null) setSavedCollapsed(c === 'true');
-        setAuthHydrated(true);
-      });
-    }
+    AsyncStorage.getItem('savedCollapsed').then(c => {
+      if (c !== null) setSavedCollapsed(c === 'true');
+      setAuthHydrated(true);
+    });
   }, []);
 
   // First-run ask. Only after hydration, only when signed in, and only while
@@ -1492,9 +1487,9 @@ export default function Index() {
           const payload = JSON.parse(atob(credentialResponse.credential.split('.')[1]));
           const firstName = (payload.email as string).split('@')[0].match(/^[a-zA-Z]+/)?.[0] || 'user';
           const validEmail = typeof payload.email === 'string' && payload.email.trim() ? payload.email : null;
-          localStorage.setItem('username', firstName);
+          // Same order as the native sign-in: name, email, then setEmail.
+          void persistUsername(firstName);
           if (validEmail) localStorage.setItem('email', validEmail);
-          setUsername(firstName);
           if (validEmail) setEmail(validEmail);
           clearResultView();
           // Sheet stays open: displayName is null here, so the first-run ask
@@ -1800,12 +1795,6 @@ export default function Index() {
     try { await AsyncStorage.setItem('savedCollapsed', next ? 'true' : 'false'); } catch {}
   };
 
-  const persistDisplayName = async (name: string) => {
-    if (Platform.OS === 'web') localStorage.setItem('displayName', name);
-    else await SecureStore.setItemAsync('displayName', name);
-    setDisplayName(name);
-  };
-
   // CLOSING A CARD ON HOME IS THE FULL CLEAR. The branch this used to carry
   // tested for a route list to fall back to, and there is none here: home's card
   // is always opened by tapping a watchlist row. That branch went to the search
@@ -1836,17 +1825,14 @@ export default function Index() {
         onSaveName={async (name) => { await persistDisplayName(name); setProfileOpen(false); }}
         onSkipName={async () => { if (username) await persistDisplayName(username); setProfileOpen(false); }}
         onLogout={async () => {
-          if (Platform.OS === 'web') {
-            localStorage.removeItem('username');
-            localStorage.removeItem('email');
-            localStorage.removeItem('displayName');
-          } else {
-            await SecureStore.deleteItemAsync('username');
-            await SecureStore.deleteItemAsync('email');
-            await SecureStore.deleteItemAsync('displayName');
-          }
-          setUsername(null);
-          setDisplayName(null);
+          // THE SAME THREE DELETIONS IN THE SAME ORDER: username, email,
+          // displayName. The two persists clear the store and the state
+          // together; email is still this screen's to delete, and setEmail
+          // below is still the signal, fired after every store is clear.
+          await persistUsername(null);
+          if (Platform.OS === 'web') localStorage.removeItem('email');
+          else await SecureStore.deleteItemAsync('email');
+          await persistDisplayName(null);
           // THE SERVER FIRST. Sign-out deletes the account's record, every
           // session and the refresh token there, and revokes the grant at
           // Google, so "disconnect" is true from Google's side too. Best

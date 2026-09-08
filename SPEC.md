@@ -559,6 +559,8 @@ Present it in a small form sheet or inline. If a sheet, `sheetAllowedDetents: ['
 
 ### 12.0 Discovery
 
+**Files this stage names**, beyond those below: `lib/account.tsx` joined the surface in Stage 9. It carries `username` and `displayName` for the search prompt (see 12.6), which is the day its own header note predicted.
+
 In `components/GlassTabBar.tsx`, locate and list every construct named in 12.4 before deleting anything. Report any that do not exist. Separately locate: `TAB_BAR_HEIGHT` and its importer in `app/search.tsx`; the press spring and its importer in `app/search.tsx`; the four bottom-clearance `paddingBottom` expressions; `useChrome` and `setRetracted` in `lib/chrome.tsx` and their use in `app/search.tsx`; `lib/query.tsx` in full and every `useQuery` consumer; `PLACEHOLDER_PROMPTS` and `AnimatedPlaceholder` in `app/index.tsx`; every `Keyboard.dismiss()` in `app/search.tsx` and the comment near one of them beginning "IT DOES NOT FIX THE ARITHMETIC".
 
 ### 12.1 The tab layout
@@ -651,7 +653,7 @@ Leave a short note at each of the four sites recording that the under-the-glass 
 **Settled configuration:**
 
 - `placement: 'integrated'`
-- `placeholder` is the shell prompt `~/<name>:-$`, with the name the person is greeted by on home (`displayName ?? username`, read from the same secure store), and `~/terminal:-$` when nobody is signed in. It is re-read on the account-change signal, the same one that clears the native field. It is the app's voice, the same voice as the `>_` and `>//` marks on home, and it deliberately tells a first-time user nothing about what to type. The owner's call, made in Stage 9. Known gap: a display name typed after sign-in reaches the prompt on the next mount or account change, not at once.
+- `placeholder` is the shell prompt `~/<name>:-$`, with the name the person is greeted by on home (`displayName ?? username`), and `~/terminal:-$` when nobody is signed in. The name is read from `lib/account.tsx`, which now carries `username` and `displayName` with their persist functions: home reads and writes them through that context instead of its own state, so a name saved in the profile sheet is in the prompt on the same render it is in the greeting. An earlier revision read secure storage on the account-change signal and was stale for exactly that case. It is the app's voice, the same voice as the `>_` and `>//` marks on home, and it deliberately tells a first-time user nothing about what to type. The owner's call, made in Stage 9.
 - `onChangeText` → the screen's own state
 - `onSearchButtonPress` → run the search
 - `onCancelButtonPress` → clear
