@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import dispatch
 import poller
 import pollstate
 import store
@@ -1128,3 +1129,45 @@ def poll(x_poll_secret: str | None = Header(default=None)):
         return JSONResponse(status_code=500, content={"error": "Poll failed."})
     finally:
         pollstate.release_lock(POLL_LOCK_KEY)
+
+
+# ──────────────────────────────────────────────
+# DISPATCH
+# ──────────────────────────────────────────────
+# THE OTHER HALF OF /poll. The poll decides what to say and leaves it in each
+# flight's outbox; this takes it out and sends it. They are separate endpoints
+# on separate schedules because notify defers a cancellation through the night:
+# a message written at 02:00 to be delivered at 07:00 needs a pass at 07:00,
+# and the poll of that particular flight may not come round then. See the note
+# at the top of dispatch.py.
+#
+# THE SAME SECRET AS /poll, deliberately. Both are woken by the same Cloud
+# Scheduler and neither is reachable by anything else, so a second secret would
+# be one more thing to rotate for no gain in what it protects.
+DISPATCH_LOCK_KEY = "runtime/dispatch.lock"
+DISPATCH_LOCK_TTL_SECONDS = 300
+
+
+@app.post("/dispatch")
+def dispatch_pass(x_poll_secret: str | None = Header(default=None)):
+    # 404 rather than 403, as at /poll and /watch above.
+    if not _secret_ok(x_poll_secret, POLL_SECRET):
+        logger.warning("dispatch rejected: bad or missing %s", POLL_SECRET_HEADER)
+        return _alert_not_found()
+
+    lock = pollstate.take_lock(DISPATCH_LOCK_KEY, DISPATCH_LOCK_TTL_SECONDS)
+    if not lock:
+        # NOT AN ERROR, for the reason /poll gives: a 500 would have Cloud
+        # Scheduler retry, and two overlapping passes are exactly what the lock
+        # exists to prevent. The claim-before-send in dispatch.py would stop a
+        # duplicate anyway; this stops the wasted work as well.
+        logger.info("dispatch skipped: another pass is already running")
+        return {"ok": True, "skipped": "already running"}
+
+    try:
+        return dispatch.run_once()
+    except Exception:
+        logger.exception("dispatch failed")
+        return JSONResponse(status_code=500, content={"error": "Dispatch failed."})
+    finally:
+        pollstate.release_lock(DISPATCH_LOCK_KEY)

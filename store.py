@@ -464,6 +464,46 @@ def unregister_watch(device_id, flight_number, flight_date):
     return _mutate_watches(apply)
 
 
+def forget_push_token(push_token):
+    """Drop every watch reachable only through a token Expo says is dead.
+
+    CALLED BY DISPATCH, NEVER BY THE APP. Expo answers a send, or a receipt
+    fifteen minutes later, with DeviceNotRegistered when a token no longer
+    belongs to an installed app -- deleted, or reinstalled and reissued. That
+    is the one push error that is permanent, and leaving the row in place would
+    mean paying a provider to poll a flight whose only reader can never be
+    reached.
+
+    MATCHED ON THE TOKEN, NOT THE DEVICE. A reinstall can hand the same device
+    id a new token, and those rows are live. Removing by device would take them
+    with it; removing by token takes exactly what is dead.
+
+    NOTHING GONE IS A SUCCESS, as with unregister_watch. Two dispatch passes can
+    see the same dead token in the same minute, and the second must not read as
+    a failure.
+    """
+    tok, err = _clean_push_token(push_token)
+    if err:
+        return {"ok": False, "error": err}
+    if not tok:
+        # _clean_push_token accepts an absent token, because a watch may be
+        # registered before permission is granted. There is nothing to match on
+        # and every tokenless row would qualify, so this refuses instead.
+        return {"ok": False, "error": ERR_BAD_TOKEN}
+
+    def apply(rows, today):
+        out = [r for r in rows if r.get("push_token") != tok]
+        if len(out) == len(rows):
+            # NOTHING MATCHED, SO NOTHING IS WRITTEN. Returning the rows here
+            # would persist the pruning _mutate_watches applies before this
+            # runs, which is a write nobody asked for on the hot path of a
+            # duplicate error report.
+            return None, {"ok": True, "removed": 0, "error": None}
+        return out, {"ok": True, "removed": len(rows) - len(out), "error": None}
+
+    return _mutate_watches(apply)
+
+
 # ──────────────────────────────────────────────
 # DELIVERIES
 # ──────────────────────────────────────────────
