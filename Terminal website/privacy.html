@@ -88,45 +88,45 @@ footer .links{display:flex;gap:18px}
     <h1>What Terminal knows about you</h1>
     <div class="meta">Last updated 8 September 2026</div>
 
-    <p class="lede">Terminal is a flight tracker for iPhone, built by one person. It works without an account, it shows no ads, and it does not sell anything about you to anyone. This page says exactly what it keeps, where, and how to make it forget.</p>
+    <p class="lede">Terminal is a flight tracker for iPhone, built by one person. It works without an account, it shows no ads, and it does not sell anything about you to anyone. This page says exactly what it keeps, where, and how to make it forget. Every sentence here was checked against the code that runs today, and where the code falls short of what we intend, the page says so.</p>
 
     <h2><b>01</b>On your phone</h2>
     <p>Almost everything lives on the phone and nowhere else.</p>
     <ul>
-      <li><strong>Your flights.</strong> Every flight you save, with its times, gates and status, is stored on the device. There is no copy on our server.</li>
+      <li><strong>Your flights.</strong> Every flight you save, with its times, gates and status, is stored on the device. There is no per-person copy on our server.</li>
       <li><strong>Flights from your email that the airline has not published yet.</strong> Flight number, date, route and booking reference, kept on the phone until the airline's schedule catches up.</li>
       <li><strong>Reminders.</strong> Scheduled on the phone by the phone.</li>
-      <li><strong>Your Google email address,</strong> if you sign in with Google. It is used only to keep your saved list separate from a guest list on the same phone. It is never sent to our server.</li>
-      <li><strong>Your location,</strong> if you allow it. It is used once, on the phone, to work out the nearest airport. It never leaves the device.</li>
+      <li><strong>Your Google email address and a first name taken from it,</strong> if you sign in with Google. They are used only to greet you and to keep your saved list separate from a guest list on the same phone. They are never sent to our server.</li>
+      <li><strong>A Google access token,</strong> if you sign in, kept in the phone's secure storage. What it is for is in section 03.</li>
+      <li><strong>Your location,</strong> if you allow it. It is used on the phone to work out the nearest airport, whenever the app needs that. It never leaves the device.</li>
       <li><strong>A random install id.</strong> A code the app makes up the first time it runs. It identifies the install, not you, and it is the only thing the server knows you by.</li>
     </ul>
     <p>Delete the app and all of this is gone.</p>
 
     <h2><b>02</b>On our server</h2>
-    <p>The server keeps one thing: a <strong>watch list</strong>. Its job is to notice when a flight you saved changes, so the app can tell you. Each entry holds:</p>
+    <p>The server runs on Google Cloud, in Google's Mumbai region. It holds four kinds of thing. Only the first has any connection to a phone.</p>
     <ul>
-      <li>the random install id from above,</li>
-      <li>a flight number and a date,</li>
-      <li>a push notification token, only if you have allowed notifications.</li>
+      <li><strong>The watch list.</strong> One entry per flight you save: the random install id, a flight number, a date, and a push notification token if you have allowed notifications. No names, no email addresses, nothing that says who holds the phone. Unsaving a flight in the app deletes its entry at once; otherwise entries are cleared once the flight's date is two days behind, the next time the list is written. Nothing sends a push notification yet. The token is stored against the day something does, and this page will change when that ships.</li>
+      <li><strong>A state file per watched flight.</strong> The server checks watched flights on a schedule so that changes can be noticed without every phone asking. For each flight it keeps a file named by flight number and date, holding the last schedule and status the data providers returned: times, terminal, gate, whether the aircraft has landed, when we last asked, and a list of the changes it noticed. This is flight data, not data about a person. The same file serves everyone watching that flight, and it holds no install id and no token. Today these files are not deleted after the flight. That is a gap in the code, not a policy, and it will be closed.</li>
+      <li><strong>A small cache of recent landings</strong> from Flightradar24, dropped three days after the flight, and <strong>the notifications Flightradar24 sends us</strong> about watched flights, kept as received. Both are flight data with no person in them.</li>
+      <li><strong>Request logs.</strong> Google Cloud keeps a log of requests to the server: the time, the path, which for a lookup includes the flight number and date, and the IP address the request came from. Google keeps these for thirty days. We do not write anything about you into them. Email text and access tokens never appear in them.</li>
     </ul>
-    <p>No names. No email addresses. Nothing that says who holds the phone. An entry is deleted two days after the flight's date, and unsaving a flight in the app deletes it at once.</p>
-    <p>The server runs on Google Cloud, in Google's Mumbai region.</p>
 
     <h2><b>03</b>Gmail, if you connect it</h2>
     <p>You can let Terminal find your flights in your inbox. This is optional and off until you turn it on. When you do:</p>
     <ul>
       <li>We ask Google for <strong>read-only</strong> access to Gmail. Terminal cannot send, delete or change anything in your mail.</li>
-      <li>The app searches for recent booking confirmations and reads only the messages that look like one. It does not read the rest of your mail.</li>
-      <li>The text of a matching email is sent to <strong>Google's Gemini</strong> model, which pulls out the flight number, date, route and booking reference. That text is truncated before it is sent, is never written to a log, and is never stored. Once the flight details are out, the email is forgotten.</li>
+      <li><strong>Our server does the reading, not the phone.</strong> When you ask the app to pull flights from Gmail, the phone sends your Google access token to our server. The server uses that token to call Gmail on your behalf: it asks Gmail for messages received in the last year whose subject looks like a booking, fetches only those, and does not see the rest of your mail.</li>
+      <li>The token is used for that one request. It is not stored on the server and it is not written to any log. When it expires you sign in again. The server holds no lasting connection to your Google account.</li>
+      <li>The text of each matching email is sent to <strong>Google's Gemini</strong> model, which pulls out the flight number, date, route and booking reference. That text is cut to a fixed length before it is sent, is never written to a log, and is never stored. Once the flight details are out, the email is forgotten.</li>
       <li>The flight details go back to your phone, and only there.</li>
-      <li>We store a <strong>refresh token</strong> from Google so the connection survives between sessions and you do not have to sign in every time.</li>
     </ul>
-    <p>The assistant inside the app works the same way: anything you type into it is sent to Gemini to be answered, and is not kept.</p>
+    <p>The assistant inside the app works the same way: what you type is sent to our server and on to Gemini to be answered, and is not kept. If you ask it about your next flight while signed in, it uses the same token in the same way.</p>
 
     <h2><b>04</b>Who else sees anything</h2>
     <p>Four companies, and only what each needs:</p>
     <ul>
-      <li><strong>Google Cloud</strong> hosts the server and the watch list.</li>
+      <li><strong>Google Cloud</strong> hosts the server, the files in section 02 and the request logs.</li>
       <li><strong>Google Gemini</strong> receives the text of booking emails you let us read, and what you type into the assistant.</li>
       <li><strong>Flightradar24</strong> and <strong>AeroDataBox</strong> receive flight numbers and dates, so the app can show schedules, gates and whether the aircraft has landed. They never receive your install id or anything about you.</li>
     </ul>
@@ -142,8 +142,8 @@ footer .links{display:flex;gap:18px}
 
     <h2><b>06</b>Disconnecting and deleting</h2>
     <ul>
-      <li><strong>Disconnect Gmail:</strong> sign out of Google inside the app. That deletes the token from your phone and the refresh token from our server. You can also revoke Terminal's access at <a class="in" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>, which cuts it off from Google's side no matter what the app does.</li>
-      <li><strong>Delete a flight from the server:</strong> unsave it in the app. Entries also delete themselves two days after the flight.</li>
+      <li><strong>Disconnect Gmail:</strong> sign out of Google inside the app. That deletes the access token from your phone, and the server holds none. You can also revoke Terminal's access at <a class="in" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>, which cuts it off from Google's side no matter what the app does.</li>
+      <li><strong>Delete a flight from the server:</strong> unsave it in the app. The flight's state file stays, but it names no one.</li>
       <li><strong>Delete everything on the phone:</strong> delete the app.</li>
       <li><strong>Anything else:</strong> message <a class="in" href="https://x.com/Jayo10o" target="_blank" rel="noopener noreferrer">@Jayo10o</a> on X with your request. Since the server holds no name or email, tell us the flights on your list and we will remove them.</li>
     </ul>
