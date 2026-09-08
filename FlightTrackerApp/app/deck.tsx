@@ -18,6 +18,10 @@ import { diningAt, allDining, Dining, HoursWindow } from '../lib/dining';
 // app/flights.tsx for this screen -- see its note in lib/saved.tsx. Nothing
 // about which leg a traveller is on is computed twice.
 import {
+  // THE ACCOUNT, WATCHED. Everything on this screen is one person's answer to
+  // "where am I and what is near me", and none of it belongs to the next
+  // person to sign in. See the hook's own note in lib/saved.tsx.
+  useAccountChange,
   useSaved, tripsOf, isArchived, currentLegIndex, departureTs,
   // WHETHER A LEG HAS LANDED, AND WHEN IT ARRIVED. whereAmI asks the first and
   // budgetFor the second; neither is computed here any more.
@@ -435,6 +439,27 @@ export default function Deck() {
   // and none of them is "a developer tapped a chip". This forces one value so
   // the drawing can be judged, and comes out when that rule is built.
   const [devTerminal, setDevTerminal] = useState<string | null>(null);
+
+  // ── SIGNING IN OR OUT EMPTIES THIS SCREEN ─────────────────────────────────
+  //
+  // EVERY PIECE OF STATE ABOVE IS USER-VISIBLE AND NONE OF IT IS PERSISTED,
+  // which is exactly why it needed this: unpersisted is not the same as
+  // scoped. The screen stays mounted across a sign-in, so a guest's chosen
+  // airport, their open picker, the gate they said they were standing at and
+  // the restaurant they had selected were all still on screen for whoever
+  // signed in next.
+  //
+  // BACK TO FOLLOWING THE JOURNEY, which is the resting state: picked null
+  // means the airport comes from the saved flights, and those have already
+  // been swapped for the new account's by the store.
+  useAccountChange(() => {
+    setPicked(null);
+    setSearching(false);
+    setTerm('');
+    setHereAt(null);
+    setSelectedAt(null);
+    setDevTerminal(null);
+  });
 
   // The terminal the traveller is standing in, when the journey says so and the
   // screen is showing that airport. Never guessed from anything else.

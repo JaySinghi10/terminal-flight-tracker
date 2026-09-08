@@ -63,6 +63,7 @@ import { airlineFromFlightNumber } from '../lib/airlines';
 import { clock24 } from '../lib/time';
 import {
   useSaved,
+  useAccountChange,
   API_BASE,
   flightUrl,
   NO_TIME,
@@ -1379,21 +1380,15 @@ export default function Search() {
   // which are in home's profile modal. Home cannot reach this screen's state, so
   // this watches the one thing those two actually change and does it here.
   //
-  // A REF RATHER THAN A BARE DEPENDENCY, so mounting is not treated as a change.
-  // The screen mounts long after hydration, with an account already in hand;
-  // clearing on that first pass would wipe a query the user had just typed to get
-  // here.
+  // THE REF-AND-EFFECT THIS USED TO SPELL OUT IS NOW useAccountChange, in
+  // lib/saved.tsx, because deck and My Flights needed exactly the same rule and
+  // three copies of a rule is how the rule comes to differ. Its note carries
+  // the reasoning that used to be here, including why mounting is not a change.
   //
   // THE MAP WATCHES THE SAME SIGNAL SEPARATELY, further down, where its own state
   // is declared. One effect could have done both, but it would have had to reach
   // forward four hundred lines for refs it does not otherwise touch.
-  const lastEmail = useRef(email);
-  useEffect(() => {
-    if (lastEmail.current === email) return;
-    lastEmail.current = email;
-    clearResultView();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email]);
+  useAccountChange(() => { clearResultView(); });
 
   // RETURN ON THE TAB BAR'S FIELD, AND IT IS THE ONLY WAY A SEARCH RUNS.
   //

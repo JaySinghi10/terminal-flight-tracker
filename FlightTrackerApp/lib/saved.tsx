@@ -1218,6 +1218,39 @@ export function useSaved(): SavedContextValue {
   return v;
 }
 
+// ── THE ACCOUNT CHANGED, SO WHAT IS ON SCREEN IS SOMEBODY ELSE'S ───────────
+//
+// WHY A HOOK AND NOT A CALL AT THE TWO CALL SITES. Signing in and signing out
+// both happen in home's profile modal, and home cannot reach another screen's
+// state. Worse, the tabs navigator keeps every screen MOUNTED when it loses
+// focus, so a screen the user last saw as a guest is still sitting there with
+// the guest's choices in it after they sign in. Nothing unmounts, so nothing
+// resets, and no amount of care at the sign-in site fixes that.
+//
+// SO EACH SCREEN WATCHES THE ONE THING THAT ACTUALLY CHANGED. This was written
+// out by hand on the search screen first; deck and My Flights needed the same
+// three lines, and three copies of a rule is how the rule comes to differ.
+//
+// A REF RATHER THAN A BARE DEPENDENCY, so MOUNTING is not treated as a change.
+// A screen mounts long after hydration with an account already in hand, and
+// clearing on that first pass would wipe a query the user typed to get there.
+//
+// THE CALLBACK IS HELD IN A REF TOO, so a caller can pass an inline closure
+// without wrapping it in useCallback. The effect depends on the email alone,
+// which is the only thing that should be able to fire it.
+export function useAccountChange(onChange: () => void): void {
+  const { email } = useSaved();
+  const last = useRef(email);
+  const fn = useRef(onChange);
+  fn.current = onChange;
+  useEffect(() => {
+    if (last.current === email) return;
+    last.current = email;
+    fn.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+}
+
 export function SavedProvider({ children }: { children: ReactNode }) {
   const [savedFlights, setSavedFlights] = useState<SavedFlight[]>([]);
   const [pending, setPendingState] = useState<PendingLeg[]>([]);

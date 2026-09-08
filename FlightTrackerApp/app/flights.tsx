@@ -35,6 +35,8 @@ import {
 // a list and a clock; the two callbacks are the only things here that write.
 import {
   useSaved,
+  // See its note in lib/saved.tsx: this screen stays mounted across a sign-in.
+  useAccountChange,
   tripsOf,
   isOwned,
   isArchived,
@@ -1500,6 +1502,23 @@ export default function Flights() {
   // with nothing on screen saying why. The default is right, this screen has no
   // persistence of any kind, and the cost of being wrong is a blank.
   const [openTrips, setOpenTrips] = useState<Record<string, boolean>>({});
+
+  // ── SIGNING IN OR OUT EMPTIES THIS SCREEN TOO ─────────────────────────────
+  //
+  // THE SAME FAULT THE DECK HAD, for the same reason: this screen stays
+  // mounted across a sign-in, so the focused leg and the open folders were
+  // the previous account's. Both name records BY ID, and an id from another
+  // account's list matches nothing here -- so the visible result was a screen
+  // that quietly refused to open the trip the user was actually on.
+  //
+  // THE OVERLAY IS NOT RESET, and that is not an oversight: the account can
+  // only change from home's profile modal, so no overlay on this screen can
+  // be up when it happens, and tearing down an animated surface that is not
+  // there would be a guess about a state that cannot exist.
+  useAccountChange(() => {
+    setFocusOverride(null);
+    setOpenTrips({});
+  });
 
 
 
