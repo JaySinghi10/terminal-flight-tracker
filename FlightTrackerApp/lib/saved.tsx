@@ -2111,22 +2111,40 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   //
   // NO REFERENCE, NO TRIP. A leg from an email that printed none has nothing
   // tying it to anything, and it keeps the standalone behaviour it has today.
-  const tripForBooking = useCallback((
+  // ── READ FROM THE STORE, NOT FROM THE CLOSURE, AND THIS WAS THE BUG ───────
+  //
+  // A GMAIL PULL OWNS AND QUEUES IN ONE LOOP. The first leg is owned and gets a
+  // trip; the second is queued a moment later and asked which trip it belongs
+  // to. Asked against `savedFlights` -- the React value captured when this
+  // callback was built -- the answer was "no saved leg has that reference",
+  // because the leg owned two lines earlier is not in that snapshot and will
+  // not be until the next render.
+  //
+  // SO IT MINTED A SECOND TRIP, and the booking split in two: the saved leg in
+  // one, the queued legs in another that contains no saved leg at all. My
+  // Flights enumerates trips from saved flights, so that second trip was never
+  // drawn, and the legs were not orphans either -- they had a trip id. They
+  // were in the store and on no screen.
+  //
+  // THE STORE IS THE TRUTH DURING A LOOP. getSavedFlights reads what was
+  // actually written, including the record owned a moment ago.
+  const tripForBooking = useCallback(async (
     pnr: string | null, pendingList: PendingLeg[],
-  ): string | null => {
+  ): Promise<string | null> => {
     if (pnr === null) return null;
-    const saved = savedFlights.find(f => f.pnr === pnr && f.tripId !== null);
+    const current = await getSavedFlights(email);
+    const saved = current.find(f => f.pnr === pnr && f.tripId !== null);
     if (saved !== undefined) return saved.tripId;
     const queued = pendingList.find(p => p.pnr === pnr && p.tripId !== null);
     if (queued !== undefined) return queued.tripId;
     return newTripId();
-  }, [savedFlights]);
+  }, [email]);
 
   const addPendingLeg = useCallback(async (leg: PendingLeg): Promise<'added' | 'dup' | 'limit' | 'past'> => {
     const list = await getPending(email);
     const withTrip = leg.tripId !== null
       ? leg
-      : { ...leg, tripId: tripForBooking(leg.pnr, list) };
+      : { ...leg, tripId: await tripForBooking(leg.pnr, list) };
     const r = addToPending(list, withTrip, localDayKey(Date.now()));
     if (!r.ok) return r.reason;
     await setPending(email, r.pending);

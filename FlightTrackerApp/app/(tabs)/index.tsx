@@ -1321,9 +1321,25 @@ export default function Index() {
   // WHAT IS LEFT FOR THIS SECTION. A pending leg with a trip is shown inside
   // that trip on My Flights; one without has no journey to belong to, and this
   // is the only place it can appear at all.
-  // `?? null` for the reason given at the trip merge: a leg with no field at
-  // all belongs here, not nowhere.
-  const orphanPending = useMemo(() => pending.filter(p => (p.tripId ?? null) === null), [pending]);
+  // ── EVERY LEG IS ON SOME SCREEN, AND THIS IS THE GUARANTEE ────────────────
+  //
+  // NO TRIP, OR A TRIP NOTHING DRAWS. The first is the ordinary case: an email
+  // with no booking reference gives a leg nothing to belong to. The second is
+  // the one that cost a day -- a leg carrying a trip id that no SAVED flight
+  // shares. My Flights enumerates journeys from saved flights, so such a trip
+  // is never rendered, and the leg is not an orphan either. It sat in the store
+  // and appeared on no screen at all.
+  //
+  // THE CAUSE IS FIXED at tripForBooking, which now reads the store rather than
+  // a stale snapshot. This is the net under it: whatever goes wrong upstream, a
+  // leg with nowhere better to be is shown here rather than nowhere.
+  const orphanPending = useMemo(() => {
+    const drawn = new Set(savedFlights.map(f => f.tripId).filter((t): t is string => t !== null));
+    return pending.filter(p => {
+      const trip = p.tripId ?? null;
+      return trip === null || !drawn.has(trip);
+    });
+  }, [pending, savedFlights]);
 
   const toldOfWatchFailure = useRef(false);
   useEffect(() => {
