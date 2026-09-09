@@ -71,9 +71,22 @@ WINDOW_DAYS = 365
 # and five per fetch, so a request at these caps is 5 + 25 * 5 = 130 units
 # against a per-user allowance of 250 per second -- quota is not the constraint,
 # latency is, which is why the fetches run in a pool.
+#
+# FETCH_MAX AND EXTRACT_MAX ARE EQUAL, AND THAT IS THE POINT. They were 25 and
+# 10, so fifteen emails could be fetched, decoded, and pass the spend gate --
+# every one of them looking like a booking -- and then be thrown away before
+# the model ever saw them, silently, on a rule that knew nothing about them
+# but their position in a list. A fetched email that passes the gate is an
+# email somebody may have a ticket in; the cap must not be what loses it.
+#
+# THE GATE IS THE FILTER NOW, NOT THE SLICE. worth_a_model_call is what decides
+# whether an email is worth paying for, and it reads the email; EXTRACT_MAX only
+# stops a runaway. Raising it raises the worst-case model bill for one pull and
+# changes the typical one hardly at all, because the gate already refuses most
+# of what is fetched.
 LIST_MAX = 40
 FETCH_MAX = 25
-EXTRACT_MAX = 10
+EXTRACT_MAX = 25
 FETCH_POOL = 5
 MODEL_POOL = 4
 # ENFORCED HERE, on every body, before the model sees it. See the header.
