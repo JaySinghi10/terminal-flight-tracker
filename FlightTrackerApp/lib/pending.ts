@@ -39,8 +39,20 @@ async function writeList<T>(key: string, list: T[]): Promise<void> {
   }
 }
 
-export function getPending(email: string | null): Promise<PendingLeg[]> {
-  return readList<PendingLeg>(PREFIX + bucket(email));
+export async function getPending(email: string | null): Promise<PendingLeg[]> {
+  const list = await readList<PendingLeg>(PREFIX + bucket(email));
+  // ── EVERY LEG WRITTEN BEFORE tripId EXISTED HAS NO tripId AT ALL ──────────
+  //
+  // AND undefined IS NOT null, WHICH IS THE WHOLE BUG. The trip merge asks
+  // `p.tripId === tripId` and the leftover list on Home asks
+  // `p.tripId === null`; a leg carrying neither value fails both, so it
+  // vanished from the app entirely rather than appearing in one place or the
+  // other. Legs already in somebody's store were exactly that.
+  //
+  // NORMALISED ON READ RATHER THAN MIGRATED ON WRITE, because this store has no
+  // schema version and one absent field does not justify inventing one. Every
+  // caller reads through here.
+  return list.map(p => (p.tripId === undefined ? { ...p, tripId: null } : p));
 }
 
 export function setPending(email: string | null, list: PendingLeg[]): Promise<void> {

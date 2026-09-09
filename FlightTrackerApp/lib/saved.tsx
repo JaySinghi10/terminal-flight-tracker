@@ -1557,7 +1557,27 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       const list = email
         ? await mergeGuestInto(email)
         : await getSavedFlights(null);
-      const pend = await getPending(email);
+      // ── LEGS QUEUED BEFORE THEY COULD BELONG TO A JOURNEY ──────────────
+      //
+      // A leg already in the store has no trip, because the field did not exist
+      // when it was written. Left alone it would sit in the leftover list on
+      // Home for ever while the rest of its booking is a journey in My Flights.
+      //
+      // MATCHED ON THE BOOKING REFERENCE, the same rule a new leg uses. Every
+      // leg of one confirmation carries one, so a queued leg joins the trip of
+      // the saved leg it was booked with. Nothing is guessed from airports or
+      // times, and a leg with no reference keeps none.
+      const rawPend = await getPending(email);
+      const pend = rawPend.map(p => {
+        if (p.tripId !== null || p.pnr === null) return p;
+        const sibling = list.find(f => f.pnr === p.pnr && f.tripId !== null);
+        const queued = rawPend.find(o => o.pnr === p.pnr && o.tripId !== null);
+        const tripId = sibling?.tripId ?? queued?.tripId ?? null;
+        return tripId === null ? p : { ...p, tripId };
+      });
+      if (pend.some((p, i) => p.tripId !== rawPend[i].tripId)) {
+        await setPending(email, pend);
+      }
       if (!cancelled) {
         setSavedFlights(list);
         setPendingState(pend);

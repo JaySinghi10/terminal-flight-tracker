@@ -1744,7 +1744,10 @@ export default function Flights() {
   // any guess about airports and times.
   const unpublishedOf = (legs: SavedFlight[]): PendingLeg[] => {
     const tripId = legs[0]?.tripId ?? null;
-    return tripId === null ? [] : pending.filter(p => p.tripId === tripId);
+    // `?? null` DEFENSIVELY: a leg from an older store may carry no field at
+    // all, and undefined matching neither this test nor Home's is what made two
+    // legs of a real booking invisible in both places at once.
+    return tripId === null ? [] : pending.filter(p => (p.tripId ?? null) === tripId);
   };
 
   const renderLegs = (legs: SavedFlight[], unpublished: PendingLeg[] = []) => {

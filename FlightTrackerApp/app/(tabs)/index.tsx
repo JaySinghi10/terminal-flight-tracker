@@ -1321,7 +1321,9 @@ export default function Index() {
   // WHAT IS LEFT FOR THIS SECTION. A pending leg with a trip is shown inside
   // that trip on My Flights; one without has no journey to belong to, and this
   // is the only place it can appear at all.
-  const orphanPending = useMemo(() => pending.filter(p => p.tripId === null), [pending]);
+  // `?? null` for the reason given at the trip merge: a leg with no field at
+  // all belongs here, not nowhere.
+  const orphanPending = useMemo(() => pending.filter(p => (p.tripId ?? null) === null), [pending]);
 
   const toldOfWatchFailure = useRef(false);
   useEffect(() => {
