@@ -286,6 +286,12 @@ export function useFlightCardHost() {
       return;
     }
     const outcome = await ownFlight(flightRecord);
+    // NEITHER CAN FIRE HERE, and the guard exists for the type rather than for
+    // the case: this path passes no options, so the cap is off and 'limit' is
+    // unreachable, and reminders are on so `remind` is never null. Both are
+    // narrowed rather than asserted away, so if this call ever gains options the
+    // compiler asks the question again instead of the string going undefined.
+    if (!outcome.ok || outcome.remind === null) return;
     showToast(OWN_MSG[outcome.remind]);
   };
 

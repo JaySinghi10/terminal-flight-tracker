@@ -219,6 +219,26 @@ const UNDO_WINDOW_MS = 30000;
 // was asked to save and reports on that first.
 export type RemindOutcome = 'on' | 'denied' | 'too-late' | 'no-time';
 
+// ── WHAT OWNING A FLIGHT CAN BE ASKED TO DO DIFFERENTLY ─────────────────────
+//
+// Both fields default to the behaviour that existed before they did, so the
+// flight card's own button is unaffected. Only the Gmail pull sets either. See
+// ownFlight for why a bulk import wants both turned off.
+export type OwnOptions = {
+  // Enforce MAX_SAVED_FLIGHTS. Owning by hand does not; a pull does.
+  capped?: boolean;
+  // Turn reminders on for the flight, as owning by hand always has.
+  remind?: boolean;
+};
+
+// remind IS null WHEN IT WAS NOT ASKED FOR, and that is not the same as a
+// reminder that failed. OWN_MSG has an entry for every RemindOutcome and none
+// for "not attempted", so a caller that suppressed reminders must not be handed
+// something it would look up.
+export type OwnOutcome =
+  | { ok: true; remind: RemindOutcome | null }
+  | { ok: false; kind: 'limit' };
+
 // The swipe's wording, unchanged from when it was the only caller.
 const REMIND_SWIPE_MSG: Record<RemindOutcome, string> = {
   on: 'reminders on',
@@ -1197,7 +1217,11 @@ type SavedContextValue = {
   handleRemind: (f: SavedFlight, on: boolean) => Promise<string>;
   setArchived: (f: SavedFlight, on: boolean) => Promise<void>;
   setTrip: (f: SavedFlight, tripId: string | null) => Promise<void>;
-  ownFlight: (record: SavedFlight, tripId?: string) => Promise<{ ok: true; remind: RemindOutcome }>;
+  ownFlight: (
+    record: SavedFlight,
+    tripId?: string,
+    opts?: OwnOptions,
+  ) => Promise<OwnOutcome>;
   disownFlight: (f: SavedFlight) => Promise<void>;
   // ── PENDING LEGS ──
   pending: PendingLeg[];
@@ -1814,10 +1838,29 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // reminders and the stronger one not to. enableReminders is called on both
   // paths and its outcome is returned unwrapped, for the same reason saveRecord
   // returns it: the wording belongs to whichever screen asked.
+  // ── OWNING, WITH TWO THINGS THE BULK PATH HAS TO TURN OFF ────────────────
+  //
+  // BOTH DEFAULTS ARE TODAY'S BEHAVIOUR, so the flight card's own "I am flying
+  // this" button is unchanged by this parameter existing: no cap, reminders on.
+  // Only the Gmail pull passes anything.
+  //
+  // capped: THE PULL RESPECTS THE TWENTY. Owning from the card is one deliberate
+  // act and the cap is a limit on refresh cost rather than on how many journeys
+  // a person may have, so that path has always bypassed it. A pull is not one
+  // act -- it is however many legs a year of mail happens to contain -- and an
+  // inbox quietly filling the app to thirty is worse than a pull that stops and
+  // says so.
+  //
+  // remind: SIX REMINDERS NOBODY ASKED FOR IS HOW SOMEBODY TURNS NOTIFICATIONS
+  // OFF ENTIRELY. Owning one flight by hand means "I am flying this", and
+  // reminders following from that is the point; a bulk import carries no such
+  // statement about any single leg. The flights arrive owned and silent, and the
+  // reminder is still one swipe away on each.
   const ownFlight = useCallback(async (
     record: SavedFlight,
     tripId?: string,
-  ): Promise<{ ok: true; remind: RemindOutcome }> => {
+    opts: OwnOptions = {},
+  ): Promise<OwnOutcome> => {
     // THE LIST AS IT STANDS AFTER THE SAVE, not as it stood when this callback
     // was formed. Detection reads it, and a record saved on the line above has to
     // be in what it reads -- saveFlight returns the written list precisely so the
@@ -1827,8 +1870,17 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     if (!savedFlights.some(f => f.id === record.id)) {
       // Never 'limit' -- see the note above. The list is set here as well as by
       // joinTrip below, so the record is in state before anything reads it back.
-      const result = await saveFlight(email, record, () => false);
+      // THE CAP IS THE PREDICATE. Passing a predicate that counts nothing is
+      // what has always made this path uncapped; passing none uses the default,
+      // which counts every record, so `capped` is not a second mechanism.
+      const result = opts.capped
+        ? await saveFlight(email, record)
+        : await saveFlight(email, record, () => false);
       setSavedFlights(result.flights);
+      // NOTHING WAS WRITTEN, so there is nothing to join to a trip and no watch
+      // to register. The caller decides what to say; this only reports which
+      // wall it hit.
+      if (!result.ok) return { ok: false, kind: 'limit' };
       list = result.flights;
       // Owned from the first registration: this is the own path.
       registerWatch(API_BASE, record.flightNumber, record.flightDate, true);
@@ -1842,7 +1894,11 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     // ordinary case absorb is empty and this is exactly the single-record write
     // setTrip used to do.
     await joinTrip([record.id, ...(found?.absorb ?? [])], trip);
-    return { ok: true, remind: await enableReminders(record) };
+    // null RATHER THAN AN OUTCOME when reminders were not asked for, so a caller
+    // cannot report on something that never ran. OWN_MSG is indexed by a real
+    // outcome and has no entry for "not attempted".
+    const remind = opts.remind === false ? null : await enableReminders(record);
+    return { ok: true, remind };
   }, [email, savedFlights, joinTrip, enableReminders]);
 
   // GIVES THE FLIGHT BACK TO THE WATCHLIST, and does NOT unsave it.

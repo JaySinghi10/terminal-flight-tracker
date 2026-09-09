@@ -1287,7 +1287,7 @@ export default function Index() {
   // the AppState resume. See the note at the top of lib/saved.tsx.
   const {
     savedFlights, email, setEmail, refreshing,
-    saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
+    saveRecord, ownFlight, handleUnsave, undoUnsave, refreshOne, refreshAll,
     handleRemind, setArchived,
     pending, addPendingLeg, removePendingLeg, retryPending,
   } = useSaved();
@@ -1470,9 +1470,33 @@ export default function Index() {
           operatedBy: leg.operated_by,
         };
         if (savedFlights.some(f => f.id === record.id) || added.some(f => f.id === record.id)) continue;
-        const outcome = await saveRecord(record);
-        if (outcome.kind === 'limit') { limit = true; break; }
-        if (outcome.kind === 'saved') added.push(record);
+        // ── OWNED, NOT WATCHED ────────────────────────────────────────
+        //
+        // A BOOKING IN YOUR OWN INBOX IS YOUR OWN TRIP. Saving these to the
+        // watchlist made every leg a thing the person was following rather than
+        // a thing they were on, so a three-leg itinerary arrived as three
+        // unrelated rows and the connection detection never saw them. Owning
+        // runs that detection, folds the legs into one journey, merges two
+        // journeys when a leg bridges them, and tells the server the person is
+        // ON the flight -- which is what decides whether a notification says
+        // "your flight to Delhi" or "the flight from Mumbai".
+        //
+        // THE RARE CASE IS ACCEPTED AND NOT DETECTED. A flight forwarded so you
+        // can meet someone lands here as owned and is wrong, and nothing in an
+        // email distinguishes the two. Moving it back is one swipe; guessing
+        // would be wrong more often than the case is common.
+        //
+        // capped: A PULL RESPECTS THE TWENTY, where owning by hand does not. An
+        // inbox is not one deliberate act, and a year of mail quietly filling
+        // the app past its cap is worse than a pull that stops and says so.
+        //
+        // remind: false. Owning one flight by hand means "I am flying this" and
+        // reminders follow from that statement; a bulk import makes no such
+        // statement about any single leg. Six reminders nobody asked for is how
+        // somebody turns notifications off altogether.
+        const outcome = await ownFlight(record, undefined, { capped: true, remind: false });
+        if (!outcome.ok) { limit = true; break; }
+        added.push(record);
       } catch {
         // One leg that will not look up is skipped; the rest still go in.
       }
@@ -1485,9 +1509,13 @@ export default function Index() {
     if (retry.limit) limit = true;
 
     if (added.length === 0) {
-      if (limit) showToast('watchlist limit reached — unsave one first');
+      // THE CAP'S MESSAGE NAMES THE RIGHT PLACE NOW. These legs go to My
+      // Flights, so "watchlist limit" would send somebody to look at the wrong
+      // screen for something to remove. Twenty is the number in both, because
+      // it is one store.
+      if (limit) showToast('20 flights is the limit — remove one first');
       else if (queued > 0) showToast(queued === 1 ? '1 flight not in the schedule yet' : `${queued} flights not in the schedule yet`);
-      else if (legs.length > 0) showToast('already on your watchlist');
+      else if (legs.length > 0) showToast('already in My Flights');
       return;
     }
     // WITHIN THE BANNER'S 26 CHARACTERS: "added 6E5071 · 14 Sep" is 21, and
