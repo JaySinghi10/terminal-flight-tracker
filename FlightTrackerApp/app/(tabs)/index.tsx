@@ -139,7 +139,7 @@ import { useFlightCardHost, FlightError } from '../../lib/flightcard';
 // is the one piece of the account that had to stop being one screen's.
 import { useAccount } from '../../lib/account';
 // A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
-import { pendingFromLeg } from '../../lib/pendingRules';
+import { pendingFromLeg, type PendingLeg } from '../../lib/pendingRules';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -939,6 +939,128 @@ const SavedFlightRow = memo(function SavedFlightRow({
   );
 }, sameRow);
 
+// ── A LEG THE AIRLINE HAS NOT PUBLISHED, AS A SWIPEABLE ROW ─────────────────
+//
+// IT USED TO CARRY AN ×. That was the only remove control on the page that was
+// not a swipe, so removing a pending leg and removing a saved flight -- the
+// same intention, two rows apart -- were two different gestures, and the × also
+// took 24pt out of a line whose route text was already ellipsizing.
+//
+// ONE ACTION, AND IT IS DESTRUCTIVE, so it takes the red fill and sits alone in
+// the panel where delete sits on a saved row. There is nothing else a pending
+// leg can do: it cannot be archived, it has no reminder to set, and it cannot
+// be opened, because there is no flight to open yet.
+//
+// "forget" RATHER THAN "delete", matching the word the old control's comment
+// used. The leg is not being cancelled or removed from anything real; the app
+// is being told to stop asking about it once a day.
+const PendingRow = memo(function PendingRow({
+  leg, last, onForget,
+}: {
+  leg: PendingLeg;
+  last: boolean;
+  onForget: () => void;
+}) {
+  const swipe = useRef<SwipeableMethods>(null);
+  const rowW = useSharedValue(0);
+  const dragX = useSharedValue(0);
+  const exitX = useSharedValue(0);
+  // Whether the drag went past the expand threshold, so releasing commits
+  // rather than resting the panel open. A ref, not state: it is read once on
+  // release and must never cause a render.
+  const armed = useRef(false);
+
+  const exitStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: exitX.value }],
+  }));
+  // Transparent until a drag starts, opaque once it does, so the red panel
+  // cannot be seen through the row's own translucent fill. Same reason as
+  // SavedFlightRow's surfaceStyle.
+  const surfaceStyle = useAnimatedStyle(() => ({
+    backgroundColor: Math.abs(dragX.value) < 0.5 ? 'transparent' : PAGE_BG,
+  }));
+
+  const onCross = useCallback((on: boolean) => {
+    armed.current = on;
+    EXPAND_HAPTIC();
+  }, []);
+
+  const forget = useCallback(() => { onForget(); }, [onForget]);
+
+  // THE ROW LEAVES THE WAY IT WAS THROWN, as a saved row does: the gesture
+  // continues off the left edge and the removal happens when it lands, rather
+  // than the row snapping back first and vanishing afterwards.
+  const onWillOpen = useCallback(() => {
+    if (!armed.current) return;
+    armed.current = false;
+    exitX.value = withTiming(
+      -Dimensions.get('window').width,
+      EXIT_TIMING,
+      (finished) => {
+        'worklet';
+        if (finished) runOnJS(forget)();
+      },
+    );
+  }, [forget]);
+
+  const renderRight = useCallback(
+    (progress: SharedValue<number>, translation: SharedValue<number>) => (
+      <View style={sf.swipeGroup}>
+        <DragMirror from={translation} to={dragX} />
+        <ExpandAction side="right" translation={translation} rowW={rowW} others={0} onCross={onCross}>
+          <SwipeAction
+            label="forget"
+            fill={SWIPE_FILL_RED}
+            progress={progress}
+            onPress={() => { swipe.current?.close(); forget(); }}
+          >
+            {ICON_DELETE}
+          </SwipeAction>
+        </ExpandAction>
+      </View>
+    ),
+    [onCross, forget],
+  );
+
+  return (
+    <Reanimated.View style={exitStyle}>
+      <ReanimatedSwipeable
+        ref={swipe}
+        friction={1.15}
+        rightThreshold={40}
+        overshootRight={false}
+        renderRightActions={renderRight}
+        onSwipeableWillOpen={onWillOpen}
+        childrenContainerStyle={surfaceStyle as StyleProp<ViewStyle>}
+      >
+        <View
+          style={[gm.leg, last && gm.legLast]}
+          onLayout={(e: LayoutChangeEvent) => { rowW.value = e.nativeEvent.layout.width; }}
+        >
+          <View style={sf.rowEdge} pointerEvents="none" />
+          <View style={sf.line1}>
+            <Text style={sf.number}>{leg.flightNumber}</Text>
+            <Text style={sf.route} numberOfLines={1} ellipsizeMode="middle">
+              {`${leg.origin ?? leg.originName ?? '?'} → ${leg.destination ?? leg.destinationName ?? '?'}`}
+            </Text>
+            {ISO_DAY_RE.test(leg.date) && (
+              <Text style={sf.date} numberOfLines={1}>{routeDateLabel(leg.date)}</Text>
+            )}
+          </View>
+          <Text style={gm.legSub} numberOfLines={1}>
+            {[
+              'airline has not published it yet',
+              leg.pnr !== null ? `pnr ${leg.pnr}` : null,
+              leg.tries > 0 ? `tried ${leg.tries}×` : null,
+            ].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+      </ReanimatedSwipeable>
+    </Reanimated.View>
+  );
+});
+
+
 const sf = StyleSheet.create({
   row: {
     paddingVertical: 13,
@@ -1332,7 +1454,21 @@ export default function Index() {
           tried.push(pendingFromLeg(leg, Date.now()).id);
           continue;
         }
-        const record = savedFlightFromApi(data);
+        // THE EMAIL'S OWN FACTS, WHICH THE PROVIDER NEVER RETURNS. A PNR
+        // belongs to the airline's reservation system rather than to the
+        // flight, and the operating number is what the booking printed. Both
+        // used to live only in the pull's result list; that list was a
+        // duplicate and was deleted, so they are written onto the record here
+        // and touchSavedFlight carries them through every later refresh.
+        const record: SavedFlight = {
+          ...savedFlightFromApi(data),
+          pnr: leg.pnr,
+          operatingFlightNumber:
+            leg.operating_flight_number !== null && leg.operating_flight_number !== leg.flight_number
+              ? leg.operating_flight_number
+              : null,
+          operatedBy: leg.operated_by,
+        };
         if (savedFlights.some(f => f.id === record.id) || added.some(f => f.id === record.id)) continue;
         const outcome = await saveRecord(record);
         if (outcome.kind === 'limit') { limit = true; break; }
@@ -1639,6 +1775,13 @@ export default function Index() {
       checkinDesk: saved.from.checkinDesk ?? null,
       aircraft: saved.aircraftModel ?? null,
       registration: saved.aircraftRegistration ?? null,
+      // THE BOOKING'S OWN FACTS, off the stored record. This screen builds its
+      // card model inline rather than through flightDataFromSaved, so the three
+      // fields have to be listed here too -- and the type checker is what said
+      // so, which is the argument for them not being optional.
+      pnr: saved.pnr,
+      operatingFlightNumber: saved.operatingFlightNumber,
+      operatedBy: saved.operatedBy,
       baggage: saved.to.baggage ?? "N/A",
       depDelay: saved.from.delay,
       arrDelay: saved.to.delay,
@@ -2194,39 +2337,18 @@ export default function Index() {
               {gmailPull.status === 'done' && gmailPull.flights.length === 0 && (
                 <Text style={gm.msg}>{'> no upcoming flights found in your gmail'}</Text>
               )}
-              {gmailPull.status === 'done' && gmailPull.flights.map((leg, i) => (
-                <TouchableOpacity
-                  key={`${leg.flight_number}-${leg.date}`}
-                  style={[gm.leg, i === gmailPull.flights.length - 1 && gm.legLast]}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    // THE DATE AND THE ORIGIN GO WITH IT, and the operating
-                    // number where the email printed one. See runFlightLookup.
-                    void runFlightLookup(leg.operating_flight_number ?? leg.flight_number, false, leg.date, leg.origin);
-                  }}
-                >
-                  <View style={sf.rowEdge} pointerEvents="none" />
-                  <View style={sf.line1}>
-                    <Text style={sf.number}>{leg.flight_number}</Text>
-                    <Text style={sf.route} numberOfLines={1} ellipsizeMode="middle">
-                      {`${leg.origin ?? leg.origin_name ?? '?'} → ${leg.destination ?? leg.destination_name ?? '?'}`}
-                    </Text>
-                    {ISO_DAY_RE.test(leg.date) && (
-                      <Text style={sf.date} numberOfLines={1}>{routeDateLabel(leg.date)}</Text>
-                    )}
-                  </View>
-                  <Text style={gm.legSub} numberOfLines={1}>
-                    {[
-                      leg.departure_time !== null ? `departs ${leg.departure_time}` : null,
-                      leg.pnr !== null ? `pnr ${leg.pnr}` : null,
-                      leg.operating_flight_number !== null
-                        ? `operated as ${leg.operating_flight_number}`
-                        : leg.operated_by !== null ? `operated by ${leg.operated_by}` : leg.airline,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {/* THE PULL'S RESULT LIST USED TO RENDER HERE, and it was a
+                  duplicate. Every leg a pull returns is routed the moment it
+                  is read: one the provider can resolve is saved and appears in
+                  the watchlist below, one it cannot is queued and appears in
+                  "not in the schedule yet" with its own remove control. Echoing
+                  all of them again above both put the unpublished ones on
+                  screen twice, in an unlabelled list that could not be removed
+                  because it was not a store -- it was a view of a fetch, and it
+                  vanished on its own when the pull state reset.
+                  WHAT THE ECHO CARRIED THAT THE CARD DID NOT -- the PNR and the
+                  operating flight number -- moved onto the flight card rather
+                  than dying with it. See SavedFlight.pnr. */}
             </View>
           )}
 
@@ -2238,32 +2360,12 @@ export default function Index() {
             <View style={gm.wrap}>
               <Text style={c.detailsTitle}>{'not in the schedule yet'}</Text>
               {pending.map((p, i) => (
-                <View key={p.id} style={[gm.leg, i === pending.length - 1 && gm.legLast]}>
-                  <View style={sf.rowEdge} pointerEvents="none" />
-                  <View style={sf.line1}>
-                    <Text style={sf.number}>{p.flightNumber}</Text>
-                    <Text style={sf.route} numberOfLines={1} ellipsizeMode="middle">
-                      {`${p.origin ?? p.originName ?? '?'} → ${p.destination ?? p.destinationName ?? '?'}`}
-                    </Text>
-                    {ISO_DAY_RE.test(p.date) && (
-                      <Text style={sf.date} numberOfLines={1}>{routeDateLabel(p.date)}</Text>
-                    )}
-                    <TouchableOpacity
-                      onPress={() => { void removePendingLeg(p.id); }}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      style={gm.forget}
-                    >
-                      <Text style={gm.forgetTxt}>{'×'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={gm.legSub} numberOfLines={1}>
-                    {[
-                      'airline has not published it yet',
-                      p.pnr !== null ? `pnr ${p.pnr}` : null,
-                      p.tries > 0 ? `tried ${p.tries}×` : null,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
-                </View>
+                <PendingRow
+                  key={p.id}
+                  leg={p}
+                  last={i === pending.length - 1}
+                  onForget={() => { void removePendingLeg(p.id); }}
+                />
               ))}
             </View>
           )}
@@ -2545,10 +2647,6 @@ const gm = StyleSheet.create({
   },
   legLast: { marginBottom: 0 },
   legSub: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)', marginTop: 4 },
-  // The forget control on a pending row: the same dim ink as the archive
-  // icon, sized as a tap target, not as text.
-  forget: { marginLeft: 10, paddingHorizontal: 4 },
-  forgetTxt: { fontFamily: MONO, fontSize: 16, color: 'rgba(226,226,226,0.4)' },
 });
 
 const pm = StyleSheet.create({

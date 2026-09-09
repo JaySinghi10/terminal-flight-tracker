@@ -259,6 +259,15 @@ export type FlightData = {
   checkinDesk: string | null;
   aircraft: string | null;
   registration: string | null;
+  // ── WHAT THE BOOKING EMAIL SAID ──
+  //
+  // NULL FOR EVERY FLIGHT LOOKED UP BY HAND, which is most of them. Only a leg
+  // that arrived through the Gmail pull carries either, because a PNR belongs
+  // to the airline's reservation system and no flight-data provider returns
+  // one. See SavedFlight.pnr for why they are stored on the record at all.
+  pnr: string | null;
+  operatingFlightNumber: string | null;
+  operatedBy: string | null;
   baggage: string;
   // THE DELAY IN MINUTES, PER ENDPOINT, signed: positive is late, negative early,
   // null is "the provider gave us nothing to compare".
@@ -593,6 +602,12 @@ export function flightDataFromApi(data: any, effective?: string): FlightData {
     checkinDesk: dep.checkin_desk ?? null,
     aircraft: data?.aircraft_model ?? null,
     registration: data?.aircraft_registration ?? null,
+    // ALWAYS NULL HERE, and that is the point rather than an omission: this
+    // maps a provider response, and the provider has never seen the booking.
+    // The saved-record mapper below is the only one that can supply them.
+    pnr: null,
+    operatingFlightNumber: null,
+    operatedBy: null,
     baggage: arr.baggage || "N/A",
     depDelay: typeof dep.delay === 'number' ? dep.delay : null,
     arrDelay: typeof arr.delay === 'number' ? arr.delay : null,
@@ -678,6 +693,9 @@ export function flightDataFromSaved(f: SavedFlight, effective: string): FlightDa
     checkinDesk: f.from.checkinDesk,
     aircraft: f.aircraftModel,
     registration: f.aircraftRegistration,
+    pnr: f.pnr,
+    operatingFlightNumber: f.operatingFlightNumber,
+    operatedBy: f.operatedBy,
     baggage: f.to.baggage || "N/A",
     depDelay: f.from.delay,
     arrDelay: f.to.delay,
@@ -3434,6 +3452,35 @@ export function FlightCard({
                       old i % 2 test would have called a full-width tile a
                       second-column tile and drawn it a left rule with nothing to
                       its left. See SheetGroup. */}
+                  {/* ── THE BOOKING, WHEN THERE WAS ONE ──
+                      ONLY A FLIGHT THAT CAME FROM AN EMAIL HAS ANY OF THIS, so
+                      the whole group is absent rather than present and empty --
+                      which is most flights, and an "Booking" heading over two
+                      dashes would read as a fact the app failed to fetch rather
+                      than one that never existed.
+                      IT SITS ABOVE Aircraft because it is about the person's
+                      ticket rather than about the metal, and the sheet reads
+                      outward from them.
+                      OPERATED AS CARRIES THE NUMBER, NOT THE AIRLINE NAME,
+                      when both are known: the number is the one the landing
+                      feed files the flight under and the one on the departure
+                      board. The name is the fallback for an email that printed
+                      "operated by Air India" without a number. */}
+                  {(flight.pnr !== null || flight.operatingFlightNumber !== null
+                    || flight.operatedBy !== null) && (
+                    <SheetGroup
+                      title="Booking"
+                      items={[
+                        ...(flight.pnr !== null
+                          ? [{ label: 'PNR', value: flight.pnr }] : []),
+                        ...(flight.operatingFlightNumber !== null
+                          ? [{ label: 'Operated as', value: flight.operatingFlightNumber }]
+                          : flight.operatedBy !== null
+                            ? [{ label: 'Operated by', value: flight.operatedBy }]
+                            : []),
+                      ]}
+                    />
+                  )}
                   <SheetGroup
                     title="Aircraft"
                     items={[

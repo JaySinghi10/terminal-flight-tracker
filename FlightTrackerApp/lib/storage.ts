@@ -4,7 +4,7 @@ const LEGACY_KEY = 'savedFlights';
 const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 export const MAX_SAVED_FLIGHTS = 20;
 
 export type SavedFlightEndpoint = {
@@ -131,6 +131,36 @@ export type SavedFlight = {
   // knows nothing about it and never will, so a refresh must carry it forward
   // rather than replace it. See touchSavedFlight.
   tripId: string | null;
+  // ── WHAT THE BOOKING EMAIL SAID, AND THE PROVIDER NEVER WILL ──────────────
+  //
+  // A THIRD KIND OF DEVICE-OWNED FIELD, and the reason is worth stating because
+  // it differs from both kinds above it. archivedAt and tripId are the USER'S
+  // DECISIONS. The landing fields are ANOTHER PROVIDER'S ANSWER. These two are
+  // neither: they are what the person's own booking confirmation printed, and
+  // no flight-data provider has ever heard of them -- a PNR belongs to the
+  // airline's reservation system, not to the flight.
+  //
+  // THEY EXIST BECAUSE THE GMAIL PULL USED TO SHOW THEM AND NOW DOES NOT. The
+  // pull rendered its own result list under the button, carrying the PNR and
+  // the operating number; that list was a duplicate of the watchlist and the
+  // pending section and was deleted. These fields are what stopped the two
+  // facts dying with it.
+  //
+  // NULL ON EVERY FLIGHT THE USER LOOKED UP BY HAND, which is most of them.
+  // Only a leg that arrived through a booking email can carry either.
+  //
+  // CARRIED FORWARD BY touchSavedFlight, exactly as the other device-owned
+  // fields are. An ordinary refresh is built from a provider response that has
+  // never seen the email, so without that it would null both on the next poll.
+  pnr: string | null;
+  // THE NUMBER THE AIRCRAFT ACTUALLY FLIES UNDER, when the email printed a
+  // codeshare and it differs from flightNumber. The record itself is filed
+  // under the marketing number, because that is the number on the ticket and
+  // the number the person will look for.
+  operatingFlightNumber: string | null;
+  // WHOSE AIRCRAFT IT IS, as the email named it: "Air India", not a code. Kept
+  // beside the number because an email often prints one without the other.
+  operatedBy: string | null;
   // THE PROVIDER'S OWN WORD for what the flight is doing, verbatim: "Boarding",
   // "GateClosed", "EnRoute", "Delayed". Null on a record saved before v10 and on
   // any response that omitted it.
@@ -273,6 +303,11 @@ export function savedFlightFromApi(data: any): SavedFlight {
     // Same again: a fresh lookup carries no ownership decision, and
     // touchSavedFlight is what stops one being lost.
     tripId: null,
+    // Same again for all three: a fresh lookup carries no booking email, and
+    // touchSavedFlight is what stops a stored one being lost.
+    pnr: null,
+    operatingFlightNumber: null,
+    operatedBy: null,
     // Straight off the response, uppercase and spelling untouched, because the
     // badge matches it case-insensitively and nothing else reads it.
     rawStatus: data?.raw_status ?? null,
@@ -423,6 +458,16 @@ function normalizeRecord(flight: SavedFlight): { record: SavedFlight | null; cha
     for (const ep of [flight.from, flight.to]) {
       if (ep) ep.runwayIso = ep.runwayIso ?? null;
     }
+    changed = true;
+  }
+
+  if (version < 13) {
+    // Nothing to reconstruct. No record written before this existed carried a
+    // booking email's details, and the pull that would have supplied them
+    // rendered them to screen and then discarded them.
+    if (flight.pnr === undefined) flight.pnr = null;
+    if (flight.operatingFlightNumber === undefined) flight.operatingFlightNumber = null;
+    if (flight.operatedBy === undefined) flight.operatedBy = null;
     changed = true;
   }
 
@@ -818,6 +863,12 @@ export async function touchSavedFlight(
     archivedAt: prev.archivedAt ?? null,
     remindersSetAt: prev.remindersSetAt ?? null,
     tripId: prev.tripId ?? null,
+    // THE BOOKING'S OWN FACTS, for the third reason given at the fields: the
+    // provider response `flight` is built from has never seen the email, so
+    // every one of these would come back null on an ordinary refresh.
+    pnr: prev.pnr ?? null,
+    operatingFlightNumber: prev.operatingFlightNumber ?? null,
+    operatedBy: prev.operatedBy ?? null,
     landedUtc: prev.landedUtc ?? null,
     landingSource: prev.landingSource ?? null,
     landingCheck: prev.landingCheck ?? null,
