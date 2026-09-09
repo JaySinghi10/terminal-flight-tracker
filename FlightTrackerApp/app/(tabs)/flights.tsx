@@ -86,6 +86,10 @@ import { mapRouteFor } from '../../lib/flightcard';
 // dataset. airportByCode is the accessor; the rows are not exported and must
 // not be. See showsBelt.
 import { airportByCode } from '../../lib/airports';
+// THE CARRIER CODE TO NAME MAP, hand-maintained and deliberately not the
+// provider's. Read here for the same reason search reads it: to put a NAME on a
+// row where the only thing left is a code. See the note at the top of the file.
+import { airlineFromFlightNumber } from '../../lib/airlines';
 // THE ONE CONVERSION A PENDING LEG NEEDS. Its departure is a clock printed in
 // an email with no zone attached; this reads those digits IN a named zone,
 // which is the only way an interval either side of it can be real. See its own
@@ -714,6 +718,11 @@ function showsBelt(legs: SavedFlight[], i: number, now: number): boolean {
 // NOTHING GUARDS AGAINST null OR A NEGATIVE HERE, and nothing should. Layover
 // resolves both before it calls this and renders no row at all -- see its own
 // note -- so this function only ever sees a duration that exists.
+// A BARE CARRIER CODE: two characters with at least one letter, the same shape
+// the extractor's own flight-number rule uses for the front of a number. It is
+// what an airline field must never be -- see the note where this is applied.
+const CARRIER_CODE_RE = /^(?:[A-Z][A-Z0-9]|[0-9][A-Z])$/;
+
 function gapLabel(ms: number): string {
   const total = Math.round(ms / 60000);
   if (total >= 24 * 60) {
@@ -928,10 +937,38 @@ function UnpublishedLeg({ leg, open, onToggle }: {
   onToggle: () => void;
 }) {
   const dated = ISO_DAY_RE.test(leg.date) ? routeDateLabel(leg.date).toUpperCase() : null;
+  // ── THE AIRLINE IS A NAME OR IT IS NOTHING ────────────────────────────────
+  //
+  // THE ROW STARTED PRINTING "SK969 · SK", and nothing here shortened it: the
+  // stored value IS the code. It arrives that way from the extractor, whose
+  // schema asks for "the MARKETING airline, whose code is on the flight number"
+  // -- a terse e-ticket gives a model little else to answer with -- and the
+  // server's merge now lets the LATEST email about a leg win every field, so one
+  // curt email overwrites "Scandinavian Airlines" from the confirmation before
+  // it. That is the real fault and it is upstream of this screen.
+  //
+  // WHAT THIS DOES IS REFUSE TO PRINT THE CODE. lib/airlines.ts states the rule
+  // in its own words -- "a two-letter prefix on its own tells the reader nothing
+  // they cannot already see in the flight number" -- and it is the map that can
+  // turn the code back into a name. AI2591 reads "Air India" again from it.
+  //
+  // A CODE IT CANNOT NAME LEAVES THE SLOT EMPTY rather than falling back to the
+  // code. The map is hand-maintained and does not hold every carrier; printing
+  // "SK" beside "SK969" is two characters of nothing, and the number is already
+  // right there.
+  //
+  // A REAL NAME IS NEVER TOUCHED. Only a value that is exactly a carrier code
+  // goes through the map; everything else is what the email printed.
+  const airline = leg.airline !== null && !CARRIER_CODE_RE.test(leg.airline.trim().toUpperCase())
+    ? leg.airline
+    : airlineFromFlightNumber(leg.flightNumber);
+  // numberOfLines={1} ON THE Text BELOW IS WHAT KEEPS THIS INSIDE THE ROW, and
+  // it ellipsizes at the tail. A long name is cut with a "…"; it is never
+  // shortened to a code.
   const meta = [
     leg.flightNumber,
     leg.operatingFlightNumber !== null ? `as ${leg.operatingFlightNumber}` : null,
-    leg.airline,
+    airline,
   ].filter(Boolean).join(' · ');
   const from = leg.origin ?? leg.originName ?? '—';
   const to = leg.destination ?? leg.destinationName ?? '—';

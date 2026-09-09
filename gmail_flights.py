@@ -160,6 +160,10 @@ FLIGHT_RE = re.compile(r"^(?:[A-Z][A-Z0-9]|[0-9][A-Z])\d{1,4}$")
 # The presence gate's looser cousin: the same shape, inside running text,
 # with an optional space between code and number as airlines print it.
 FLIGHT_IN_TEXT_RE = re.compile(r"\b(?:[A-Z][A-Z0-9]|[0-9][A-Z]) ?\d{1,4}\b")
+# A CARRIER CODE ON ITS OWN: FLIGHT_RE's front half with no number behind it.
+# It is what an airline NAME must never be, and the merge below reads it to stop
+# one replacing one.
+CARRIER_CODE_RE = re.compile(r"^(?:[A-Z][A-Z0-9]|[0-9][A-Z])$")
 PNR_RE = re.compile(r"^[A-Z0-9]{5,8}$")
 IATA_RE = re.compile(r"^[A-Z]{3}$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -964,6 +968,40 @@ def _received_order(leg: dict):
     return (1, "") if not at else (0, at)
 
 
+# ── THE FIELDS WHERE A LATER EMAIL CAN SAY LESS AND STILL BE LATER ─────────
+#
+# BOTH ARE AIRLINE NAMES AND BOTH ARE FREE TEXT. The schema asks for "the
+# MARKETING airline, whose code is on the flight number" and for the operator
+# named in the fine print, and a terse e-ticket gives a model nothing to answer
+# with but the code -- so "SK" and "AA" come back where "Scandinavian Airlines"
+# and "American Airlines" came back from the fuller confirmation.
+#
+# NOTHING ELSE ON A LEG CAN LOSE THIS WAY, which is why the tuple is two long:
+#   origin / destination hold an IATA code by construction and origin_name /
+#     destination_name hold a name -- _place routes each to its own field, so a
+#     code can never arrive in the name's slot to overwrite anything.
+#   operating_flight_number, pnr and flight_number ARE codes. Protecting them
+#     would mean refusing the correction a later email exists to make.
+#   departure_time, date, confidence, leg_status and the source are not names,
+#     and leg_status has its own one-way rule already.
+NAME_FIELDS = ("airline", "operated_by")
+
+
+def _name_lost(later, earlier) -> bool:
+    """True when `later` is a bare carrier code and `earlier` is a real name.
+
+    THE TEST IS ASYMMETRIC ON PURPOSE. A code replacing a name is a loss; a NAME
+    replacing a code is the correction this merge exists to allow, and a code
+    replacing a code is just a later answer to the same question.
+    """
+    if not isinstance(later, str) or not isinstance(earlier, str):
+        return False
+    l, e = later.strip().upper(), earlier.strip().upper()
+    if not l or not e:
+        return False
+    return bool(CARRIER_CODE_RE.match(l)) and not CARRIER_CODE_RE.match(e)
+
+
 def merge(legs: list[dict]) -> list[dict]:
     """One entry per leg, the way the LATEST email left it.
 
@@ -982,7 +1020,13 @@ def merge(legs: list[dict]) -> list[dict]:
       - A confirmation or change leg already seen UPDATES the stored copy:
         the later email's values win wherever the two disagree, and its
         blanks are filled from the stored copy, as before. Recency is the
-        better signal for every field but one.
+        better signal for every field but the two exceptions below.
+      - A LATER EMAIL THAT SAYS LESS DOES NOT WIN. Recency is a good signal
+        for which value is TRUE and a poor one for which is USEFUL: a curt
+        e-ticket answering "SK" where the confirmation said "Scandinavian
+        Airlines" is not new information about the airline, it is the same
+        information with the name taken off. On the name fields the stored
+        value is kept -- see NAME_FIELDS and _name_lost.
       - A cancellation leg MARKS the stored copy cancelled and changes nothing
         else on it. With no stored copy the leg is added as it is, carrying
         cancelled, so the app can still show what was called off.
@@ -1015,6 +1059,12 @@ def merge(legs: list[dict]) -> list[dict]:
             for k, v in cur.items():
                 if leg.get(k) in (None, "") and v not in (None, ""):
                     leg[k] = v
+            # AND EXCEPT A NAME THE LATER EMAIL ABBREVIATED TO A CODE, which
+            # the blank-fill above cannot catch: "SK" is not blank, it is
+            # simply worth less than what is already stored.
+            for field in NAME_FIELDS:
+                if _name_lost(leg.get(field), cur.get(field)):
+                    leg[field] = cur[field]
             # EXCEPT THE STATUS, WHICH ONLY EVER GOES ONE WAY. See the rules.
             if cur.get("leg_status") == "cancelled":
                 leg["leg_status"] = "cancelled"

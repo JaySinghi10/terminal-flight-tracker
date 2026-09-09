@@ -53,6 +53,7 @@ const AIRLINE_NAMES: Record<string, string> = {
   IB: 'Iberia',
   AZ: 'ITA Airways',
   TK: 'Turkish Airlines',
+  SK: 'Scandinavian Airlines',
 
   // ── Americas, Africa, Oceania ──
   AA: 'American Airlines',
