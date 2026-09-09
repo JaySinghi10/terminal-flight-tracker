@@ -1318,6 +1318,11 @@ export default function Index() {
   // HOME CARRIES IT because Home is the first tab and the screen the pull lives
   // on. lib/watch.ts cannot show this itself -- the screens import it, so
   // importing a toast back would be a cycle.
+  // WHAT IS LEFT FOR THIS SECTION. A pending leg with a trip is shown inside
+  // that trip on My Flights; one without has no journey to belong to, and this
+  // is the only place it can appear at all.
+  const orphanPending = useMemo(() => pending.filter(p => p.tripId === null), [pending]);
+
   const toldOfWatchFailure = useRef(false);
   useEffect(() => {
     onWatchFailure(() => {
@@ -2466,11 +2471,16 @@ export default function Index() {
             </View>
           )}
 
-          {/* ── NOT IN THE SCHEDULE YET ──
-              Legs the email gave and the provider does not carry. Not a card,
-              because there is nothing to open: the row is what the email said
-              and a note that it is tried again daily. The × forgets it. */}
-          {pending.length > 0 && flight === null && (
+          {/* ── NOT IN THE SCHEDULE YET, AND ONLY WHAT BELONGS NOWHERE ELSE ──
+              MOST OF THESE MOVED TO My Flights. A leg of a booking sits inside
+              its journey now, between the legs either side, because a person
+              with a ticket is taking that flight whether or not a provider has
+              heard of it. What is left here is the remainder: a leg whose email
+              printed no booking reference, so nothing ties it to a journey and
+              there is no trip to show it in.
+              THE LIST IS USUALLY EMPTY NOW, which is the point. It appears only
+              when there is genuinely nowhere better to put something. */}
+          {orphanPending.length > 0 && flight === null && (
             <View style={gm.wrap}>
               <Text style={c.detailsTitle}>{'not in the schedule yet'}</Text>
               {/* THE QUEUE SAYS WHEN IT IS FULL, because that is the one state
@@ -2485,11 +2495,11 @@ export default function Index() {
                   {'> this list is full — forget one to make room'}
                 </Text>
               )}
-              {pending.map((p, i) => (
+              {orphanPending.map((p, i) => (
                 <PendingRow
                   key={p.id}
                   leg={p}
-                  last={i === pending.length - 1}
+                  last={i === orphanPending.length - 1}
                   onForget={() => { void removePendingLeg(p.id); }}
                 />
               ))}

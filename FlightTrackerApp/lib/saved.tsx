@@ -67,6 +67,7 @@ import {
 } from './pending';
 import {
   type PendingLeg, type PendingResolvedEvent, addToPending, retryBatch, dueToday,
+  legDue, retryInterval, RETRY_INTERVALS_MS,
 } from './pendingRules';
 import {
   checkLanding,
@@ -2048,14 +2049,46 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // mistake as leaving a dependency out of a callback: it would hand consumers a
   // value whose fields disagree with the render it came from.
   // ── PENDING LEGS ───────────────────────────────────────────────────────────
+  // ── WHICH JOURNEY AN UNPUBLISHED LEG JOINS ────────────────────────────────
+  //
+  // THE BOOKING REFERENCE, AND NOTHING ELSE. Every leg of one confirmation
+  // carries one reference, which is the fact connection detection now refuses to
+  // link across; using it here is the same rule read forwards instead of
+  // backwards. Airports and times are deliberately not consulted -- that is the
+  // guess that joined two strangers' flights.
+  //
+  // AN EXISTING TRIP WINS, whether it is a saved leg's or another unpublished
+  // leg's, so the legs of one booking converge on one id however they arrive.
+  //
+  // OTHERWISE ONE IS MINTED, and this is what makes a wholly unpublished
+  // booking a journey on the day it is read rather than on the day its first
+  // leg resolves. The id lives only in the pending store until then, which is
+  // fine: it is a grouping, not a record of anything.
+  //
+  // NO REFERENCE, NO TRIP. A leg from an email that printed none has nothing
+  // tying it to anything, and it keeps the standalone behaviour it has today.
+  const tripForBooking = useCallback((
+    pnr: string | null, pendingList: PendingLeg[],
+  ): string | null => {
+    if (pnr === null) return null;
+    const saved = savedFlights.find(f => f.pnr === pnr && f.tripId !== null);
+    if (saved !== undefined) return saved.tripId;
+    const queued = pendingList.find(p => p.pnr === pnr && p.tripId !== null);
+    if (queued !== undefined) return queued.tripId;
+    return newTripId();
+  }, [savedFlights]);
+
   const addPendingLeg = useCallback(async (leg: PendingLeg): Promise<'added' | 'dup' | 'limit' | 'past'> => {
     const list = await getPending(email);
-    const r = addToPending(list, leg, localDayKey(Date.now()));
+    const withTrip = leg.tripId !== null
+      ? leg
+      : { ...leg, tripId: tripForBooking(leg.pnr, list) };
+    const r = addToPending(list, withTrip, localDayKey(Date.now()));
     if (!r.ok) return r.reason;
     await setPending(email, r.pending);
     setPendingState(r.pending);
     return 'added';
-  }, [email]);
+  }, [email, tripForBooking]);
 
   const removePendingLeg = useCallback(async (id: string): Promise<void> => {
     const next = (await getPending(email)).filter(p => p.id !== id);
@@ -2076,7 +2109,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     try {
       const todayKey = localDayKey(Date.now());
       const list = await getPending(email);
-      const { kept, dropped, batch } = retryBatch(list, todayKey, new Set(skipIds));
+      const { kept, dropped, batch } = retryBatch(list, todayKey, new Set(skipIds), Date.now());
       let next = kept;
       const resolved: SavedFlight[] = [];
       let limit = false;
@@ -2090,8 +2123,24 @@ export function SavedProvider({ children }: { children: ReactNode }) {
         // RESOLVED. Saved through the same path as any other flight, so the
         // watch is registered and the reminders offered exactly as if the user
         // had bookmarked it; then it leaves the pending list; then the trigger.
-        const outcome = await saveRecord(record);
-        if (outcome.kind === 'limit') { limit = true; break; }
+        // ── IT BECOMES AN ORDINARY LEG IN PLACE ──────────────────────────
+        //
+        // IT USED TO LAND IN THE WATCHLIST. saveRecord writes the flight with
+        // no trip and registers it as watched rather than owned, so a leg that
+        // had been sitting inside a journey resolved and jumped out of it --
+        // the person watched it become a stranger.
+        //
+        // THE TRIP IT WAS SHOWN IN IS THE TRIP IT JOINS, passed explicitly, so
+        // detection does not get a vote. It already had an answer: the leg was
+        // put in that journey by its booking reference, which is a better fact
+        // than any airport-and-clock guess.
+        //
+        // WITHOUT ONE, DETECTION DECIDES, which is the ordinary owning path and
+        // the right behaviour for a leg that never belonged to a journey.
+        const outcome = leg.tripId !== null
+          ? await ownFlight(record, leg.tripId, { remind: false })
+          : await ownFlight(record, undefined, { remind: false });
+        if (!outcome.ok) { limit = true; break; }
         next = next.filter(p => p.id !== leg.id);
         resolved.push(record);
         await recordResolved(email, leg, record, how);
@@ -2105,18 +2154,39 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     }
   }, [email, saveRecord]);
 
-  // ONCE A DAY, ON THE STORE'S OWN TICK. The day rollover the tick already
-  // notices is the boundary; dueToday compares the stamp to today, so a phone
-  // that was off over midnight catches up on the first tick after launch and
-  // nothing runs twice in one day.
+  // ── THE RETRY TICK, WHICH IS NO LONGER ONCE A DAY ────────────────────────
+  //
+  // DAILY WAS RIGHT THREE WEEKS OUT AND WRONG THE DAY BEFORE. The tick still
+  // fires every minute; what changed is what it asks. It used to ask "has a day
+  // passed since the last sweep", one question for the whole list, so a leg
+  // departing tomorrow waited behind one departing in March. Now each leg
+  // carries its own interval -- see retryInterval -- and the pass runs whenever
+  // ANY leg is due on its own clock.
+  //
+  // THE DAY STAMP SURVIVES, FOR THE FAR TIER ONLY. A leg more than a week out
+  // wants a daily retry, and the stamp is what makes that hold across a phone
+  // that was off over midnight: legDue alone would fire on the first tick after
+  // launch every single day, which is the same thing, and after a cold start at
+  // 23:58 it would fire twice in three minutes. The stamp is the cheaper guard
+  // and it costs one read.
+  //
+  // A PASS IS STILL BOUNDED. retryBatch caps how many legs one sweep looks up,
+  // so a list of fifty legs that all come due at once cannot spend the day's
+  // provider budget in one minute; the rest are picked up on the next tick.
   useEffect(() => {
     if (!authHydrated) return;
     let cancelled = false;
     const maybe = async () => {
       const list = await getPending(email);
       if (list.length === 0 || cancelled) return;
-      if (!dueToday(await getRetryDay(email), localDayKey(Date.now()))) return;
-      if (!cancelled) await retryPending('daily');
+      const now = Date.now();
+      const anyDue = list.some(p => legDue(p, now));
+      if (!anyDue) return;
+      // The daily stamp still gates the case it was written for: nothing here
+      // is urgent, and the whole list is on the far tier.
+      const urgent = list.some(p => retryInterval(p, now) < RETRY_INTERVALS_MS.far && legDue(p, now));
+      if (!urgent && !dueToday(await getRetryDay(email), localDayKey(now))) return;
+      if (!cancelled) await retryPending(urgent ? 'due' : 'daily');
     };
     void maybe();
     const id = setInterval(() => { void maybe(); }, 60000);

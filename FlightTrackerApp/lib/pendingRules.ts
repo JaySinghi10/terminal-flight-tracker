@@ -33,6 +33,22 @@ export type PendingLeg = {
   addedAt: number;
   lastTriedAt: number | null;
   tries: number;
+  // ── WHICH JOURNEY THIS LEG BELONGS TO, or null if nothing ties it to one ──
+  //
+  // AN UNPUBLISHED LEG IS STILL PART OF A TRIP. A person with a ticket is
+  // taking that flight whether or not a provider has heard of it, so it belongs
+  // in My Flights between the legs either side rather than in a list of its own.
+  // This is what puts it there.
+  //
+  // ASSIGNED FROM THE BOOKING REFERENCE, NOT FROM GEOGRAPHY. Every leg of one
+  // confirmation carries one reference, which is the same fact connection
+  // detection now refuses to link across. A leg with no reference keeps null,
+  // because nothing ties it to anything and guessing would be the coincidence
+  // bug again in a new place.
+  //
+  // NULL IS ORDINARY, not a migration gap: a leg typed in by hand, or one from
+  // an email that printed no reference, has no journey to join.
+  tripId: string | null;
 };
 
 // TEN, AND IT IS A CAP ON DAILY SPEND. Each pending leg costs one provider unit
@@ -95,6 +111,9 @@ export function pendingFromLeg(leg: ExtractedLeg, now: number): PendingLeg {
     addedAt: now,
     lastTriedAt: null,
     tries: 0,
+    // Filled by the caller, which is the only place that knows what else this
+    // booking already put on the device. See ownFlight and the Gmail pull.
+    tripId: null,
   };
 }
 
@@ -112,6 +131,59 @@ export function isPast(leg: PendingLeg, todayKey: string): boolean {
 // retries once. Never having retried counts as due.
 export function dueToday(lastRetryDayKey: string | null, todayKey: string): boolean {
   return lastRetryDayKey !== todayKey;
+}
+
+// ── HOW OFTEN ONE LEG IS WORTH ASKING ABOUT ────────────────────────────────
+//
+// DAILY IS RIGHT THREE WEEKS OUT AND WRONG THE DAY BEFORE. A leg that becomes
+// available at nine in the morning used to wait for the next daily tick, which
+// is fine for a flight in October and useless for one departing tomorrow.
+//
+// THE SHAPE MIRRORS THE POLLER'S TIERS rather than inventing a second idea of
+// urgency, but the numbers are much longer, because these two things are not
+// asking the same question. The poller asks "has anything about this flight
+// changed", which is true every few minutes near departure. This asks "does
+// this flight exist yet", which changes at most once and usually when an
+// airline loads a schedule -- an event measured in hours, not minutes.
+//
+// NOTHING HERE IS FREE. Each retry is a lookup against the scarce provider, so
+// a ceiling that is too eager spends the month's budget confirming an absence.
+export const RETRY_INTERVALS_MS = {
+  // More than a week out: once a day is plenty.
+  far: 24 * 60 * 60 * 1000,
+  // Inside a week: four times a day.
+  week: 6 * 60 * 60 * 1000,
+  // Inside two days: hourly. This is the case that was broken.
+  soon: 60 * 60 * 1000,
+  // On the day itself: every fifteen minutes. If it is not published by now it
+  // probably never will be, but this is the last chance to catch it.
+  today: 15 * 60 * 1000,
+} as const;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function retryInterval(leg: PendingLeg, now: number): number {
+  if (!ISO_DAY.test(leg.date)) return RETRY_INTERVALS_MS.far;
+  // MIDNIGHT LOCAL ON THE DEPARTURE DATE, which is the only instant this leg
+  // can name: it has a date and at best a printed time with no zone, so a true
+  // departure instant does not exist here. Being a few hours out on the
+  // boundary between two tiers costs one extra lookup, which is the right way
+  // to be wrong.
+  const depDay = new Date(`${leg.date}T00:00:00`).getTime();
+  if (Number.isNaN(depDay)) return RETRY_INTERVALS_MS.far;
+  const until = depDay - now;
+  if (until <= DAY_MS) return RETRY_INTERVALS_MS.today;
+  if (until <= 2 * DAY_MS) return RETRY_INTERVALS_MS.soon;
+  if (until <= 7 * DAY_MS) return RETRY_INTERVALS_MS.week;
+  return RETRY_INTERVALS_MS.far;
+}
+
+// True when this leg has waited out its own interval. A leg never tried is
+// always due, which is what makes a freshly queued leg resolve on the next tick
+// rather than tomorrow.
+export function legDue(leg: PendingLeg, now: number): boolean {
+  if (leg.lastTriedAt === null) return true;
+  return now - leg.lastTriedAt >= retryInterval(leg, now);
 }
 
 // THE OPERATING NUMBER FIRST, THEN THE MARKETING ONE, and never the same
@@ -137,13 +209,21 @@ export function addToPending(list: PendingLeg[], leg: PendingLeg, todayKey: stri
 
 // The next batch to try: past legs dropped first, then the oldest-tried first
 // so a leg that keeps missing cannot starve the one behind it.
-export function retryBatch(list: PendingLeg[], todayKey: string, skipIds: ReadonlySet<string>, max = DAILY_RETRY_MAX): {
+export function retryBatch(
+  list: PendingLeg[], todayKey: string, skipIds: ReadonlySet<string>,
+  now: number, max = DAILY_RETRY_MAX,
+): {
   kept: PendingLeg[]; dropped: PendingLeg[]; batch: PendingLeg[];
 } {
   const dropped = list.filter(p => isPast(p, todayKey));
   const kept = list.filter(p => !isPast(p, todayKey));
+  // EACH LEG ON ITS OWN CLOCK. The batch used to be "the ten least recently
+  // tried", which spread one daily allowance across everything regardless of
+  // urgency -- a leg departing tomorrow waited behind one departing in March.
+  // Now a leg is a candidate only when its own interval has elapsed, and the
+  // ceiling exists to bound one pass rather than to ration the day.
   const batch = kept
-    .filter(p => !skipIds.has(p.id))
+    .filter(p => !skipIds.has(p.id) && legDue(p, now))
     .sort((a, b) => (a.lastTriedAt ?? 0) - (b.lastTriedAt ?? 0))
     .slice(0, max);
   return { kept, dropped, batch };
@@ -167,7 +247,11 @@ export type PendingResolvedEvent = {
   destination: string | null;
   pnr: string | null;
   resolvedAt: number;
-  how: 'pull' | 'daily' | 'mount';
+  // WHAT WOKE THE RETRY THAT RESOLVED IT. 'due' is the new one: a leg whose own
+  // interval elapsed, which is every retry inside a week of departure. 'daily'
+  // now means only the far tier's once-a-day sweep, so the two are worth
+  // telling apart when reading these events back.
+  how: 'pull' | 'daily' | 'mount' | 'due';
   delivered: boolean;
 };
 

@@ -41,6 +41,12 @@ import {
   // See its note in lib/saved.tsx: this screen stays mounted across a sign-in.
   useAccountChange,
   tripsOf,
+} from '../../lib/saved';
+// THE UNPUBLISHED LEGS THIS SCREEN NOW SHOWS INSIDE A TRIP. They live in their
+// own store rather than among saved flights, because they have no provider
+// record and must not be mistaken for one; the merge is at render.
+import { type PendingLeg } from '../../lib/pendingRules';
+import {
   isOwned,
   isArchived,
   effectiveStatus,
@@ -773,6 +779,59 @@ function Layover({ prev, next }: { prev: SavedFlight; next: SavedFlight }) {
 //
 // THE SURFACE IS UNCHANGED: compactLeg's fill, radius and padding, and cardEdge
 // over it. Only the interior moved.
+// ── A LEG THE AIRLINE HAS NOT PUBLISHED, INSIDE THE JOURNEY IT BELONGS TO ──
+//
+// IT USED TO SIT IN ITS OWN SECTION ON HOME, away from the trip it is part of.
+// A person with a ticket is taking that flight whether or not a provider has
+// heard of it, so it belongs between the legs either side.
+//
+// WHAT IT SHOWS IS WHAT THE BOOKING GAVE, and nothing else: the number, the
+// route, the date, the printed departure time, the airline and the reference.
+//
+// WHAT IT DELIBERATELY DOES NOT SHOW is everything that comes from a provider.
+// No gate, no terminal, no status badge, no countdown, no belt. There is no
+// record behind this row, and a countdown against a time nobody has confirmed
+// would be the most confident thing on the screen and the least founded.
+//
+// IT DOES NOT OPEN. Tapping a published leg opens its card; there is no card
+// here, so the row is not a button and does not pretend to be one.
+function UnpublishedLeg({ leg }: { leg: PendingLeg }) {
+  const dated = ISO_DAY_RE.test(leg.date) ? routeDateLabel(leg.date).toUpperCase() : null;
+  const route = `${leg.origin ?? leg.originName ?? '?'} → ${leg.destination ?? leg.destinationName ?? '?'}`;
+  return (
+    <View style={[st.compactLeg, st.unpubLeg]}>
+      <View style={st.cardEdge} pointerEvents="none" />
+      <View style={st.legSplit}>
+        <View style={st.legIdent}>
+          {dated !== null && <Text style={st.legDate}>{dated}</Text>}
+          <Text style={st.legIdentNum} numberOfLines={1}>{leg.flightNumber}</Text>
+          {leg.airline !== null && (
+            <Text style={st.legIdentName} numberOfLines={1}>{leg.airline}</Text>
+          )}
+        </View>
+        <View style={st.legTimes}>
+          <Text style={st.legTimeValue} numberOfLines={1}>{route}</Text>
+          {leg.departureTime !== null && (
+            <View style={st.legTimeRow}>
+              <Text style={st.legTimeLabel}>{'Departs'}</Text>
+              <Text style={st.legTimeValue}>{leg.departureTime}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      {/* THE STATE, SAID PLAINLY. Dim rather than amber: this is not a problem
+          with the flight, it is an absence in somebody else's data, and
+          colouring it as a warning would say the trip is in trouble. */}
+      <Text style={st.unpubNote} numberOfLines={1}>
+        {[
+          'airline has not published this yet',
+          leg.pnr !== null ? `pnr ${leg.pnr}` : null,
+        ].filter(Boolean).join(' · ')}
+      </Text>
+    </View>
+  );
+}
+
 function CollapsedLeg({ leg, state, belt, now, onPress }: {
   leg: SavedFlight;
   state: Exclude<LegState, 'current'>;
@@ -1445,6 +1504,7 @@ export default function Flights() {
     // stale on the one screen built to show it, and the only ways to update it
     // were a swipe on the leg or a trip to another tab.
     refreshAll, refreshing,
+    pending,
   } = useSaved();
   const { showToast } = useToast();
   const { isOnMap, addRoute, removeRoute } = useMapRoutes();
@@ -1663,7 +1723,31 @@ export default function Flights() {
   // id, and ids are flightNumber|date -- unique across every trip -- so the
   // findIndex below misses in every journey but the one that owns the leg and
   // falls through to currentLegIndex there. One value, N folders, no collisions.
-  const renderLegs = (legs: SavedFlight[]) => {
+  // ── ONE ORDERED LIST OF WHAT THE JOURNEY ACTUALLY CONTAINS ───────────────
+  //
+  // ORDERED BY DATE, THEN BY THE PRINTED CLOCK, and this is the one place the
+  // two kinds of leg are not directly comparable. A saved leg's position is a
+  // true instant resolved through its airport's timezone; an unpublished leg
+  // has a date and at best a wall clock with no zone. So the comparison is made
+  // on each leg's OWN local date and time rather than on an instant.
+  //
+  // THE LIMIT IS ACCEPTED AND NOT PAPERED OVER. Two legs on the same date in
+  // different timezones can be placed the wrong way round. Legs of one booking
+  // are normally a day or more apart, which is exact; inventing a timezone to
+  // close the gap would be inventing information, which this codebase does not
+  // do anywhere else either.
+  const legOrderKey = (dateISO: string, hhmm: string | null) =>
+    `${dateISO}T${hhmm ?? '99:99'}`;
+
+  // THE UNPUBLISHED LEGS OF ONE JOURNEY. Matched on the trip id the pending
+  // store now carries, which came from the booking reference rather than from
+  // any guess about airports and times.
+  const unpublishedOf = (legs: SavedFlight[]): PendingLeg[] => {
+    const tripId = legs[0]?.tripId ?? null;
+    return tripId === null ? [] : pending.filter(p => p.tripId === tripId);
+  };
+
+  const renderLegs = (legs: SavedFlight[], unpublished: PendingLeg[] = []) => {
     const oIdx = (() => {
       if (focusOverride !== null) {
         const i = legs.findIndex(l => l.id === focusOverride);
@@ -1672,7 +1756,32 @@ export default function Flights() {
       return currentLegIndex(legs, now);
     })();
     const nIdx = nextLegIndex(legs, now, oIdx);
-    return legs.map((leg, i) => {
+    // THE INDEXES STAY ON THE SAVED LEGS ALONE. legState, nextLegIndex and
+    // showsBelt all reason about position among flights that have records --
+    // which leg is current, which is next, whether the one before landed. An
+    // unpublished leg has no state to be in, so it is interleaved for display
+    // and left out of that arithmetic entirely.
+    const rows = [
+      ...legs.map((leg, i) => ({
+        key: leg.id,
+        sort: legOrderKey(leg.flightDate, leg.from.scheduledIso?.slice(11, 16) ?? null),
+        node: null as React.ReactNode,
+        leg,
+        i,
+      })),
+      ...unpublished.map(p => ({
+        key: `pending:${p.id}`,
+        sort: legOrderKey(p.date, p.departureTime),
+        node: <UnpublishedLeg key={`pending:${p.id}`} leg={p} />,
+        leg: null as SavedFlight | null,
+        i: -1,
+      })),
+    ].sort((a, b) => (a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0));
+
+    return rows.map(row => {
+      if (row.leg === null) return row.node;
+      const leg = row.leg;
+      const i = row.i;
       // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
       // indices and the landing; nothing below re-derives any of them,
       // and no clock is consulted here at all -- both windows were
@@ -2270,7 +2379,7 @@ export default function Flights() {
             {current.length === 1 ? (
               <View style={st.tripWrap}>
                 <View style={st.rail} pointerEvents="none" />
-                <View style={st.trip}>{renderLegs(current[0])}</View>
+                <View style={st.trip}>{renderLegs(current[0], unpublishedOf(current[0]))}</View>
               </View>
             ) : FOLDER_STYLE === 'carousel' ? (
               /* ── C IS NOT A FOLDER MODEL, AND THIS IS THE FLAG ──
@@ -2324,7 +2433,7 @@ export default function Flights() {
                   return (
                     <View style={st.tripWrap}>
                       <View style={st.rail} pointerEvents="none" />
-                      <View style={st.trip}>{renderLegs(shown)}</View>
+                      <View style={st.trip}>{renderLegs(shown, unpublishedOf(shown))}</View>
                     </View>
                   );
                 })()}
@@ -2342,7 +2451,7 @@ export default function Flights() {
                     first={i === 0}
                     onToggle={() => toggleTrip(legs)}
                   >
-                    {renderLegs(legs)}
+                    {renderLegs(legs, unpublishedOf(legs))}
                   </TripFolder>
                 ))}
               </View>
@@ -2680,6 +2789,16 @@ const st = StyleSheet.create({
     padding: CARD_PAD,
     gap: 6,
   },
+  // AN UNPUBLISHED LEG IS THE SAME CARD, QUIETER. It sits in the journey and
+  // must read as part of it rather than as an error beside it, so it keeps the
+  // shape and loses a little opacity. No border, no amber, no second fill: the
+  // difference is that it has less to say, and the row shows that by saying
+  // less.
+  unpubLeg: { opacity: 0.72 },
+  // The state, in the dim ink the app uses for a fact rather than the amber it
+  // uses for a problem. A missing schedule is somebody else's absence, not
+  // trouble with the trip.
+  unpubNote: { fontFamily: MONO, fontSize: 11, color: DIM },
   // ── THE ROW'S INTERIOR, WHICH IS THE CARD'S GRID ──
   //
   // EVERY ENTRY BELOW IS components/FlightCard.tsx's, matched value for value so
