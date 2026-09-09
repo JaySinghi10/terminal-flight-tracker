@@ -1038,6 +1038,27 @@ function hubOf(code: string): string | null {
 function connectionGap(earlier: SavedFlight, later: SavedFlight): number | null {
   const hub = hubOf(earlier.to.iata);
   if (hub === null || hub !== hubOf(later.from.iata)) return null;
+  // ── TWO DIFFERENT BOOKINGS ARE NEVER ONE JOURNEY ─────────────────────────
+  //
+  // WRITTEN AFTER THIS LINKED TWO REAL PEOPLE'S FLIGHTS. A booking of SFO to
+  // Copenhagen to Mumbai to Indore was joined to an unrelated Mumbai to London
+  // flight from a different inbox, because the second departed Mumbai inside a
+  // day of the first arriving there. Every test below passed. The airport and
+  // the clock cannot tell two bookings apart, and until now they were all this
+  // function had.
+  //
+  // A DIFFERING REFERENCE IS EVIDENCE; A MISSING ONE IS NOT. Both legs must
+  // carry a reference before the difference means anything. A flight looked up
+  // by hand has none and never will, so requiring one would stop detection
+  // working for the case it was written for -- somebody typing in the two legs
+  // of their own connection. Only a stated disagreement blocks a link.
+  //
+  // THIS CANNOT BREAK A REAL JOURNEY. Every leg of one booking is printed on
+  // one confirmation under one reference, so a genuine connection agrees here
+  // by construction. What stops is the coincidence.
+  if (earlier.pnr !== null && later.pnr !== null && earlier.pnr !== later.pnr) {
+    return null;
+  }
   const arr = arrivalTs(earlier);
   const dep = departureTs(later);
   if (arr === null || dep === null) return null;
