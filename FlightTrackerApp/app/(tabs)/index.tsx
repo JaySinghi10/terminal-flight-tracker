@@ -1573,8 +1573,10 @@ export default function Index() {
     const refusedTotal = refused.dup + refused.limit + refused.past;
     if (refusedTotal > 0 || skipped > 0) {
       console.warn(
-        `[pull] ${skipped} not saved, ${refusedTotal} not queued`
-        + ` (duplicate ${refused.dup}, queue full ${refused.limit}, past ${refused.past})`,
+        `[pull] legs=${legs.length} added=${added.length} queued=${queued}`
+        + ` | not saved=${skipped}`
+        + ` | not queued=${refusedTotal} (duplicate=${refused.dup},`
+        + ` queue full=${refused.limit}, past-dated=${refused.past})`,
       );
     }
     // A DUPLICATE IS NOT A LOSS AND IS NOT COUNTED AS ONE. The leg is already in
@@ -1582,6 +1584,22 @@ export default function Index() {
     // would report a problem that does not exist. Only the two refusals that
     // lose a leg are surfaced.
     const lost = skipped + refused.limit + refused.past;
+    // ── THE REASON, NOT JUST THE COUNT ──────────────────────────────────────
+    //
+    // "2 skipped" SENT SOMEBODY TO READ A CONSOLE. The breakdown was logged and
+    // the banner showed a bare number, so the one visible message named a
+    // problem without naming which problem, and the only way to find out was a
+    // terminal. The reasons need different actions -- a full queue is fixed by
+    // forgetting a leg, a past date cannot be fixed at all -- so the count on
+    // its own is not actionable.
+    //
+    // THE DOMINANT ONE WINS, because the banner fits about 26 characters and a
+    // pull that hits two different walls at once is not worth the words. The
+    // full breakdown is still in the log for the case where it matters.
+    const lostWhy = refused.past > 0 ? 'past-dated'
+      : refused.limit > 0 ? 'queue full'
+      : skipped > 0 ? 'not saved'
+      : '';
 
     if (added.length === 0) {
       // THE CAP'S MESSAGE NAMES THE RIGHT PLACE NOW. These legs go to My
@@ -1593,7 +1611,7 @@ export default function Index() {
       // a full queue is something the person can act on by forgetting old
       // entries, and a past date is not.
       if (refused.limit > 0) showToast('the pending list is full — forget one');
-      else if (lost > 0) showToast(`${lost} flight${lost === 1 ? '' : 's'} could not be added`);
+      else if (lost > 0) showToast(`${lost} flight${lost === 1 ? '' : 's'}: ${lostWhy}`);
       else if (queued > 0) showToast(queued === 1 ? '1 flight not in the schedule yet' : `${queued} flights not in the schedule yet`);
       else if (legs.length > 0) showToast('already in My Flights');
       return;
@@ -1612,7 +1630,7 @@ export default function Index() {
     // SO THE ONE VISIBLE MESSAGE CARRIES BOTH FACTS. It stays inside the 26
     // characters the banner fits at 320pt: "added SK936 · 2 skipped" is 23.
     const first = added[0];
-    const tail = lost > 0 ? ` · ${lost} skipped` : '';
+    const tail = lost > 0 ? ` · ${lost} ${lostWhy}` : '';
     const label = added.length === 1
       ? `added ${first.flightNumber}${tail || ` · ${routeDateLabel(first.flightDate).replace(/^\w+ /, '')}`}`
       : `added ${first.flightNumber} +${added.length - 1}${tail || ' more'}`;
