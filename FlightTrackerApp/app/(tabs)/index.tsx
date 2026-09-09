@@ -241,6 +241,13 @@ type GmailLeg = {
   // and marks every leg a cancellation notice names. OPTIONAL: a server that
   // predates the classifier sends no such field, and absent means scheduled.
   leg_status?: 'scheduled' | 'cancelled' | null;
+  // WHEN THE BOOKING SAID IT LANDS, where the email printed it. The date is
+  // separate because an overnight leg lands on another day, and is absent when
+  // the email gave one date for the whole leg. Both optional: the extractor is
+  // told never to compute an arrival, so an email that prints none returns
+  // none. See the pending leg type for what they are for.
+  arrival_time?: string | null;
+  arrival_date?: string | null;
   source: { subject: string | null; received: string | null };
 };
 

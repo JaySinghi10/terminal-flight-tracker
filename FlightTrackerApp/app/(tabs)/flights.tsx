@@ -793,6 +793,42 @@ function pendingDepartureTs(leg: PendingLeg | null): number | null {
   return zonedIsoToTs(`${leg.date}T${leg.departureTime}`, airport.tz);
 }
 
+// ── AND THE INSTANT IT LANDS, WHICH ONLY THE BOOKING KNOWS ─────────────────
+//
+// THE SAME CONSTRUCTION AS THE DEPARTURE ABOVE, read at the other end of the
+// leg: the printed clock in the DESTINATION airport's zone, because that is
+// where that clock is on the wall. A connection is almost always between two
+// zones, so reading the arrival in the departure's zone would be wrong by
+// however far apart they are.
+//
+// THE DATE IS THE ARRIVAL'S OWN WHERE THE EMAIL PRINTED ONE. An overnight leg
+// lands on the day after it left and the email says so; where it gave one date
+// for the leg, that date is the departure's and the arrival is on it.
+//
+// AN ARRIVAL AT OR BEFORE THE DEPARTURE IS REFUSED RATHER THAN ROLLED FORWARD.
+// A leg leaving at 22:10 and arriving at 06:35 with no arrival date is an
+// overnight the email did not date, and adding a day to it here would be
+// inventing the one fact that was missing -- the same guess the whole pending
+// path exists to avoid. It is also indistinguishable from a mis-read clock, and
+// the row above says the arrival is not published rather than showing a
+// duration built on a coin toss.
+//
+// THE CHECK IS SKIPPED WHEN THE DEPARTURE ITSELF CANNOT BE RESOLVED, because
+// there is nothing to compare against. The arrival may still be sound -- an
+// unknown ORIGIN does not make the destination unknown -- and the layover's own
+// negative and over-a-day rules still stand behind it.
+function pendingArrivalTs(leg: PendingLeg | null): number | null {
+  if (leg === null || leg.arrivalTime === null) return null;
+  const day = leg.arrivalDate ?? leg.date;
+  if (!ISO_DAY_RE.test(day)) return null;
+  const airport = leg.destination !== null ? airportByCode(leg.destination) : null;
+  if (airport === null) return null;
+  const arr = zonedIsoToTs(`${day}T${leg.arrivalTime}`, airport.tz);
+  if (arr === null) return null;
+  const dep = pendingDepartureTs(leg);
+  return dep !== null && arr <= dep ? null : arr;
+}
+
 // ── THE WAIT BETWEEN TWO LEGS, OR WHY IT CANNOT BE STATED ───────────────────
 //
 // IT USED TO RENDER NOTHING WHEN IT COULD NOT COUNT. That was right while every
@@ -829,7 +865,11 @@ function Layover({ prev, next }: { prev: LayoverEnd; next: LayoverEnd }) {
     ?? codeOf(next.saved?.from.iata) ?? codeOf(next.pend?.origin));
   const at = hub === null ? '' : ` in ${hub}`;
 
-  const arr = prev.saved !== null ? arrivalTs(prev.saved) : null;
+  // THE PUBLISHED ARRIVAL FIRST AND ALWAYS. A leg with a provider record has an
+  // arrival that moves -- actual, then estimated, then scheduled -- and the
+  // booking's printed time is a fixture beside it. Only a leg no provider
+  // carries falls to what its email said.
+  const arr = prev.saved !== null ? arrivalTs(prev.saved) : pendingArrivalTs(prev.pend);
   const dep = next.saved !== null ? departureTs(next.saved) : pendingDepartureTs(next.pend);
 
   // THE MISSING END IS NAMED, NOT THE ROW. "arrival not published yet" beside a

@@ -58,10 +58,16 @@ export async function getPending(email: string | null): Promise<PendingLeg[]> {
   // reader that has to ask whether the field EXISTS before asking what it says
   // is the shape that lost those legs in the first place. Scheduled is what
   // they all were.
+  //
+  // AND THE TWO ARRIVAL FIELDS JOIN THEM, on the same terms. Every leg queued
+  // before the extractor returned an arrival has neither, and the trip screen
+  // asks what they say rather than whether they are there.
   return list.map(p => ({
     ...p,
     tripId: p.tripId === undefined ? null : p.tripId,
     legStatus: p.legStatus === 'cancelled' ? 'cancelled' : 'scheduled',
+    arrivalTime: p.arrivalTime ?? null,
+    arrivalDate: p.arrivalDate ?? null,
   }));
 }
 

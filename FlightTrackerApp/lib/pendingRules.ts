@@ -64,6 +64,27 @@ export type PendingLeg = {
   // 'scheduled' IS THE DEFAULT AND IS FILLED IN ON READ, so every reader can
   // test the field rather than testing whether it exists. See getPending.
   legStatus: 'scheduled' | 'cancelled';
+  // ── WHEN THE BOOKING SAID THIS LEG LANDS ────────────────────────────────
+  //
+  // NOBODY ELSE WILL EVER SAY IT. A provider record carries an arrival three
+  // ways over -- actual, estimated, scheduled -- and an unpublished leg has
+  // none of them, because no provider has heard of the flight. The email is
+  // the only source there is, and it does print the arrival.
+  //
+  // IT IS WHAT MAKES A LAYOVER COMPUTABLE. The wait at a connection is this
+  // leg's arrival to the next leg's departure; without this end the row can
+  // only say that nobody has published one.
+  //
+  // A DATE OF ITS OWN, BECAUSE AN OVERNIGHT LEG LANDS ON ANOTHER DAY. Where
+  // the email prints one date for the leg it is the departure's, and this is
+  // null -- which the reader treats as "the same day" rather than inventing a
+  // rollover. See pendingArrivalTs on the trip screen.
+  //
+  // BOTH NULL IS ORDINARY: a boarding pass or a cancellation notice prints no
+  // arrival at all, and both are filled in on read so no reader has to ask
+  // whether the field exists before asking what it says.
+  arrivalTime: string | null;
+  arrivalDate: string | null;
 };
 
 // TEN, AND IT IS A CAP ON DAILY SPEND. Each pending leg costs one provider unit
@@ -110,6 +131,10 @@ export type ExtractedLeg = {
   // Absent reads as scheduled below, which is what every leg was before the
   // extractor learned to classify a cancellation.
   leg_status?: 'scheduled' | 'cancelled' | null;
+  // OPTIONAL FOR THE SAME REASON, and absent on the emails that print no
+  // arrival -- which the extractor is told never to invent one for.
+  arrival_time?: string | null;
+  arrival_date?: string | null;
   source: { subject: string | null; received: string | null };
 };
 
@@ -138,6 +163,12 @@ export function pendingFromLeg(leg: ExtractedLeg, now: number): PendingLeg {
     // "not known to be cancelled" and "scheduled" are the same statement and
     // the wrong way to be wrong here is to grey out a flight somebody is on.
     legStatus: leg.leg_status === 'cancelled' ? 'cancelled' : 'scheduled',
+    // CARRIED AS PRINTED AND NOT VALIDATED HERE. The server has already
+    // checked the shape of both and dropped either one it could not parse;
+    // the screen that reads them checks again before doing arithmetic on
+    // them, because that is where being wrong would show.
+    arrivalTime: leg.arrival_time ?? null,
+    arrivalDate: leg.arrival_date ?? null,
   };
 }
 
