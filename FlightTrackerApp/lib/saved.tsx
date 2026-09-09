@@ -1063,27 +1063,24 @@ function hubOf(code: string): string | null {
 function connectionGap(earlier: SavedFlight, later: SavedFlight): number | null {
   const hub = hubOf(earlier.to.iata);
   if (hub === null || hub !== hubOf(later.from.iata)) return null;
-  // ── TWO DIFFERENT BOOKINGS ARE NEVER ONE JOURNEY ─────────────────────────
+  // ── A DIFFERING REFERENCE NO LONGER BLOCKS A JOIN ────────────────────────
   //
-  // WRITTEN AFTER THIS LINKED TWO REAL PEOPLE'S FLIGHTS. A booking of SFO to
-  // Copenhagen to Mumbai to Indore was joined to an unrelated Mumbai to London
-  // flight from a different inbox, because the second departed Mumbai inside a
-  // day of the first arriving there. Every test below passed. The airport and
-  // the clock cannot tell two bookings apart, and until now they were all this
-  // function had.
+  // IT DID, AND THE ASSUMPTION UNDER IT WAS WRONG. The rule read "every leg of
+  // one booking is printed on one confirmation under one reference, so a
+  // genuine connection agrees here by construction". A real three-leg journey
+  // disproved it: SFO to Copenhagen to Mumbai under CS7B02, then Mumbai to
+  // Indore under CRU5GE. One journey, two references, and the last leg was cut
+  // off from the first two.
   //
-  // A DIFFERING REFERENCE IS EVIDENCE; A MISSING ONE IS NOT. Both legs must
-  // carry a reference before the difference means anything. A flight looked up
-  // by hand has none and never will, so requiring one would stop detection
-  // working for the case it was written for -- somebody typing in the two legs
-  // of their own connection. Only a stated disagreement blocks a link.
+  // SO THE AIRPORT AND THE CLOCK DECIDE AGAIN, as they always did. The
+  // reference stays a POSITIVE signal wherever it is already used -- it is what
+  // tripForBooking reaches for first -- and is a blocker nowhere.
   //
-  // THIS CANNOT BREAK A REAL JOURNEY. Every leg of one booking is printed on
-  // one confirmation under one reference, so a genuine connection agrees here
-  // by construction. What stops is the coincidence.
-  if (earlier.pnr !== null && later.pnr !== null && earlier.pnr !== later.pnr) {
-    return null;
-  }
+  // THE COST IS KNOWN AND ACCEPTED. This is the test that once joined an
+  // unrelated Mumbai to London flight to somebody's booking because it departed
+  // Mumbai inside a day of their arrival. That coincidence can happen again.
+  // Splitting a real journey is the worse failure of the two: a wrong join is
+  // visible and can be undone, where a missing leg is neither.
   const arr = arrivalTs(earlier);
   const dep = departureTs(later);
   if (arr === null || dep === null) return null;
@@ -1591,13 +1588,48 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       // leg of one confirmation carries one, so a queued leg joins the trip of
       // the saved leg it was booked with. Nothing is guessed from airports or
       // times, and a leg with no reference keeps none.
+      //
+      // A STALE IDENTIFIER IS AS BAD AS NO IDENTIFIER, and this used to only
+      // adopt legs whose trip was null. A leg queued before tripForBooking read
+      // live storage was given a trip minted from a stale snapshot -- one no
+      // saved flight carries. My Flights builds journeys from saved flights, so
+      // such a trip is never drawn, and the leg was not null either, so this
+      // skipped it. It rendered nowhere and could never recover, because a
+      // duplicate is refused rather than updated on every later pull.
+      //
+      // SO THE TEST IS WHETHER THE TRIP IS REAL, not whether it is present. A
+      // leg whose trip a saved flight does carry is left untouched.
       const rawPend = await getPending(email);
+      const realTrips = new Set(
+        list.map(f => f.tripId).filter((t): t is string => t !== null),
+      );
       const pend = rawPend.map(p => {
-        if (p.tripId !== null || p.pnr === null) return p;
+        const trip = p.tripId ?? null;
+        if (p.pnr === null) return p;
+        if (trip !== null && realTrips.has(trip)) return p;
         const sibling = list.find(f => f.pnr === p.pnr && f.tripId !== null);
-        const queued = rawPend.find(o => o.pnr === p.pnr && o.tripId !== null);
-        const tripId = sibling?.tripId ?? queued?.tripId ?? null;
-        return tripId === null ? p : { ...p, tripId };
+        // EXCLUDING ITSELF, because a leg carrying a stale trip would otherwise
+        // match its own row here and re-adopt the identifier it is being
+        // rescued from.
+        const queued = rawPend.find(o => o.id !== p.id && o.pnr === p.pnr && o.tripId !== null);
+        // AND THE SAME CONNECTION FALLBACK tripForBooking USES, because this is
+        // what rescues a leg ALREADY in the store. Without it a leg whose
+        // reference differs from the rest of its journey -- which is the case
+        // this change exists for -- would be adopted on a fresh pull and never
+        // on a launch, and a stored leg is only ever reached here.
+        const legDay = Date.parse(`${p.date}T00:00:00`);
+        const near = (ts: number | null) =>
+          ts !== null && !Number.isNaN(legDay) && Math.abs(ts - legDay) <= MAX_CONNECTION_MS;
+        const origin = hubOf(p.origin ?? '');
+        const destination = hubOf(p.destination ?? '');
+        const linked = list.find(f => f.tripId !== null && (
+          (origin !== null && hubOf(f.to.iata) === origin && near(arrivalTs(f)))
+          || (destination !== null && hubOf(f.from.iata) === destination && near(departureTs(f)))
+        ));
+        const tripId = sibling?.tripId ?? queued?.tripId ?? linked?.tripId ?? null;
+        if (tripId === null || tripId === trip) return p;
+        console.warn(`[trip] ${p.flightNumber} ${trip ?? 'null'} -> ${tripId}`);
+        return { ...p, tripId };
       });
       if (pend.some((p, i) => p.tripId !== rawPend[i].tripId)) {
         await setPending(email, pend);
@@ -2129,22 +2161,52 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // THE STORE IS THE TRUTH DURING A LOOP. getSavedFlights reads what was
   // actually written, including the record owned a moment ago.
   const tripForBooking = useCallback(async (
-    pnr: string | null, pendingList: PendingLeg[],
+    leg: PendingLeg, pendingList: PendingLeg[],
   ): Promise<string | null> => {
-    if (pnr === null) return null;
     const current = await getSavedFlights(email);
-    const saved = current.find(f => f.pnr === pnr && f.tripId !== null);
-    if (saved !== undefined) return saved.tripId;
-    const queued = pendingList.find(p => p.pnr === pnr && p.tripId !== null);
-    if (queued !== undefined) return queued.tripId;
-    return newTripId();
+    // THE REFERENCE FIRST, AND IT STILL WINS. Two legs printed on one
+    // confirmation are one journey whatever the airports say, so this needs no
+    // clock and cannot be fooled by a coincidence.
+    if (leg.pnr !== null) {
+      const saved = current.find(f => f.pnr === leg.pnr && f.tripId !== null);
+      if (saved !== undefined) return saved.tripId;
+      const queued = pendingList.find(p => p.pnr === leg.pnr && p.tripId !== null);
+      if (queued !== undefined) return queued.tripId;
+    }
+    // ── THEN THE CONNECTION, BECAUSE ONE JOURNEY CAN CARRY TWO REFERENCES ────
+    //
+    // A real booking arrived as SFO to Copenhagen to Mumbai under one reference
+    // and Mumbai to Indore under another. Matching on the reference alone left
+    // the last leg in a journey of its own.
+    //
+    // THE DATE, NOT AN INSTANT, and that is the honest limit. A saved flight
+    // has a true departure and arrival instant; this leg has a calendar date
+    // and at best a printed clock with no zone. So the window is measured from
+    // local midnight on the leg's date, which is loose by up to a day at the
+    // edges and costs at worst one wrong adoption that a person can undo.
+    const legDay = Date.parse(`${leg.date}T00:00:00`);
+    const near = (ts: number | null) =>
+      ts !== null && !Number.isNaN(legDay) && Math.abs(ts - legDay) <= MAX_CONNECTION_MS;
+    const origin = hubOf(leg.origin ?? '');
+    const destination = hubOf(leg.destination ?? '');
+    const linked = current.find(f => f.tripId !== null && (
+      (origin !== null && hubOf(f.to.iata) === origin && near(arrivalTs(f)))
+      || (destination !== null && hubOf(f.from.iata) === destination && near(departureTs(f)))
+    ));
+    if (linked !== undefined) return linked.tripId;
+    const linkedQueued = pendingList.find(p => p.id !== leg.id && p.tripId !== null && (
+      (origin !== null && hubOf(p.destination ?? '') === origin)
+      || (destination !== null && hubOf(p.origin ?? '') === destination)
+    ) && Math.abs(Date.parse(`${p.date}T00:00:00`) - legDay) <= MAX_CONNECTION_MS);
+    if (linkedQueued !== undefined) return linkedQueued.tripId;
+    return leg.pnr === null ? null : newTripId();
   }, [email]);
 
   const addPendingLeg = useCallback(async (leg: PendingLeg): Promise<'added' | 'dup' | 'limit' | 'past'> => {
     const list = await getPending(email);
     const withTrip = leg.tripId !== null
       ? leg
-      : { ...leg, tripId: await tripForBooking(leg.pnr, list) };
+      : { ...leg, tripId: await tripForBooking(leg, list) };
     const r = addToPending(list, withTrip, localDayKey(Date.now()));
     if (!r.ok) return r.reason;
     await setPending(email, r.pending);
