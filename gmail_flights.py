@@ -30,7 +30,9 @@ date, so the lookup never knew which day it was looking up.
 
 THESE ARE PEOPLE'S BOOKING CONFIRMATIONS. Bodies go to the model and nowhere
 else: never to the log, never to storage, never back to the client. The log
-carries counts and outcome codes only. The truncation to BODY_MAX_CHARS is
+carries counts, outcome codes, Gmail message ids, the classified kind of an
+email and the instant it arrived -- never a subject, a sender or a body. The
+truncation to BODY_MAX_CHARS is
 applied here, on every body, before it is handed anywhere -- it is not a limit
 somebody upstream is trusted to have applied.
 
@@ -378,8 +380,14 @@ def html_to_text(markup: str) -> str:
     return p.text()
 
 
-def decode_body(raw_b64url: str) -> dict:
-    """{subject, sender, received, body} from Gmail's raw message.
+def decode_body(raw_b64url: str, internal_date=None) -> dict:
+    """{subject, sender, received, received_at, body} from Gmail's raw message.
+
+    internal_date IS GMAIL'S internalDate: epoch milliseconds, present on every
+    message resource, stamped by Gmail on arrival rather than by the sender.
+    It becomes received_at, a full-precision UTC instant. The Date HEADER still
+    becomes `received`, the day string, exactly as before: the prompt and the
+    year-rollover backstop both read that one and neither is changed here.
 
     THE STANDARD LIBRARY DOES THE WALK. msg.walk() visits every part at every
     depth, get_content() applies the transfer encoding and the declared
@@ -435,17 +443,32 @@ def decode_body(raw_b64url: str) -> dict:
     structured = jsonld_legs(raw_html) if htmls else []
 
     received = None
+    received_at = None
     try:
         dt = email.utils.parsedate_to_datetime(msg.get("date") or "")
         if dt is not None:
             received = dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+            # THE HEADER'S INSTANT IS THE FALLBACK ONLY, for a message with no
+            # internalDate -- the fixture inbox, which is files rather than
+            # Gmail. A sender's clock is not Gmail's, so it never overrides one.
+            received_at = dt.astimezone(timezone.utc).isoformat(timespec="milliseconds")
     except (TypeError, ValueError):
         received = None
+    try:
+        if internal_date is not None:
+            received_at = datetime.fromtimestamp(
+                int(internal_date) / 1000, tz=timezone.utc).isoformat(timespec="milliseconds")
+    except (TypeError, ValueError, OverflowError, OSError):
+        pass
 
     return {
         "subject": str(msg.get("subject") or "").strip()[:200],
         "sender": str(msg.get("from") or "").strip()[:200],
         "received": received,
+        # WHEN GMAIL RECEIVED IT, to the millisecond, in UTC. The day string
+        # above is what the model and the rollover read; this is what an
+        # ordering of emails about the same leg will read.
+        "received_at": received_at,
         # THE ONE PLACE THE TRUNCATION HAPPENS, and every body passes through it.
         "body": body[:BODY_MAX_CHARS],
         # Legs the sender stated outright. Empty for most airlines still.
@@ -468,10 +491,17 @@ def fetch_message(token: str, msg_id: str) -> dict | None:
         )
         if resp.status_code != 200:
             return None
-        raw = resp.json().get("raw")
+        body = resp.json()
+        raw = body.get("raw")
         if not raw:
             return None
-        return decode_body(raw)
+        # internalDate COMES WITH format=raw. The message resource carries it
+        # whatever the format, and no field mask is set on the request, so it
+        # is already in this response and costs no second call.
+        m = decode_body(raw, body.get("internalDate"))
+        # THE ID, FOR THE LOG. An opaque Gmail identifier, not content.
+        m["id"] = msg_id
+        return m
     except Exception:  # noqa: BLE001 -- one bad message must not sink the rest
         return None
 
@@ -509,25 +539,57 @@ def worth_a_model_call(m: dict) -> bool:
     return any(w in lower for w in BOOKING_WORDS)
 
 
+# ── WHAT AN EMAIL IS, BEFORE WHAT IS IN IT ───────────────────────────────────
+#
+# THE MODEL USED TO ANSWER ONE QUESTION: is this a booking, yes or no. A
+# cancellation was a no, and so the one email that says a leg will NOT fly was
+# the one email thrown away. It classifies now, and the legs a cancellation or
+# a change names come back carrying their status, so a later step can order
+# the emails about one leg and let the newest win.
+EMAIL_KINDS = ("confirmation", "change", "cancellation", "other")
+# The kinds that still count as a booking for everything downstream that reads
+# is_booking. A cancellation is not a booking; its legs come back regardless.
+BOOKING_KINDS = ("confirmation", "change")
+LEG_STATUSES = ("scheduled", "cancelled")
+
 EXTRACT_TOOL = {
     "name": "flight_bookings",
-    "description": "Record every confirmed flight leg contained in this one email.",
+    "description": (
+        "Classify this one email and record every flight leg it names, with "
+        "each leg's status."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
+            "email_kind": {
+                "type": "string",
+                "enum": list(EMAIL_KINDS),
+                "description": (
+                    "What this email IS. confirmation: an original booking, "
+                    "itinerary, e-ticket or boarding pass for the recipient. "
+                    "change: a reschedule or rebooking that restates one or "
+                    "more legs. cancellation: an airline notice that one or "
+                    "more legs will not operate. other: everything else -- "
+                    "marketing, fare alerts, hotels, car hire, refunds, surveys, "
+                    "reminders, and anything you cannot place with confidence."
+                ),
+            },
             "is_booking": {
                 "type": "boolean",
                 "description": (
-                    "True ONLY if this email is a confirmed flight booking, "
-                    "itinerary, e-ticket or boarding pass for the recipient. "
-                    "False for marketing, fare alerts, hotels, car hire, "
-                    "cancellations, refunds, surveys, check-in nags with no "
-                    "itinerary, and anything that merely mentions a flight."
+                    "True for a confirmation or a change, false for every "
+                    "other kind. Derived from email_kind; kept for readers "
+                    "that still expect it."
                 ),
             },
             "bookings": {
                 "type": "array",
-                "description": "One entry per flight leg. Empty when is_booking is false.",
+                "description": (
+                    "One entry per flight leg the email names. Empty when "
+                    "email_kind is other. For a cancellation or a change, the "
+                    "legs the notice names -- the email need not restate the "
+                    "whole itinerary."
+                ),
                 "items": {
                     "type": "object",
                     "properties": {
@@ -593,31 +655,51 @@ EXTRACT_TOOL = {
                                 "inferred. Below 0.6 means you guessed something."
                             ),
                         },
+                        "leg_status": {
+                            "type": "string",
+                            "enum": list(LEG_STATUSES),
+                            "description": (
+                                "cancelled for a leg this email says will not "
+                                "operate; scheduled otherwise. Every leg named "
+                                "in a cancellation notice is cancelled. Defaults "
+                                "to scheduled."
+                            ),
+                        },
                     },
                     "required": ["flight_number", "date", "confidence"],
                 },
             },
         },
-        "required": ["is_booking", "bookings"],
+        "required": ["email_kind", "is_booking", "bookings"],
     },
 }
 
 
 def _system_prompt(today) -> str:
     return (
-        "You extract confirmed flight legs from ONE email. "
+        "You classify ONE email and extract the flight legs it names. "
         f"Today is {today.isoformat()}. "
         "Call the flight_bookings tool exactly once and say nothing else.\n"
-        "REFUSE RATHER THAN GUESS. If the email is not a confirmed flight "
-        "booking, itinerary, e-ticket or boarding pass addressed to the "
-        "recipient, set is_booking to false and return no bookings. Marketing, "
-        "fare alerts, hotels, car hire, cancellations, refunds, surveys and "
-        "reminders without an itinerary are all false.\n"
+        "FIRST SAY WHAT THE EMAIL IS, in email_kind. confirmation: an original "
+        "booking, itinerary, e-ticket or boarding pass for the recipient. "
+        "change: a reschedule or rebooking that restates one or more legs. "
+        "cancellation: an airline notice that one or more legs will not "
+        "operate. other: everything else -- marketing, fare alerts, hotels, "
+        "car hire, refunds, surveys, check-in nags and reminders with no "
+        "itinerary, and anything that merely mentions a flight.\n"
+        "REFUSE RATHER THAN GUESS. An email you cannot place with confidence "
+        "is other, and other returns no bookings. Set is_booking true for a "
+        "confirmation or a change and false otherwise.\n"
         "Never write a flight number, date, airport or booking reference that "
         "is not printed in the email. If a required field is not printed, "
         "omit that leg rather than fill it in.\n"
-        "Return EVERY leg the email contains: a return trip is two legs, a "
-        "connection is two legs, a multi-city itinerary is all of them.\n"
+        "For a confirmation, return EVERY leg the email contains: a return trip "
+        "is two legs, a connection is two legs, a multi-city itinerary is all "
+        "of them.\n"
+        "For a cancellation or a change, return the legs the email NAMES, even "
+        "when it does not restate the full itinerary -- airlines often send a "
+        "notice naming one flight only. Mark every leg named in a cancellation "
+        "leg_status cancelled; every other leg is scheduled.\n"
         "Dates are the departure's local calendar date as YYYY-MM-DD. If no "
         "year is printed, resolve it from the received date in the message: "
         "the next occurrence on or after that date.\n"
@@ -707,10 +789,27 @@ def extract_with_model(m: dict, today) -> list[dict]:
     if call is None:
         return []
     args = call.args or {}
-    if not args.get("is_booking"):
-        return []
-    legs = args.get("bookings")
-    return legs if isinstance(legs, list) else []
+    # THE KIND IS RE-CHECKED LIKE EVERYTHING ELSE. A value off the list is a
+    # guess, and a guess is `other`. is_booking is DERIVED from it rather than
+    # read back from the model, so the two cannot disagree.
+    kind = args.get("email_kind")
+    if kind not in EMAIL_KINDS:
+        kind = "other"
+    args["is_booking"] = kind in BOOKING_KINDS
+    legs = args.get("bookings") if kind != "other" else []
+    legs = legs if isinstance(legs, list) else []
+    # A LEG NAMED IN A CANCELLATION IS CANCELLED, whatever the model wrote on
+    # it. Stamped here so the downstream reader never depends on the model
+    # having remembered the per-leg field.
+    if kind == "cancellation":
+        for leg in legs:
+            if isinstance(leg, dict):
+                leg["leg_status"] = "cancelled"
+    # ONE LINE PER EMAIL THE MODEL SAW. Id, kind, instant and a count: nothing
+    # printed in the email reaches the log.
+    logger.info("gmail email %s kind=%s received_at=%s legs=%d",
+                m.get("id") or "?", kind, m.get("received_at") or "?", len(legs))
+    return legs
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -784,6 +883,11 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
     op_num = re.sub(r"\s+", "", str(raw.get("operating_flight_number") or "")).upper() or None
     if op_num is not None and (not FLIGHT_RE.match(op_num) or op_num == number):
         op_num = None
+    # THE STATUS, DEFAULTING TO SCHEDULED. Anything but the two known values is
+    # treated as the default rather than carried through as a stranger.
+    status = raw.get("leg_status")
+    if status not in LEG_STATUSES:
+        status = "scheduled"
     return {
         "flight_number": number,
         "date": day,
@@ -801,11 +905,17 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
         "operating_flight_number": op_num,
         "pnr": pnr,
         "confidence": round(conf, 2),
+        # scheduled or cancelled. CARRIED, NOT YET ACTED ON: the merge below
+        # still keys on number and date and ignores this. Ordering the emails
+        # about one leg so the newest status wins is the next step.
+        "leg_status": status,
         # WHERE IT CAME FROM: the subject and the received date, so the app can
-        # say "from your BA email of 3 March". Never the body.
+        # say "from your BA email of 3 March". Never the body. received_at is
+        # the same arrival to the millisecond, for ordering.
         "source": {
             "subject": (source or {}).get("subject"),
             "received": (source or {}).get("received"),
+            "received_at": (source or {}).get("received_at"),
         },
     }
 
@@ -871,6 +981,11 @@ def upcoming_flights(token: str, today=None, *, fetch=fetch_message, extract=ext
     for m in fetched:
         if m.get("jsonld"):
             structured_n += 1
+            # The same line the model path writes, so every email that yields
+            # legs has one. The kind is where the legs came from: no model saw
+            # this email, so nothing classified it.
+            logger.info("gmail email %s kind=%s received_at=%s legs=%d",
+                        m.get("id") or "?", "jsonld", m.get("received_at") or "?", len(m["jsonld"]))
             for raw in m["jsonld"]:
                 leg = clean_leg(raw, today, source=m)
                 if leg is not None:

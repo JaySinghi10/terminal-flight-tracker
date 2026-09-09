@@ -143,8 +143,8 @@ check("the number is normalised", leg["flight_number"] == "6E5071", leg)
 check("a code stays a code, a name stays a name",
       leg["origin"] == "BOM" and leg["origin_name"] is None and leg["destination"] is None and leg["destination_name"] == "Bengaluru", leg)
 check("the PNR is upper-cased", leg["pnr"] == "R7K3XQ")
-check("the source is subject and date only -- never the body",
-      set(leg["source"].keys()) == {"subject", "received"} and "body" not in leg["source"])
+check("the source is subject, day and instant only -- never the body",
+      set(leg["source"].keys()) == {"subject", "received", "received_at"} and "body" not in leg["source"])
 
 check("a date before today is dropped",
       g.clean_leg(dict(good, date="2026-09-07"), TODAY, src) is None)
