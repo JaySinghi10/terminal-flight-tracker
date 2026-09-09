@@ -306,9 +306,33 @@ export function localIsoDate(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// ── THE LOCAL DAY, AS A REAL ISO DAY ────────────────────────────────────────
+//
+// IT USED TO RETURN `${year}-${getMonth()}-${getDate()}`, WHICH IS NOT A DATE.
+// getMonth is ZERO-BASED and neither part was padded, so today came back as
+// "2026-8-9" rather than "2026-09-09".
+//
+// HARMLESS WHERE IT WAS ONLY COMPARED TO ITSELF -- the day-rollover tick and the
+// daily retry stamp only ask whether the key CHANGED -- and silently
+// catastrophic where it met a genuine ISO date. pendingRules compares a leg's
+// `date` against this key with `<`, and comparing "2026-09-25" to "2026-8-9"
+// stops at the first differing character: '0' is less than '8', so the leg
+// reads as PAST.
+//
+// EVERY FUTURE DATE READ AS PAST, not merely some. With the month rendered as
+// "8", any date written "09", "10", "11" or "12" loses that comparison. So
+// addToPending refused every leg with 'past' and retryBatch deleted any leg
+// that had somehow got in. The pending queue could not hold anything at all,
+// which is why two legs of a real booking appeared in no list on any screen.
+//
+// PADDED AND ONE-BASED NOW. The stamp comparisons are unaffected because they
+// only test equality; the stored retry stamp in the old format differs from the
+// new one once, which costs one extra sweep and nothing else.
 export function localDayKey(ts: number) {
   const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
 // The instant a flight arrived, or is expected to. Actual first, then the
