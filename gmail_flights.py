@@ -31,7 +31,8 @@ date, so the lookup never knew which day it was looking up.
 THESE ARE PEOPLE'S BOOKING CONFIRMATIONS. Bodies go to the model and nowhere
 else: never to the log, never to storage, never back to the client. The log
 carries counts, outcome codes, Gmail message ids, the classified kind of an
-email and the instant it arrived -- never a subject, a sender or a body. The
+email, the instant it arrived, and for each merge decision the flight number
+and date it concerned -- never a subject, a sender or a body. The
 truncation to BODY_MAX_CHARS is
 applied here, on every body, before it is handed anywhere -- it is not a limit
 somebody upstream is trusted to have applied.
@@ -323,9 +324,12 @@ def jsonld_legs(markup: str) -> list[dict]:
 
     schema.org's Flight carries flightNumber as the NUMBER ALONE ("100") beside
     airline.iataCode ("AA"); some senders put "AA100" in flightNumber directly.
-    Both are read. A cancelled reservationStatus is skipped. The operating
-    carrier, where a sender names one under `provider`, is carried as
-    operated_by; the schema has no field for the operating flight NUMBER.
+    Both are read. A cancelled reservationStatus USED TO BE SKIPPED; it is
+    emitted with leg_status cancelled now, so a structured cancellation reaches
+    the merge by the same path a modelled one does and can mark the leg an
+    earlier email confirmed. The operating carrier, where a sender names one
+    under `provider`, is carried as operated_by; the schema has no field for
+    the operating flight NUMBER.
     """
     legs = []
     for doc in _jsonld_blocks(markup):
@@ -333,8 +337,7 @@ def jsonld_legs(markup: str) -> list[dict]:
         _walk(doc, found)
         for res in found:
             status = str(res.get("reservationStatus") or "")
-            if "Cancelled" in status or "Canceled" in status:
-                continue
+            cancelled = "Cancelled" in status or "Canceled" in status
             pnr = res.get("reservationNumber") or res.get("reservationId")
             flights = res.get("reservationFor")
             flights = flights if isinstance(flights, list) else [flights]
@@ -366,6 +369,11 @@ def jsonld_legs(markup: str) -> list[dict]:
                     "operated_by": provider.get("name") if provider else None,
                     "operating_flight_number": None,
                     "confidence": 1.0,
+                    # THE SENDER'S OWN WORD FOR IT. A cancelled reservation is a
+                    # cancellation notice for its legs; anything else is a
+                    # confirmation, which is what a structured itinerary is.
+                    "leg_status": "cancelled" if cancelled else "scheduled",
+                    "email_kind": "cancellation" if cancelled else "confirmation",
                 })
     return legs
 
@@ -800,10 +808,12 @@ def extract_with_model(m: dict, today) -> list[dict]:
     legs = legs if isinstance(legs, list) else []
     # A LEG NAMED IN A CANCELLATION IS CANCELLED, whatever the model wrote on
     # it. Stamped here so the downstream reader never depends on the model
-    # having remembered the per-leg field.
-    if kind == "cancellation":
-        for leg in legs:
-            if isinstance(leg, dict):
+    # having remembered the per-leg field. THE KIND RIDES ON EVERY LEG TOO:
+    # the merge decides by it and logs it, and a leg is all the merge sees.
+    for leg in legs:
+        if isinstance(leg, dict):
+            leg["email_kind"] = kind
+            if kind == "cancellation":
                 leg["leg_status"] = "cancelled"
     # ONE LINE PER EMAIL THE MODEL SAW. Id, kind, instant and a count: nothing
     # printed in the email reaches the log.
@@ -888,6 +898,12 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
     status = raw.get("leg_status")
     if status not in LEG_STATUSES:
         status = "scheduled"
+    # THE KIND OF EMAIL THE LEG CAME FROM, on the same terms. A leg with none
+    # -- an older caller, a test -- is a confirmation, which is what every leg
+    # was before emails were classified.
+    kind = raw.get("email_kind")
+    if kind not in EMAIL_KINDS:
+        kind = "confirmation"
     return {
         "flight_number": number,
         "date": day,
@@ -905,10 +921,13 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
         "operating_flight_number": op_num,
         "pnr": pnr,
         "confidence": round(conf, 2),
-        # scheduled or cancelled. CARRIED, NOT YET ACTED ON: the merge below
-        # still keys on number and date and ignores this. Ordering the emails
-        # about one leg so the newest status wins is the next step.
+        # scheduled or cancelled. The merge below acts on it: a cancelled leg
+        # marks the stored copy rather than replacing it.
         "leg_status": status,
+        # WHAT THE EMAIL WAS. The merge's reason for each decision, and the
+        # word it logs. Beside leg_status rather than inside source, because
+        # source is what the app shows a person and this is bookkeeping.
+        "email_kind": kind,
         # WHERE IT CAME FROM: the subject and the received date, so the app can
         # say "from your BA email of 3 March". Never the body. received_at is
         # the same arrival to the millisecond, for ordering.
@@ -920,30 +939,78 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
     }
 
 
-def merge(legs: list[dict]) -> list[dict]:
-    """Collapse the same leg seen in several emails, keep the surest copy.
+def _received_order(leg: dict):
+    """Sort key: the instant the email arrived, with the undated last.
 
-    One booking arrives three times: the confirmation, the e-ticket and the
-    reminder. Keyed on number and date, which is what the app keys a saved
-    flight on too.
+    received_at is an ISO-8601 UTC string with a fixed layout, so the strings
+    order as the instants do. A leg whose email carries no instant -- a fixture
+    read from a file, a test -- cannot be placed and goes after every leg that
+    can, in the order it came.
     """
-    best = {}
-    for leg in legs:
+    at = (leg.get("source") or {}).get("received_at")
+    return (1, "") if not at else (0, at)
+
+
+def merge(legs: list[dict]) -> list[dict]:
+    """One entry per leg, the way the LATEST email left it.
+
+    ── WHAT THE UNION GOT WRONG ────────────────────────────────────────────
+    The old merge kept the copy with the higher confidence and filled its
+    blanks from the rest. Nothing ordered the emails, so nothing could
+    supersede anything: a reschedule lost to a surer original, and a
+    cancellation could not touch a confirmation at all -- it was not even
+    extracted. Confidence measures how well a field was READ, not whether it
+    is still TRUE, and the second is what a person needs.
+
+    ── THE RULES, IN ARRIVAL ORDER ─────────────────────────────────────────
+    Emails are walked oldest to newest by the instant Gmail received them.
+    Keyed on number and date, which is what the app keys a saved flight on.
+      - A confirmation or change leg not yet seen is ADDED.
+      - A confirmation or change leg already seen UPDATES the stored copy:
+        the later email's values win wherever the two disagree, and its
+        blanks are filled from the stored copy, as before. Recency is the
+        better signal for every field but one.
+      - A cancellation leg MARKS the stored copy cancelled and changes nothing
+        else on it. With no stored copy the leg is added as it is, carrying
+        cancelled, so the app can still show what was called off.
+      - CANCELLED IS STICKY. Once marked, no later confirmation or change leg
+        on the same number and date puts leg_status back to scheduled; it may
+        update every other field. A rebooking onto the same flight is rare
+        and a re-sent itinerary that still lists a cancelled leg is not, so
+        the status that costs a person a trip is the one that must not flip
+        on a restatement.
+      - A leg is NEVER removed by absence. An itinerary that no longer lists
+        a leg says nothing about it; only an explicit cancellation may mark.
+    """
+    stored = {}
+    for leg in sorted(legs, key=_received_order):
         key = (leg["flight_number"], leg["date"])
-        cur = best.get(key)
-        # A structured leg carries confidence 1.0 and so wins on the same rule.
-        if cur is None or leg["confidence"] > cur["confidence"]:
-            # Keep any field the other copy had and this one lacks.
-            if cur is not None:
-                for k, v in cur.items():
-                    if leg.get(k) in (None, "") and v not in (None, ""):
-                        leg[k] = v
-            best[key] = leg
+        kind = leg.get("email_kind") or "confirmation"
+        cur = stored.get(key)
+        if leg.get("leg_status") == "cancelled":
+            if cur is None:
+                stored[key] = leg
+                action = "added cancelled"
+            else:
+                cur["leg_status"] = "cancelled"
+                action = "marked cancelled"
+        elif cur is None:
+            stored[key] = leg
+            action = "added"
         else:
-            for k, v in leg.items():
-                if cur.get(k) in (None, "") and v not in (None, ""):
-                    cur[k] = v
-    return sorted(best.values(), key=lambda l: (l["date"], l["departure_time"] or "99:99", l["flight_number"]))
+            # THE LATER EMAIL WINS; the earlier one fills what it left blank.
+            for k, v in cur.items():
+                if leg.get(k) in (None, "") and v not in (None, ""):
+                    leg[k] = v
+            # EXCEPT THE STATUS, WHICH ONLY EVER GOES ONE WAY. See the rules.
+            if cur.get("leg_status") == "cancelled":
+                leg["leg_status"] = "cancelled"
+            stored[key] = leg
+            action = "updated"
+        # ONE LINE PER DECISION. The number and the date name the leg; the
+        # kind is why; the action is what. No subject, sender or body.
+        logger.info("gmail merge %s %s kind=%s %s", leg["flight_number"], leg["date"], kind, action)
+    return sorted(stored.values(), key=lambda l: (l["date"], l["departure_time"] or "99:99", l["flight_number"]))
 
 
 # ══════════════════════════════════════════════════════════════════════════

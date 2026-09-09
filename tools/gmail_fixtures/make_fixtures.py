@@ -164,6 +164,30 @@ Order ID 7781. If you did not request this, contact us on the number below.
 
 British Airways Customer Relations
 """)
-write("06_cancellation_no_flights.eml", cancel)
+write("06_cancellation_named_legs.eml", cancel)
 
-print("wrote 7 fixtures to", HERE)
+# ── 7. AN AIRLINE CANCELLATION THAT NAMES THE FLIGHT ────────────────────────
+# The notice an airline sends when IT cancels: one flight, its date and route
+# printed plainly, a rebooking offer, and no itinerary restated. This is the
+# email the merge exists for -- classified as a cancellation, it must return
+# the one leg it names, carrying cancelled.
+ai_cancel = base("Flight cancellation: AI 605 Mumbai - Delhi on 17 Oct 2026",
+                 "Air India <noreply@airindia.com>", "Mon, 07 Sep 2026 11:20:00 +0530")
+ai_cancel.set_content("""Dear Mr Singhi,
+
+We regret to inform you that the following flight on your booking has been
+cancelled due to operational reasons.
+
+Booking reference  T6V2RD
+AI 605   Mumbai (BOM) -> New Delhi (DEL)
+Sat, 17 Oct 2026   Scheduled departure 07:00
+
+You may rebook on an alternative Air India flight at no extra charge, or
+request a full refund, at airindia.com/manage or by calling us.
+
+We apologise for the inconvenience.
+Air India Customer Support
+""")
+write("07_cancellation_named_flight.eml", ai_cancel)
+
+print("wrote 8 fixtures to", HERE)

@@ -207,7 +207,8 @@ check("the provider is carried as the operating airline", legs[1]["operated_by"]
 check("structured legs carry confidence 1.0", legs[0]["confidence"] == 1.0)
 
 cancelled = LD.replace("ReservationConfirmed", "ReservationCancelled")
-check("a cancelled reservation yields nothing", g.jsonld_legs(cancelled) == [])
+check("a cancelled reservation yields its legs, marked cancelled",
+      [l["leg_status"] for l in g.jsonld_legs(cancelled)] == ["cancelled", "cancelled"])
 nested = '<script type="application/ld+json">{"@graph":[{"@type":"Thing"},' + LD.split('<script type="application/ld+json">')[1].split("</script>")[0].strip() + ']}</script>'
 check("a reservation nested under @graph is still found", len(g.jsonld_legs(nested)) == 2)
 check("no block, no legs", g.jsonld_legs("<p>plain email</p>") == [])
