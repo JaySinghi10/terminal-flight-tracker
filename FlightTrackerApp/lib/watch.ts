@@ -140,8 +140,8 @@ const WATCH_SECRET = process.env.EXPO_PUBLIC_WATCH_SECRET ?? '';
 //
 // THE SECRET RIDES HERE RATHER THAN AT THE TWO CALL SITES, so /watch and
 // /unwatch cannot come to disagree about whether they send it.
-async function post(apiBase: string, path: string, payload: object): Promise<void> {
-  await fetch(`${apiBase}${path}`, {
+async function post(apiBase: string, path: string, payload: object): Promise<number> {
+  const resp = await fetch(`${apiBase}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -149,6 +149,51 @@ async function post(apiBase: string, path: string, payload: object): Promise<voi
     },
     body: JSON.stringify(payload),
   });
+  return resp.status;
+}
+
+// ── A REGISTRATION THAT DID NOT LAND MUST NOT LOOK LIKE ONE THAT DID ───────
+//
+// THE NOTE ABOVE SAID A NON-2xx WAS NOT WORTH READING, and it was wrong in one
+// specific way that cost three builds. A dropped packet is transient and the
+// next save retries it, which is the case that reasoning was about. A 404 from
+// a rejected secret is not transient: it is a build that can never register
+// anything, and it is indistinguishable from success from in here.
+//
+// That is exactly what happened. Every TestFlight build inlined an empty watch
+// secret, because the value lives in a .env that is git-ignored and EAS builds
+// from git. Every save on every one of those builds wrote locally, failed at
+// the server, and said nothing. The poller never learned those flights existed,
+// so no notification could ever be sent about them.
+//
+// THE STATUS IS REPORTED, THE SECRET IS NOT. A rejected secret in a log is a
+// secret in a log, which is the same rule the server keeps at its own end.
+export type WatchFailure = {
+  path: string;
+  // null when the request never got far enough to have one -- no network, or a
+  // failure reading the device id.
+  status: number | null;
+};
+
+// ONE REPORTER, SET BY THE APP, because this module cannot reach a toast: it is
+// imported BY the screens, so importing one back would be a cycle. A screen
+// registers a function and decides what to do with the news; nothing here knows
+// what a toast is.
+let reporter: ((failure: WatchFailure) => void) | null = null;
+
+export function onWatchFailure(fn: ((failure: WatchFailure) => void) | null): void {
+  reporter = fn;
+}
+
+function report(path: string, status: number | null): void {
+  // ALWAYS LOGGED, whether or not anything is listening, because a development
+  // build has a console and no toast worth interrupting.
+  console.warn(`[watch] ${path} did not register (status ${status ?? 'no response'})`);
+  try {
+    reporter?.({ path, status });
+  } catch {
+    // A reporter that throws must not take the caller down with it.
+  }
 }
 
 // apiBase is a parameter rather than an import because index.tsx imports this
@@ -165,7 +210,7 @@ export function registerWatch(apiBase: string, flightNumber: string, flightDate:
   if (!ISO_DAY_RE.test(flightDate)) return;
   void (async () => {
     try {
-      await post(apiBase, '/watch', {
+      const status = await post(apiBase, '/watch', {
         device_id: await deviceId(),
         push_token: await pushToken(),
         platform: platformName(),
@@ -175,8 +220,12 @@ export function registerWatch(apiBase: string, flightNumber: string, flightDate:
         flight_date: flightDate,
         owned,
       });
+      if (status < 200 || status >= 300) report('/watch', status);
     } catch {
-      // Invisible, by design. See the note at the top of this file.
+      // The throw carries no status: the request never completed, or the device
+      // id could not be read. Reported all the same, because the outcome for
+      // the user is identical -- the server does not know about this flight.
+      report('/watch', null);
     }
   })();
 }
@@ -185,13 +234,14 @@ export function deregisterWatch(apiBase: string, flightNumber: string, flightDat
   if (!ISO_DAY_RE.test(flightDate)) return;
   void (async () => {
     try {
-      await post(apiBase, '/unwatch', {
+      const status = await post(apiBase, '/unwatch', {
         device_id: await deviceId(),
         flight_number: flightNumber.toUpperCase(),
         flight_date: flightDate,
       });
+      if (status < 200 || status >= 300) report('/unwatch', status);
     } catch {
-      // Invisible, by design.
+      report('/unwatch', null);
     }
   })();
 }

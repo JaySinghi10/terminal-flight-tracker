@@ -140,6 +140,8 @@ import { useFlightCardHost, FlightError } from '../../lib/flightcard';
 import { useAccount } from '../../lib/account';
 // A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
 import { pendingFromLeg, type PendingLeg } from '../../lib/pendingRules';
+// The registration's own failure channel. See the effect that consumes it.
+import { onWatchFailure } from '../../lib/watch';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -1298,6 +1300,33 @@ export default function Index() {
   // raises most of them now — a banner drawn here reports nothing while the user
   // is looking at a search result.
   const { showToast } = useToast();
+
+  // ── A SAVE THAT DID NOT REACH THE SERVER SAYS SO ─────────────────────────
+  //
+  // WRITTEN AFTER THREE BUILDS FAILED SILENTLY. Every TestFlight build inlined
+  // an empty watch secret, so every registration was refused and every save
+  // still looked like it had worked. The flights were on the phone and the
+  // server had never heard of them, which means the poller never watched them
+  // and no notification could ever have been sent.
+  //
+  // ONCE PER SESSION, NOT ONCE PER FLIGHT. A Gmail pull registers every leg it
+  // adds, so a broken build would otherwise fire one banner per leg and bury
+  // the point under its own repetition. The ref is deliberately never reset:
+  // the failure this exists for is a misconfiguration that will not fix itself
+  // while the app is open.
+  //
+  // HOME CARRIES IT because Home is the first tab and the screen the pull lives
+  // on. lib/watch.ts cannot show this itself -- the screens import it, so
+  // importing a toast back would be a cycle.
+  const toldOfWatchFailure = useRef(false);
+  useEffect(() => {
+    onWatchFailure(() => {
+      if (toldOfWatchFailure.current) return;
+      toldOfWatchFailure.current = true;
+      showToast('saved here, but not on the server');
+    });
+    return () => onWatchFailure(null);
+  }, [showToast]);
   // THE GMAIL TOKEN. This screen only ever WRITES it — sign-in and logout are
   // both here — and the search screen is what reads it, for the /chat request.
   // See lib/account.tsx.
