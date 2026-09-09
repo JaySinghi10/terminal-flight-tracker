@@ -5,7 +5,24 @@ const KEY_PREFIX = 'savedFlights:';
 const GUEST_KEY = `${KEY_PREFIX}guest`;
 const BACKUP_PREFIX = 'backup:v1:';
 const SCHEMA_VERSION = 13;
-export const MAX_SAVED_FLIGHTS = 20;
+// ── NOT A LIMIT TODAY, AND THE NUMBER SAYS SO ──────────────────────────────
+//
+// TWENTY WAS COSTING MORE THAN IT BOUGHT. A single real booking is three or
+// four legs of it, and the Gmail pull hit the ceiling mid-itinerary: one leg of
+// a Copenhagen journey saved, the second refused, the third never attempted.
+//
+// THE MECHANISM STAYS AND THE CEILING MOVES, rather than the check being
+// deleted. A limit will come back when there is a reason for one, and when it
+// does it should be this number and not a new idea.
+//
+// THE REAL CONSTRAINT IS THE PROVIDER BUDGET, NOT THIS. AeroDataBox gives 5,000
+// units a month and one watched flight costs 114 to 170 of them over its life,
+// plus 4 a day for every day it sits more than 48 hours out. That is 38 flights
+// a month if they are saved two days ahead and about 20 if they are saved a
+// month ahead -- so twenty was the budget expressed as a count, whether or not
+// it was chosen that way. Removing it does not create headroom; it moves where
+// the wall is from a refusal in the app to a provider bill.
+export const MAX_SAVED_FLIGHTS = 500;
 
 export type SavedFlightEndpoint = {
   iata: string;

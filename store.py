@@ -58,7 +58,11 @@ REDACTED = "[redacted]"
 WATCHES_KEY = "watches.json"
 WATCH_STORE_VERSION = 1
 
-MAX_WATCHES_PER_DEVICE = 20
+# RAISED WITH THE DEVICE'S OWN LIMIT, and it has to move with it: a phone
+# allowed to save more flights than the server will watch would register the
+# first twenty and silently fail on the rest, which is the exact failure the
+# watch registration was just taught to report. One ceiling on two sides.
+MAX_WATCHES_PER_DEVICE = 500
 MAX_WATCHES_TOTAL = 5000
 MAX_PUSH_TOKEN_CHARS = 256
 

@@ -1456,6 +1456,11 @@ export default function Index() {
     const added: SavedFlight[] = [];
     let limit = false;
     let queued = 0;
+    // Legs a save refused. Counted rather than inferred from the arithmetic,
+    // because legs also leave this loop by being queued or already present, and
+    // "how many were turned away" is a different question from "how many are
+    // missing".
+    let skipped = 0;
     const tried: string[] = [];
     for (const leg of legs) {
       // THE OPERATING NUMBER FIRST, THEN THE MARKETING ONE. An email that
@@ -1524,7 +1529,16 @@ export default function Index() {
         // statement about any single leg. Six reminders nobody asked for is how
         // somebody turns notifications off altogether.
         const outcome = await ownFlight(record, undefined, { capped: true, remind: false });
-        if (!outcome.ok) { limit = true; break; }
+        if (!outcome.ok) {
+          // SKIPPED, NOT THE END OF THE PULL. This used to break, which cost
+          // more than the refused leg: a booking of three legs lost the second
+          // to the ceiling and the third was never attempted at all. It also
+          // cost the pending path, because a leg the provider cannot resolve
+          // never reaches a save and would have queued happily.
+          limit = true;
+          skipped += 1;
+          continue;
+        }
         added.push(record);
       } catch {
         // One leg that will not look up is skipped; the rest still go in.
@@ -1542,22 +1556,37 @@ export default function Index() {
       // Flights, so "watchlist limit" would send somebody to look at the wrong
       // screen for something to remove. Twenty is the number in both, because
       // it is one store.
-      if (limit) showToast('20 flights is the limit — remove one first');
+      // THE ONLY PLACE A TOAST IS VISIBLE FOR THIS, because nothing was added
+      // so there is no undo banner to be covered by.
+      if (limit) showToast('some flights could not be added');
       else if (queued > 0) showToast(queued === 1 ? '1 flight not in the schedule yet' : `${queued} flights not in the schedule yet`);
       else if (legs.length > 0) showToast('already in My Flights');
       return;
     }
     // WITHIN THE BANNER'S 26 CHARACTERS: "added 6E5071 · 14 Sep" is 21, and
     // "added 6E5071 +2 more" is 20 at the longest number this app sees.
+    // ── THE COUNT OF WHAT WAS TURNED AWAY GOES IN THE BANNER ────────────────
+    //
+    // NOT IN A TOAST BESIDE IT, and that is the bug this replaces rather than a
+    // preference. showToast and showUndo draw at the SAME coordinates -- one
+    // toastWrap, one top inset -- and the undo banner renders after the toast,
+    // so it paints over it. The "some were not added" toast below was firing
+    // correctly and was covered by the banner every time. A partial add looked
+    // exactly like a complete one.
+    //
+    // SO THE ONE VISIBLE MESSAGE CARRIES BOTH FACTS. It stays inside the 26
+    // characters the banner fits at 320pt: "added SK936 · 2 skipped" is 23.
     const first = added[0];
+    const tail = skipped > 0 ? ` · ${skipped} skipped` : '';
     const label = added.length === 1
-      ? `added ${first.flightNumber} · ${routeDateLabel(first.flightDate).replace(/^\w+ /, '')}`
-      : `added ${first.flightNumber} +${added.length - 1} more`;
+      ? `added ${first.flightNumber}${tail || ` · ${routeDateLabel(first.flightDate).replace(/^\w+ /, '')}`}`
+      : `added ${first.flightNumber} +${added.length - 1}${tail || ' more'}`;
     showUndo(label, async () => {
       for (const r of added) await handleUnsave(r);
       showToast(added.length === 1 ? `${first.flightNumber} removed` : `${added.length} flights removed`);
     });
-    if (limit) showToast('watchlist limit reached — some were not added');
+    // NO SECOND MESSAGE HERE. It would be drawn under the banner above and
+    // never seen; the banner's own label carries the count instead.
   };
 
   const [request, response, promptAsync] = Google.useAuthRequest({
