@@ -372,6 +372,7 @@ def jsonld_legs(markup: str) -> list[dict]:
                 dep = fl.get("departureAirport") if isinstance(fl.get("departureAirport"), dict) else {}
                 arr = fl.get("arrivalAirport") if isinstance(fl.get("arrivalAirport"), dict) else {}
                 dep_time = str(fl.get("departureTime") or "")
+                arr_time = str(fl.get("arrivalTime") or "")
                 provider = fl.get("provider") if isinstance(fl.get("provider"), dict) else {}
                 legs.append({
                     "flight_number": num,
@@ -379,6 +380,16 @@ def jsonld_legs(markup: str) -> list[dict]:
                     # its own offset and its first ten characters are the day.
                     "date": dep_time[:10],
                     "departure_time": dep_time[11:16] if len(dep_time) >= 16 else None,
+                    # THE ARRIVAL, ON THE SAME TERMS AS THE DEPARTURE: the local
+                    # clock and the local day as the sender wrote them, read off
+                    # one string and neither converted. schema.org's arrivalTime
+                    # carries its own offset exactly as departureTime does, and
+                    # its first ten characters are the day the aircraft lands --
+                    # which is the day AFTER the departure on an overnight leg,
+                    # and is why the date is read rather than assumed to be the
+                    # departure's.
+                    "arrival_time": arr_time[11:16] if len(arr_time) >= 16 else None,
+                    "arrival_date": arr_time[:10] if len(arr_time) >= 10 else None,
                     "origin": _code(dep, "iataCode") or dep.get("name"),
                     "destination": _code(arr, "iataCode") or arr.get("name"),
                     "airline": airline.get("name") if isinstance(airline, dict) else None,
@@ -648,6 +659,27 @@ EXTRACT_TOOL = {
                             "type": "string",
                             "description": "Departure time as HH:MM, 24-hour, if printed.",
                         },
+                        "arrival_time": {
+                            "type": "string",
+                            "description": (
+                                "Arrival time as HH:MM, 24-hour, ONLY if the "
+                                "email prints one. Never work it out from a "
+                                "duration, from the departure plus a flight "
+                                "time, or from a schedule you know."
+                            ),
+                        },
+                        "arrival_date": {
+                            "type": "string",
+                            "description": (
+                                "Arrival date as YYYY-MM-DD, local to the "
+                                "ARRIVAL airport, only if the email prints one. "
+                                "An overnight leg lands on a different calendar "
+                                "day from the one it left, and airlines print "
+                                "that day beside the arrival time. Where the "
+                                "email gives one date for the whole leg, that "
+                                "is the departure date: omit this."
+                            ),
+                        },
                         "airline": {"type": "string", "description": "The MARKETING airline, whose code is on the flight number."},
                         "operated_by": {
                             "type": "string",
@@ -728,6 +760,15 @@ def _system_prompt(today) -> str:
         "Dates are the departure's local calendar date as YYYY-MM-DD. If no "
         "year is printed, resolve it from the received date in the message: "
         "the next occurrence on or after that date.\n"
+        "THE ARRIVAL IS OPTIONAL AND IS NEVER COMPUTED. Where the email prints "
+        "an arrival time, return it as arrival_time; where it prints the day the "
+        "flight lands -- an overnight leg lands on a different date from the one "
+        "it left -- return that as arrival_date. Where it prints neither, omit "
+        "both and say nothing about the arrival. Never derive one from a "
+        "duration, from the departure plus a flight time, or from a schedule you "
+        "know: an arrival nobody printed is a guess with a clock on it. A "
+        "boarding pass or a short cancellation notice often prints no arrival at "
+        "all, and that is an ordinary answer.\n"
         "The booking reference is the short code labelled PNR, booking "
         "reference, record locator or confirmation. It is never the 13-digit "
         "ticket number.\n"
@@ -874,6 +915,7 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
     except ValueError:
         return None
     # THE YEAR ROLLOVER. See ROLLOVER_MIN_GAP_DAYS for why the gap is tested.
+    rolled = False
     received = None
     try:
         rd = (source or {}).get("received")
@@ -886,6 +928,7 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
         except ValueError:
             return None            # 29 Feb into a year without one
         day = when.isoformat()
+        rolled = True
     # DROP ANYTHING BEFORE TODAY. "Upcoming" is the contract.
     if when < today:
         return None
@@ -905,6 +948,35 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
     dep_time = _s(raw.get("departure_time"), 5)
     if dep_time and not re.match(r"^\d{2}:\d{2}$", dep_time):
         dep_time = None
+    # ── THE ARRIVAL, CHECKED LIKE THE DEPARTURE AND DROPPED LIKE A FIELD ─────
+    #
+    # A BAD VALUE COSTS THE FIELD, NOT THE LEG. Every other test above returns
+    # None and loses the whole leg, because a leg with no number or no date is
+    # not a leg. An arrival is what lets the app say how long a layover is, and
+    # a leg without one is still a flight somebody is on -- so an unparseable
+    # arrival is simply not carried.
+    arr_time = _s(raw.get("arrival_time"), 5)
+    if arr_time and not re.match(r"^\d{2}:\d{2}$", arr_time):
+        arr_time = None
+    arr_day = _s(raw.get("arrival_date"), 10)
+    if arr_day is not None and not DAY_RE.match(arr_day):
+        arr_day = None
+    if arr_day is not None:
+        try:
+            arr_when = datetime.strptime(arr_day, "%Y-%m-%d").date()
+        except ValueError:
+            arr_day = None
+        else:
+            # THE SAME BUMP THE DEPARTURE TOOK, when it took one. The rollover
+            # fires because the email printed no year and the wrong one was
+            # resolved; an arrival printed beside that departure is wrong the
+            # same way, and an arrival a year before its own departure would
+            # make every interval computed from it negative.
+            if rolled:
+                try:
+                    arr_day = arr_when.replace(year=arr_when.year + 1).isoformat()
+                except ValueError:
+                    arr_day = None
     o_iata, o_name = _place(raw.get("origin"))
     d_iata, d_name = _place(raw.get("destination"))
     op_num = re.sub(r"\s+", "", str(raw.get("operating_flight_number") or "")).upper() or None
@@ -925,6 +997,11 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
         "flight_number": number,
         "date": day,
         "departure_time": dep_time,
+        # BOTH ABSENT UNLESS THE EMAIL PRINTED THEM. Nothing here fills them in,
+        # and no reader may treat a missing arrival as a statement of any kind
+        # about when the flight lands.
+        "arrival_time": arr_time,
+        "arrival_date": arr_day,
         "origin": o_iata,
         "origin_name": o_name,
         "destination": d_iata,
@@ -982,8 +1059,11 @@ def _received_order(leg: dict):
 #     code can never arrive in the name's slot to overwrite anything.
 #   operating_flight_number, pnr and flight_number ARE codes. Protecting them
 #     would mean refusing the correction a later email exists to make.
-#   departure_time, date, confidence, leg_status and the source are not names,
-#     and leg_status has its own one-way rule already.
+#   departure_time, arrival_time, date, arrival_date, confidence, leg_status
+#     and the source are not names. The two arrival fields take the ordinary
+#     rule, which is what they want: a later email that revises an arrival is
+#     stating a new fact, and one that omits it leaves the stored value alone
+#     through the blank-fill above.
 NAME_FIELDS = ("airline", "operated_by")
 
 
