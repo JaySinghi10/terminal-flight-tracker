@@ -39,7 +39,19 @@ export type PendingLeg = {
 // a day until the airline publishes it; ten is ten units against roughly four
 // thousand nine hundred a month, and more than ten unpublished bookings at
 // once is not a traveller this app has met.
-export const MAX_PENDING = 10;
+// ── NOT A LIMIT TODAY, FOR THE REASON THE OTHER TWO ARE NOT ────────────────
+//
+// TEN WAS FULL AND NOBODY COULD HAVE KNOWN. A booking of three legs where two
+// are unpublished puts two here at once, and a few pulls of test mail filled it
+// silently -- after which every further unpublished leg was refused and said
+// nothing. That is how a real booking lost its second and third legs.
+//
+// IT MOVES WITH MAX_SAVED_FLIGHTS AND MAX_WATCHES_PER_DEVICE, which are now 500
+// for the same reason. A limit here is cheaper than either of those, because a
+// pending leg costs one provider lookup a day rather than a whole poll tier --
+// so if a real ceiling ever comes back, this one should be the highest of the
+// three rather than the lowest.
+export const MAX_PENDING = 500;
 export const DAILY_RETRY_MAX = 10;
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;

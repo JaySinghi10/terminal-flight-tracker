@@ -139,7 +139,7 @@ import { useFlightCardHost, FlightError } from '../../lib/flightcard';
 // is the one piece of the account that had to stop being one screen's.
 import { useAccount } from '../../lib/account';
 // A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
-import { pendingFromLeg, type PendingLeg } from '../../lib/pendingRules';
+import { pendingFromLeg, MAX_PENDING, type PendingLeg } from '../../lib/pendingRules';
 // The registration's own failure channel. See the effect that consumes it.
 import { onWatchFailure } from '../../lib/watch';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
@@ -1461,6 +1461,12 @@ export default function Index() {
     // "how many were turned away" is a different question from "how many are
     // missing".
     let skipped = 0;
+    // EVERY WAY A LEG CAN BE TURNED AWAY, COUNTED BY NAME. The queue used to
+    // report only its successes -- `if (r === 'added')` and nothing else -- so a
+    // duplicate, a full queue and a past date all vanished identically. That is
+    // what lost the second and third legs of a real booking: the queue was at
+    // its old cap of ten and refused them in silence.
+    const refused: Record<'dup' | 'limit' | 'past', number> = { dup: 0, limit: 0, past: 0 };
     const tried: string[] = [];
     for (const leg of legs) {
       // THE OPERATING NUMBER FIRST, THEN THE MARKETING ONE. An email that
@@ -1485,6 +1491,7 @@ export default function Index() {
           // day until the airline publishes it. See lib/pendingRules.ts.
           const r = await addPendingLeg(pendingFromLeg(leg, Date.now()));
           if (r === 'added') queued += 1;
+          else refused[r] += 1;
           tried.push(pendingFromLeg(leg, Date.now()).id);
           continue;
         }
@@ -1551,14 +1558,35 @@ export default function Index() {
     for (const r of retry.resolved) added.push(r);
     if (retry.limit) limit = true;
 
+    // ── WHAT WAS TURNED AWAY, WHEREVER IT WAS TURNED AWAY ──────────────────
+    //
+    // ALWAYS LOGGED, so a development build can see the breakdown even when the
+    // banner has room for only a number. A refusal that is counted but never
+    // named is the same failure one layer along.
+    const refusedTotal = refused.dup + refused.limit + refused.past;
+    if (refusedTotal > 0 || skipped > 0) {
+      console.warn(
+        `[pull] ${skipped} not saved, ${refusedTotal} not queued`
+        + ` (duplicate ${refused.dup}, queue full ${refused.limit}, past ${refused.past})`,
+      );
+    }
+    // A DUPLICATE IS NOT A LOSS AND IS NOT COUNTED AS ONE. The leg is already in
+    // the queue, which is the state the person wanted; saying "1 skipped" for it
+    // would report a problem that does not exist. Only the two refusals that
+    // lose a leg are surfaced.
+    const lost = skipped + refused.limit + refused.past;
+
     if (added.length === 0) {
       // THE CAP'S MESSAGE NAMES THE RIGHT PLACE NOW. These legs go to My
       // Flights, so "watchlist limit" would send somebody to look at the wrong
       // screen for something to remove. Twenty is the number in both, because
       // it is one store.
       // THE ONLY PLACE A TOAST IS VISIBLE FOR THIS, because nothing was added
-      // so there is no undo banner to be covered by.
-      if (limit) showToast('some flights could not be added');
+      // so there is no undo banner to be covered by. Named rather than generic:
+      // a full queue is something the person can act on by forgetting old
+      // entries, and a past date is not.
+      if (refused.limit > 0) showToast('the pending list is full — forget one');
+      else if (lost > 0) showToast(`${lost} flight${lost === 1 ? '' : 's'} could not be added`);
       else if (queued > 0) showToast(queued === 1 ? '1 flight not in the schedule yet' : `${queued} flights not in the schedule yet`);
       else if (legs.length > 0) showToast('already in My Flights');
       return;
@@ -1577,7 +1605,7 @@ export default function Index() {
     // SO THE ONE VISIBLE MESSAGE CARRIES BOTH FACTS. It stays inside the 26
     // characters the banner fits at 320pt: "added SK936 · 2 skipped" is 23.
     const first = added[0];
-    const tail = skipped > 0 ? ` · ${skipped} skipped` : '';
+    const tail = lost > 0 ? ` · ${lost} skipped` : '';
     const label = added.length === 1
       ? `added ${first.flightNumber}${tail || ` · ${routeDateLabel(first.flightDate).replace(/^\w+ /, '')}`}`
       : `added ${first.flightNumber} +${added.length - 1}${tail || ' more'}`;
@@ -2445,6 +2473,18 @@ export default function Index() {
           {pending.length > 0 && flight === null && (
             <View style={gm.wrap}>
               <Text style={c.detailsTitle}>{'not in the schedule yet'}</Text>
+              {/* THE QUEUE SAYS WHEN IT IS FULL, because that is the one state
+                  here a person can do anything about: forgetting an old leg
+                  makes room for a new one. It was silent at its old cap of ten
+                  and refused a real booking's legs without a word.
+                  A COUNT RATHER THAN A WARNING at the halfway mark would be
+                  noise -- the cap is 500 now and nothing will approach it -- so
+                  this appears only when the queue is actually full. */}
+              {pending.length >= MAX_PENDING && (
+                <Text style={gm.msg}>
+                  {'> this list is full — forget one to make room'}
+                </Text>
+              )}
               {pending.map((p, i) => (
                 <PendingRow
                   key={p.id}
