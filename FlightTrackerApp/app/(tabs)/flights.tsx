@@ -41,6 +41,7 @@ import {
   // See its note in lib/saved.tsx: this screen stays mounted across a sign-in.
   useAccountChange,
   tripsOf,
+  localDayKey,
 } from '../../lib/saved';
 // THE UNPUBLISHED LEGS THIS SCREEN NOW SHOWS INSIDE A TRIP. They live in their
 // own store rather than among saved flights, because they have no provider
@@ -519,7 +520,7 @@ function nextLegIndex(legs: SavedFlight[], now: number, openIdx: number): number
 // AND WHAT EACH LEG THEREFORE DRAWS.
 //
 // BOTH INDICES ARE PASSED IN rather than recomputed, because the user can
-// overrule the open leg by tapping -- see focusOverride -- and a second
+// overrule the open leg by tapping -- see openByTrip -- and a second
 // computation here would ignore that and open two legs at once.
 //
 // LANDED OUTRANKS NEXT, which is what stops a flown leg reading as a forthcoming
@@ -781,54 +782,94 @@ function Layover({ prev, next }: { prev: SavedFlight; next: SavedFlight }) {
 // over it. Only the interior moved.
 // ── A LEG THE AIRLINE HAS NOT PUBLISHED, INSIDE THE JOURNEY IT BELONGS TO ──
 //
-// IT USED TO SIT IN ITS OWN SECTION ON HOME, away from the trip it is part of.
-// A person with a ticket is taking that flight whether or not a provider has
-// heard of it, so it belongs between the legs either side.
+// SHUT, IT IS THE PUBLISHED ROW'S OWN SHAPE, ELEMENT FOR ELEMENT. compactLeg,
+// cardEdge, legSplit, legIdent, legTimes, legTimeRow: every container and every
+// text style is the one CollapsedLeg uses, in the same order and nesting, so
+// the two read as one kind of object in one journey. Date at 20 in white,
+// number and airline under it, the chip on the third line; route and the
+// booked time on the right where the published row puts its route and
+// countdown. Same line count, same height.
 //
-// WHAT IT SHOWS IS WHAT THE BOOKING GAVE, and nothing else: the number, the
-// route, the date, the printed departure time, the airline and the reference.
+// OPEN, IT DOES NOT BECOME THE PUBLISHED CARD. That card is a status pill, a
+// route at 28, two columns and a row of pills, and every one of those is a
+// slot for a fact a provider supplies. Nobody supplies any here, so opening
+// adds two lines of information under the row -- the booking reference, then
+// the retry state and the one sentence that explains the row -- at the row's
+// own 13pt, and the card grows by exactly those lines. Nothing a provider
+// supplies appears: no gate, terminal, arrival, status or countdown, because
+// none of those fields exists on the leg.
 //
-// WHAT IT DELIBERATELY DOES NOT SHOW is everything that comes from a provider.
-// No gate, no terminal, no status badge, no countdown, no belt. There is no
-// record behind this row, and a countdown against a time nobody has confirmed
-// would be the most confident thing on the screen and the least founded.
-//
-// IT DOES NOT OPEN. Tapping a published leg opens its card; there is no card
-// here, so the row is not a button and does not pretend to be one.
-function UnpublishedLeg({ leg }: { leg: PendingLeg }) {
+// IT SITS IN A legSlot LIKE EVERY OTHER LEG -- see renderLegs -- which is what
+// holds it off the thread by RAIL_INSET. The card carries no inset of its own.
+function UnpublishedLeg({ leg, open, onToggle }: {
+  leg: PendingLeg;
+  // ── THE OPEN LEG IS THE TRIP'S BUSINESS, NOT THE CARD'S ──────────────────
+  //
+  // Which leg is open is a fact about the JOURNEY -- at most one, of either
+  // kind -- so the journey holds it in openByTrip and the card is told.
+  open: boolean;
+  onToggle: () => void;
+}) {
   const dated = ISO_DAY_RE.test(leg.date) ? routeDateLabel(leg.date).toUpperCase() : null;
-  const route = `${leg.origin ?? leg.originName ?? '?'} → ${leg.destination ?? leg.destinationName ?? '?'}`;
+  const meta = [
+    leg.flightNumber,
+    leg.operatingFlightNumber !== null ? `as ${leg.operatingFlightNumber}` : null,
+    leg.airline,
+  ].filter(Boolean).join(' · ');
+  const from = leg.origin ?? leg.originName ?? '—';
+  const to = leg.destination ?? leg.destinationName ?? '—';
+  const tried = leg.lastTriedAt === null
+    ? 'not checked yet'
+    : `${leg.tries} check${leg.tries === 1 ? '' : 's'}, last ${routeDateLabel(localDayKey(leg.lastTriedAt))}`;
+
   return (
-    <View style={[st.compactLeg, st.unpubLeg]}>
+    <TouchableOpacity
+      style={[st.compactLeg, st.unpubLeg]}
+      activeOpacity={0.7}
+      onPress={onToggle}
+      accessibilityRole="button"
+    >
       <View style={st.cardEdge} pointerEvents="none" />
       <View style={st.legSplit}>
         <View style={st.legIdent}>
           {dated !== null && <Text style={st.legDate}>{dated}</Text>}
-          <Text style={st.legIdentNum} numberOfLines={1}>{leg.flightNumber}</Text>
-          {leg.airline !== null && (
-            <Text style={st.legIdentName} numberOfLines={1}>{leg.airline}</Text>
-          )}
+          <Text style={st.legIdentNum} numberOfLines={1}>{meta}</Text>
+          <Text style={st.unpubChip}>{'UNPUBLISHED'}</Text>
         </View>
         <View style={st.legTimes}>
-          <Text style={st.legTimeValue} numberOfLines={1}>{route}</Text>
+          <Text style={st.legTimeValue} numberOfLines={1}>
+            {`${from} → ${to}`}
+          </Text>
           {leg.departureTime !== null && (
             <View style={st.legTimeRow}>
-              <Text style={st.legTimeLabel}>{'Departs'}</Text>
+              <Text style={st.legTimeLabel}>{'Booked dep'}</Text>
               <Text style={st.legTimeValue}>{leg.departureTime}</Text>
             </View>
           )}
         </View>
       </View>
-      {/* THE STATE, SAID PLAINLY. Dim rather than amber: this is not a problem
-          with the flight, it is an absence in somebody else's data, and
-          colouring it as a warning would say the trip is in trouble. */}
-      <Text style={st.unpubNote} numberOfLines={1}>
-        {[
-          'airline has not published this yet',
-          leg.pnr !== null ? `pnr ${leg.pnr}` : null,
-        ].filter(Boolean).join(' · ')}
-      </Text>
-    </View>
+      {open && (
+        <>
+          {/* THE REFERENCE, at the identity column's 13pt mono: label dim in
+              legIdentNum, value white in legNum. Both lines are direct
+              children of the card, whose padding is CARD_PAD on every side
+              and whose children stretch to its content box, so a line takes
+              that width and no more. */}
+          {leg.pnr !== null && (
+            <Text style={st.legIdentNum} numberOfLines={1}>
+              {'Booking '}
+              <Text style={st.legNum}>{leg.pnr}</Text>
+            </Text>
+          )}
+          {/* THE STATE AND THE SENTENCE, at legIdentName's Inter 13 at DIM --
+              the airline line's own treatment, human language at the row's
+              size. No numberOfLines: it wraps to whatever height it needs. */}
+          <Text style={st.legIdentName}>
+            {`${tried} · No data provider carries this flight yet. Terminal keeps checking.`}
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
   );
 }
 
@@ -1549,7 +1590,25 @@ export default function Flights() {
   // AN ID RATHER THAN AN INDEX. Legs are ordered by departure instant and that
   // order can change under a delay, so an index would silently come to name a
   // different leg. An id names the record.
-  const [focusOverride, setFocusOverride] = useState<string | null>(null);
+  // ── WHICH LEG IS OPEN, PER JOURNEY, WHATEVER ITS KIND ───────────────────
+  //
+  // ONE RECORD FOR BOTH CARD TYPES. It replaces two things that did not know
+  // about each other: focusOverride, a single saved-leg id that moved the open
+  // published card within its trip, and a second per-trip record for the
+  // unpublished cards. Two states meant two legs open at once -- opening an
+  // unpublished leg never closed the published one.
+  //
+  // THE VALUE'S THREE MEANINGS, keyed by trip id:
+  //   absent      the default: currentLegIndex picks the published leg to open,
+  //               which is what made the first leg open on its own and still does.
+  //   a leg id    that leg is open. A saved flight's id opens its card; an id
+  //               of the form pending:<id> opens that unpublished card and
+  //               leaves NO published card open.
+  //   null        nothing open. Tapping the open leg leaves this.
+  //
+  // KEYED BY TRIP so two journeys on screen are independent, shaped like
+  // openTrips below for the same reason it is.
+  const [openByTrip, setOpenByTrip] = useState<Record<string, string | null>>({});
 
   // ── WHICH FOLDERS ARE OPEN ────────────────────────────────────────────────
   //
@@ -1579,7 +1638,7 @@ export default function Flights() {
   // be up when it happens, and tearing down an animated surface that is not
   // there would be a guess about a state that cannot exist.
   useAccountChange(() => {
-    setFocusOverride(null);
+    setOpenByTrip({});
     setOpenTrips({});
   });
 
@@ -1602,10 +1661,22 @@ export default function Flights() {
   // as long as ANY current trip contains that leg. It only clears when the leg
   // leaves the screen entirely -- disowned, or its whole journey archived.
   useEffect(() => {
-    if (focusOverride === null) return;
-    const showing = current.some(legs => legs.some(l => l.id === focusOverride));
-    if (!showing) setFocusOverride(null);
-  }, [current, focusOverride]);
+    setOpenByTrip(prev => {
+      let changed = false;
+      const next: Record<string, string | null> = {};
+      for (const [tripId, open] of Object.entries(prev)) {
+        const legs = current.find(t => t[0]?.tripId === tripId);
+        // The trip left the screen: archived whole, or its legs disowned.
+        if (legs === undefined) { changed = true; continue; }
+        const stillHere = open === null
+          || legs.some(l => l.id === open)
+          || (open.startsWith('pending:') && pending.some(p => `pending:${p.id}` === open));
+        if (!stillHere) { changed = true; continue; }
+        next[tripId] = open;
+      }
+      return changed ? next : prev;
+    });
+  }, [current, pending]);
 
   // ── AND IT ENDS WHEN YOU LOOK AWAY ────────────────────────────────────────
   //
@@ -1631,7 +1702,7 @@ export default function Flights() {
   //
   // THE CLEANUP IS THE WHOLE THING, which is the same shape app/search.tsx uses
   // for its card: the effect does nothing on focus and everything on blur.
-  useFocusEffect(useCallback(() => () => setFocusOverride(null), []));
+  useFocusEffect(useCallback(() => () => setOpenByTrip({}), []));
 
   // TAPPING A COLLAPSED LEG OPENS IT, AND TAPPING THE ONE THE JOURNEY WOULD
   // HAVE CHOSEN ANYWAY GIVES CONTROL BACK.
@@ -1643,8 +1714,18 @@ export default function Flights() {
   // is a different state from "the same index by coincidence", and it is the
   // one that keeps tracking.
   const openLeg = (legs: SavedFlight[], leg: SavedFlight) => {
-    const i = currentLegIndex(legs, now);
-    setFocusOverride(i >= 0 && legs[i].id === leg.id ? null : leg.id);
+    const tripId = legs[0]?.tripId ?? '';
+    setOpenByTrip(prev => {
+      const cur = prev[tripId];
+      // Open already, whether by tap or by default? Then this tap closes it and
+      // leaves nothing open. Otherwise it becomes the one open leg, closing
+      // whichever card of either kind held that place.
+      const i = currentLegIndex(legs, now);
+      const isOpen = cur === undefined
+        ? (i >= 0 && legs[i].id === leg.id)
+        : cur === leg.id;
+      return { ...prev, [tripId]: isOpen ? null : leg.id };
+    });
   };
 
 
@@ -1657,7 +1738,7 @@ export default function Flights() {
   // would freeze it; storing only what the user has TAPPED lets the default
   // follow.
   //
-  // A tripId AND NOT AN INDEX, for the same reason focusOverride is an id: the
+  // A tripId AND NOT AN INDEX, for the same reason openByTrip holds an id: the
   // ordering moves under both of them.
   const isOpen = (legs: SavedFlight[]): boolean => {
     const id = legs[0].tripId as string;
@@ -1680,12 +1761,14 @@ export default function Flights() {
     // available that the user is done with it, so it is the right moment to hand
     // focus back to the journey.
     //
-    // AND IT IS CONDITIONAL, BECAUSE ONE VALUE SERVES EVERY FOLDER. focusOverride
-    // is a single leg id for the whole screen -- it works across trips only
-    // because ids are unique, so a folder that does not contain the leg simply
-    // misses. Clearing it unconditionally would mean shutting ANY folder
-    // discarded a decision made in a DIFFERENT one.
-    const ownsFocus = focusOverride !== null && legs.some(l => l.id === focusOverride);
+    // AND IT IS THIS FOLDER'S ENTRY ALONE. The open-leg record is keyed by
+    // trip, so forgetting one journey's choice cannot touch another's; the
+    // conditional the single-value version needed is gone with the value.
+    const forget = (tripId: string) => setOpenByTrip(prev => {
+      if (!(tripId in prev)) return prev;
+      const { [tripId]: _gone, ...rest } = prev;
+      return rest;
+    });
     // ── THE CAROUSEL IS SINGLE-SELECT AND THE OTHER TWO ARE NOT ──
     //
     // A ROW OF STUBS WITH ONE BODY UNDER IT CAN ONLY SHOW ONE TRIP, so choosing a
@@ -1701,13 +1784,16 @@ export default function Flights() {
       const only: Record<string, boolean> = {};
       for (const t of current) only[t[0].tripId as string] = t[0].tripId === id;
       setOpenTrips(only);
-      // EVERY OTHER TRIP JUST CLOSED, without any of them being toggled. The
-      // override survives only if it names a leg in the one being opened.
-      if (focusOverride !== null && !ownsFocus) setFocusOverride(null);
+      // EVERY OTHER TRIP JUST CLOSED, without any of them being toggled, so
+      // every other trip's open leg goes with it.
+      for (const t of current) {
+        const other = t[0].tripId as string;
+        if (other !== id) forget(other);
+      }
       return;
     }
     setOpenTrips(prev => ({ ...prev, [id]: next }));
-    if (!next && ownsFocus) setFocusOverride(null);
+    if (!next) forget(id);
   };
 
   // ── ONE TRIP'S LEGS, AND ITS OWN TWO INDICES ──────────────────────────────
@@ -1719,10 +1805,9 @@ export default function Flights() {
   // functions of a leg list and a clock, so calling them straight is not a
   // downgrade from useMemo; it is what useMemo was wrapping.
   //
-  // THE LEG OVERRIDE IS STILL SHARED AND STILL WORKS. focusOverride holds a leg
-  // id, and ids are flightNumber|date -- unique across every trip -- so the
-  // findIndex below misses in every journey but the one that owns the leg and
-  // falls through to currentLegIndex there. One value, N folders, no collisions.
+  // THE OPEN LEG IS LOOKED UP BY TRIP. openByTrip is keyed by the journey's
+  // id, so each folder reads its own entry and never another's: N folders, N
+  // entries, no collisions and nothing shared.
   // ── ONE ORDERED LIST OF WHAT THE JOURNEY ACTUALLY CONTAINS ───────────────
   //
   // ORDERED BY DATE, THEN BY THE PRINTED CLOCK, and this is the one place the
@@ -1751,13 +1836,16 @@ export default function Flights() {
   };
 
   const renderLegs = (legs: SavedFlight[], unpublished: PendingLeg[] = []) => {
-    const oIdx = (() => {
-      if (focusOverride !== null) {
-        const i = legs.findIndex(l => l.id === focusOverride);
-        if (i >= 0) return i;
-      }
-      return currentLegIndex(legs, now);
-    })();
+    // The journey these legs belong to, which is what the open-leg state is
+    // keyed by. Legs reaching here always share one.
+    const tripKey = legs[0]?.tripId ?? '';
+    const chosen = openByTrip[tripKey];
+    // WHICH PUBLISHED LEG IS OPEN. Absent means the default; null or an
+    // unpublished id means none of them, so the published cards all collapse
+    // while an unpublished one is open -- which is the whole of Fix 1.
+    const oIdx = chosen === undefined
+      ? currentLegIndex(legs, now)
+      : chosen === null ? -1 : legs.findIndex(l => l.id === chosen);
     const nIdx = nextLegIndex(legs, now, oIdx);
     // THE INDEXES STAY ON THE SAVED LEGS ALONE. legState, nextLegIndex and
     // showsBelt all reason about position among flights that have records --
@@ -1775,14 +1863,30 @@ export default function Flights() {
       ...unpublished.map(p => ({
         key: `pending:${p.id}`,
         sort: legOrderKey(p.date, p.departureTime),
-        node: <UnpublishedLeg key={`pending:${p.id}`} leg={p} />,
+        node: (
+          <UnpublishedLeg
+            key={`pending:${p.id}`}
+            leg={p}
+            open={openByTrip[tripKey] === `pending:${p.id}`}
+            // TAPPING THE OPEN ONE CLOSES IT AND LEAVES NONE OPEN; tapping
+            // another closes whatever was open, of either kind, and opens this.
+            onToggle={() => setOpenByTrip(m => ({
+              ...m, [tripKey]: m[tripKey] === `pending:${p.id}` ? null : `pending:${p.id}`,
+            }))}
+          />
+        ),
         leg: null as SavedFlight | null,
         i: -1,
       })),
     ].sort((a, b) => (a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0));
 
     return rows.map(row => {
-      if (row.leg === null) return row.node;
+      // IN A SLOT, LIKE EVERY PUBLISHED LEG BELOW. It was returned bare, so it
+      // started at the column's left edge -- ON the thread, RAIL_INSET to the
+      // left of every card around it. The slot is the one thing that holds a
+      // leg off the line, and there is no reason this leg should be the
+      // exception.
+      if (row.leg === null) return <View key={row.key} style={st.legSlot}>{row.node}</View>;
       const leg = row.leg;
       const i = row.i;
       // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
@@ -2794,14 +2898,18 @@ const st = StyleSheet.create({
   },
   // AN UNPUBLISHED LEG IS THE SAME CARD, QUIETER. It sits in the journey and
   // must read as part of it rather than as an error beside it, so it keeps the
-  // shape and loses a little opacity. No border, no amber, no second fill: the
-  // difference is that it has less to say, and the row shows that by saying
-  // less.
+  // surface and loses a little opacity. No border, no amber, no second fill:
+  // the difference is that it has less to say, and the card shows that by
+  // saying less.
   unpubLeg: { opacity: 0.72 },
-  // The state, in the dim ink the app uses for a fact rather than the amber it
-  // uses for a problem. A missing schedule is somebody else's absence, not
-  // trouble with the trip.
-  unpubNote: { fontFamily: MONO, fontSize: 11, color: DIM },
+  // The status word, on the identity column's third line so the card keeps the
+  // published one's height. 11 and LANDED_GREY are this file's existing size
+  // and tone for a leg that is not live. marginTop 3 IS THE PUBLISHED CARD'S
+  // OWN INTER-ROW GAP, applied a second time so the chip is not read as a
+  // third line of the airline.
+  unpubChip: {
+    fontFamily: MONO, fontSize: 11, color: LANDED_GREY, letterSpacing: 1, marginTop: 3,
+  },
   // ── THE ROW'S INTERIOR, WHICH IS THE CARD'S GRID ──
   //
   // EVERY ENTRY BELOW IS components/FlightCard.tsx's, matched value for value so
