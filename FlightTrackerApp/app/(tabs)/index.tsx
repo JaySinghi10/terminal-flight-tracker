@@ -237,6 +237,10 @@ type GmailLeg = {
   operating_flight_number: string | null;
   pnr: string | null;
   confidence: number;
+  // WHETHER THE AIRLINE HAS CALLED IT OFF. The extractor classifies each email
+  // and marks every leg a cancellation notice names. OPTIONAL: a server that
+  // predates the classifier sends no such field, and absent means scheduled.
+  leg_status?: 'scheduled' | 'cancelled' | null;
   source: { subject: string | null; received: string | null };
 };
 
@@ -1049,9 +1053,17 @@ const PendingRow = memo(function PendingRow({
               <Text style={sf.date} numberOfLines={1}>{routeDateLabel(leg.date)}</Text>
             )}
           </View>
+          {/* THE SAME CHIP THE TRIP VIEW SHOWS, in the same red, from the same
+              helper. A leg the airline has cancelled must not read as one that
+              is merely waiting to be published -- see UnpublishedLeg. */}
           <Text style={gm.legSub} numberOfLines={1}>
+            {leg.legStatus === 'cancelled' && (
+              <Text style={[gm.legChip, { color: getStatusColor('cancelled') }]}>{'CANCELLED · '}</Text>
+            )}
             {[
-              'airline has not published it yet',
+              leg.legStatus === 'cancelled'
+                ? 'airline has cancelled this flight'
+                : 'airline has not published it yet',
               leg.pnr !== null ? `pnr ${leg.pnr}` : null,
               leg.tries > 0 ? `tried ${leg.tries}×` : null,
             ].filter(Boolean).join(' · ')}
@@ -2819,6 +2831,10 @@ const gm = StyleSheet.create({
   },
   legLast: { marginBottom: 0 },
   legSub: { fontFamily: MONO, fontSize: 11, color: 'rgba(226,226,226,0.45)', marginTop: 4 },
+  // The chip, inline at the head of that line. legSub's own face and size --
+  // it is nested inside it -- with the trip view's tracking and nothing else;
+  // the colour is applied at the call site because it comes from getStatusColor.
+  legChip: { letterSpacing: 1 },
 });
 
 const pm = StyleSheet.create({

@@ -93,6 +93,10 @@ import { airportByCode } from '../../lib/airports';
 // two -- so the folder cannot come to disagree with the leg inside it.
 import {
   StatusLine, routeDateLabel, formatClock, CD_GREEN, CD_LATE,
+  // THE CANCELLED RED, from the one function that owns every status colour in
+  // the app. A cancelled unpublished leg takes the same red the published card
+  // gives a cancelled flight, because it is the same fact about the same trip.
+  getStatusColor,
 } from '../../lib/flightstatus';
 // SURFACE_1 AND SURFACE_2 JOIN THEM FOR THE FOLDER HEADERS. See the scale in
 // lib/cards: level is decided by what sits UNDERNEATH, so a header on the page
@@ -799,6 +803,19 @@ function Layover({ prev, next }: { prev: SavedFlight; next: SavedFlight }) {
 // supplies appears: no gate, terminal, arrival, status or countdown, because
 // none of those fields exists on the leg.
 //
+// ── CANCELLED IS A DIFFERENT FACT, AND THE CARD SAYS SO IN TWO PLACES ──────
+//
+// TWO REASONS A FLIGHT IS MISSING FROM THE SCHEDULE, and one of them is not a
+// wait. The chip reads CANCELLED in the published card's own cancelled red,
+// and the sentence stops promising to keep looking and says who cancelled it
+// and how the app knows. Nothing else changes: same row, same grid, same
+// booked time, because the booking is still what this leg is made of.
+//
+// THE SOURCE OF THE FACT IS PART OF THE FACT. No provider carries this flight,
+// so nothing has confirmed the cancellation independently -- the app read it in
+// the passenger's own email, and the sentence says that rather than presenting
+// it as a status somebody verified.
+//
 // IT SITS IN A legSlot LIKE EVERY OTHER LEG -- see renderLegs -- which is what
 // holds it off the thread by RAIL_INSET. The card carries no inset of its own.
 function UnpublishedLeg({ leg, open, onToggle }: {
@@ -821,6 +838,7 @@ function UnpublishedLeg({ leg, open, onToggle }: {
   const tried = leg.lastTriedAt === null
     ? 'not checked yet'
     : `${leg.tries} check${leg.tries === 1 ? '' : 's'}, last ${routeDateLabel(localDayKey(leg.lastTriedAt))}`;
+  const cancelled = leg.legStatus === 'cancelled';
 
   return (
     <TouchableOpacity
@@ -834,7 +852,9 @@ function UnpublishedLeg({ leg, open, onToggle }: {
         <View style={st.legIdent}>
           {dated !== null && <Text style={st.legDate}>{dated}</Text>}
           <Text style={st.legIdentNum} numberOfLines={1}>{meta}</Text>
-          <Text style={st.unpubChip}>{'UNPUBLISHED'}</Text>
+          <Text style={[st.unpubChip, cancelled && { color: getStatusColor('cancelled') }]}>
+            {cancelled ? 'CANCELLED' : 'UNPUBLISHED'}
+          </Text>
         </View>
         <View style={st.legTimes}>
           <Text style={st.legTimeValue} numberOfLines={1}>
@@ -865,7 +885,9 @@ function UnpublishedLeg({ leg, open, onToggle }: {
               the airline line's own treatment, human language at the row's
               size. No numberOfLines: it wraps to whatever height it needs. */}
           <Text style={st.legIdentName}>
-            {`${tried} · No data provider carries this flight yet. Terminal keeps checking.`}
+            {cancelled
+              ? `${tried} · The airline has cancelled this flight. Terminal read that in your booking email; no data provider carries it.`
+              : `${tried} · No data provider carries this flight yet. Terminal keeps checking.`}
           </Text>
         </>
       )}

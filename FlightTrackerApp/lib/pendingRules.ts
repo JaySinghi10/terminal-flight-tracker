@@ -49,6 +49,21 @@ export type PendingLeg = {
   // NULL IS ORDINARY, not a migration gap: a leg typed in by hand, or one from
   // an email that printed no reference, has no journey to join.
   tripId: string | null;
+  // ── WHETHER THE AIRLINE STILL INTENDS TO FLY IT ─────────────────────────
+  //
+  // TWO REASONS A FLIGHT IS NOT IN THE PROVIDER'S SCHEDULE, and until now they
+  // looked identical on screen: it has not been published yet, or it has been
+  // cancelled. The first is a wait; the second is a trip that is not happening.
+  // Showing both as "unpublished" told somebody with a cancelled flight to keep
+  // waiting for it.
+  //
+  // THE SERVER SAYS WHICH. A cancellation email is classified as one and every
+  // leg it names comes back carrying leg_status cancelled -- see the extractor.
+  // Nothing here infers it; a leg is scheduled unless an email said otherwise.
+  //
+  // 'scheduled' IS THE DEFAULT AND IS FILLED IN ON READ, so every reader can
+  // test the field rather than testing whether it exists. See getPending.
+  legStatus: 'scheduled' | 'cancelled';
 };
 
 // TEN, AND IT IS A CAP ON DAILY SPEND. Each pending leg costs one provider unit
@@ -91,6 +106,10 @@ export type ExtractedLeg = {
   operated_by: string | null;
   operating_flight_number: string | null;
   pnr: string | null;
+  // OPTIONAL BECAUSE A SERVER THAT HAS NOT BEEN DEPLOYED YET DOES NOT SEND IT.
+  // Absent reads as scheduled below, which is what every leg was before the
+  // extractor learned to classify a cancellation.
+  leg_status?: 'scheduled' | 'cancelled' | null;
   source: { subject: string | null; received: string | null };
 };
 
@@ -114,6 +133,11 @@ export function pendingFromLeg(leg: ExtractedLeg, now: number): PendingLeg {
     // Filled by the caller, which is the only place that knows what else this
     // booking already put on the device. See ownFlight and the Gmail pull.
     tripId: null,
+    // ONLY THE ONE WORD IS BELIEVED. Anything else the wire carries -- a value
+    // from a newer server, a null, a missing field -- is scheduled, because
+    // "not known to be cancelled" and "scheduled" are the same statement and
+    // the wrong way to be wrong here is to grey out a flight somebody is on.
+    legStatus: leg.leg_status === 'cancelled' ? 'cancelled' : 'scheduled',
   };
 }
 
@@ -222,8 +246,16 @@ export function retryBatch(
   // urgency -- a leg departing tomorrow waited behind one departing in March.
   // Now a leg is a candidate only when its own interval has elapsed, and the
   // ceiling exists to bound one pass rather than to ration the day.
+  // ── A CANCELLED LEG IS NEVER ASKED ABOUT AGAIN ──────────────────────────
+  //
+  // NOT DROPPED, NOT RETRIED. It stays in `kept` so it keeps its place in the
+  // journey and can still be seen and forgotten by hand; it is simply never a
+  // candidate for a lookup. Asking a provider to confirm a flight the airline
+  // has already told the passenger is off spends a unit a day on an answer
+  // nobody needs, and the one answer that could come back -- a schedule entry
+  // for the cancelled flight -- would overwrite the cancellation with it.
   const batch = kept
-    .filter(p => !skipIds.has(p.id) && legDue(p, now))
+    .filter(p => p.legStatus !== 'cancelled' && !skipIds.has(p.id) && legDue(p, now))
     .sort((a, b) => (a.lastTriedAt ?? 0) - (b.lastTriedAt ?? 0))
     .slice(0, max);
   return { kept, dropped, batch };

@@ -2208,7 +2208,36 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       ? leg
       : { ...leg, tripId: await tripForBooking(leg, list) };
     const r = addToPending(list, withTrip, localDayKey(Date.now()));
-    if (!r.ok) return r.reason;
+    // ── A REFUSED DUPLICATE IS STILL NEWS WHEN IT IS A CANCELLATION ────────
+    //
+    // addToPending REFUSES A DUPLICATE OUTRIGHT, and it is right to: the stored
+    // copy carries tries and lastTriedAt and the incoming one carries neither,
+    // so replacing it would reset the leg's history on every pull. But that
+    // makes the second email about a leg unable to say anything about it, and
+    // the second email is exactly where a cancellation arrives -- the first
+    // confirmed the flight, the second called it off.
+    //
+    // SO ONE FIELD CROSSES, AND ONLY ONE, AND ONLY ONE WAY. A pull that says
+    // cancelled marks the stored leg; a pull that says scheduled never unmarks
+    // it, because the confirmation an airline re-sends after cancelling a
+    // flight is a copy of the original and not a reinstatement. This is the
+    // same one-way rule the server's merge applies to the same field.
+    //
+    // HERE RATHER THAN IN THE LAUNCH ADOPTION EFFECT, because that effect runs
+    // when the app starts and this fact arrives mid-session: a person who pulls
+    // their mail and watches the leg stay green until the next cold start has
+    // been told the wrong thing by the screen that just refreshed.
+    if (!r.ok) {
+      if (r.reason === 'dup' && withTrip.legStatus === 'cancelled'
+          && list.some(p => p.id === withTrip.id && p.legStatus !== 'cancelled')) {
+        const marked = list.map(p => (
+          p.id === withTrip.id ? { ...p, legStatus: 'cancelled' as const } : p
+        ));
+        await setPending(email, marked);
+        setPendingState(marked);
+      }
+      return r.reason;
+    }
     await setPending(email, r.pending);
     setPendingState(r.pending);
     return 'added';

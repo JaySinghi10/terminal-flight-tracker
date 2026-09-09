@@ -52,7 +52,17 @@ export async function getPending(email: string | null): Promise<PendingLeg[]> {
   // NORMALISED ON READ RATHER THAN MIGRATED ON WRITE, because this store has no
   // schema version and one absent field does not justify inventing one. Every
   // caller reads through here.
-  return list.map(p => (p.tripId === undefined ? { ...p, tripId: null } : p));
+  //
+  // legStatus JOINS IT, for the same reason and by the same means: every leg
+  // stored before the airline could say "cancelled" has no such field, and a
+  // reader that has to ask whether the field EXISTS before asking what it says
+  // is the shape that lost those legs in the first place. Scheduled is what
+  // they all were.
+  return list.map(p => ({
+    ...p,
+    tripId: p.tripId === undefined ? null : p.tripId,
+    legStatus: p.legStatus === 'cancelled' ? 'cancelled' : 'scheduled',
+  }));
 }
 
 export function setPending(email: string | null, list: PendingLeg[]): Promise<void> {
