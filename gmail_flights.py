@@ -75,6 +75,35 @@ FETCH_POOL = 5
 MODEL_POOL = 4
 # ENFORCED HERE, on every body, before the model sees it. See the header.
 BODY_MAX_CHARS = 12000
+
+# ── THE ITINERARY THAT IS NOT IN THE EMAIL ──────────────────────────────────
+#
+# AIRLINES SEND THE TICKET AS AN ATTACHMENT and leave the body nearly empty.
+# Those bookings produced nothing at all until now, and TWO separate things
+# stopped them: the decoder threw attachments away, and the spend gate below
+# reads the body, so an email with an empty body failed it and never reached
+# the model even in principle.
+#
+# THE BYTES COST NOTHING EXTRA TO OBTAIN. fetch_message asks Gmail for the raw
+# message, which returns the whole thing including attachments in one call, so
+# these were already being downloaded and discarded. No second request, no extra
+# Gmail quota, no new scope.
+#
+# ONE MEGABYTE, AND IT IS A CEILING ON MEMORY RATHER THAN ON PAGES. A booking
+# confirmation is tens of kilobytes; anything past a megabyte is a brochure, a
+# boarding pass with a map, or not an itinerary at all. The check happens in the
+# decoder so an oversized part is dropped before it is held, and every message
+# in a pull is decoded inside one Cloud Run request that has a timeout.
+PDF_MAX_BYTES = 1024 * 1024
+
+# FOUR PAGES. Gemini bills a document page as 258 tokens whatever is on it, and
+# an itinerary is one or two pages -- the fourth exists for a return leg printed
+# separately. A twelve-page attachment is a fare brochure and paying to read it
+# is paying for the wrong thing. Enforced at the call rather than at the decode,
+# because it is a question about spending and not about memory.
+PDF_MAX_PAGES = 4
+
+PDF_MEDIA_TYPE = "application/pdf"
 # A leg the model was not sure of is a leg not shown. It is re-validated after
 # this anyway, but a low confidence usually means an inferred field.
 MIN_CONFIDENCE = 0.6
@@ -368,13 +397,25 @@ def decode_body(raw_b64url: str) -> dict:
     data = base64.urlsafe_b64decode(raw_b64url + pad)
     msg = email.message_from_bytes(data, policy=email.policy.default)
 
-    plain, htmls = [], []
+    plain, htmls, pdfs = [], [], []
     for part in msg.walk():
         if part.is_multipart():
             continue
+        ctype = part.get_content_type()
+        if ctype == PDF_MEDIA_TYPE:
+            # KEPT WHETHER OR NOT IT CALLS ITSELF AN ATTACHMENT. Senders vary:
+            # some mark the ticket inline so it previews in the client, some
+            # attach it, and the disposition is not a reliable signal of which
+            # part holds the itinerary. The media type is.
+            try:
+                blob = part.get_payload(decode=True)
+            except Exception:  # noqa: BLE001 -- an undecodable part is skipped
+                continue
+            if isinstance(blob, bytes) and 0 < len(blob) <= PDF_MAX_BYTES:
+                pdfs.append(blob)
+            continue
         if part.get_content_disposition() == "attachment":
             continue
-        ctype = part.get_content_type()
         if ctype not in ("text/plain", "text/html"):
             continue
         try:
@@ -409,6 +450,10 @@ def decode_body(raw_b64url: str) -> dict:
         "body": body[:BODY_MAX_CHARS],
         # Legs the sender stated outright. Empty for most airlines still.
         "jsonld": structured,
+        # THE TICKET ITSELF, where the airline sent one. Bytes, not text: the
+        # model reads the pages. Never logged and never stored, exactly as the
+        # body is not -- see the note at the head of this file.
+        "pdfs": pdfs,
     }
 
 
@@ -445,10 +490,22 @@ def worth_a_model_call(m: dict) -> bool:
     because the model is what answers and this only opens the door.
     """
     text = (m.get("subject") or "") + "\n" + (m.get("body") or "")
-    upper = text.upper()
-    if not FLIGHT_IN_TEXT_RE.search(upper):
-        return False
     lower = text.lower()
+    # ── AN ATTACHED TICKET OPENS THE DOOR ON ITS OWN ────────────────────────
+    #
+    # THE FLIGHT NUMBER IS IN THE PDF, WHICH IS THE WHOLE PROBLEM. This gate
+    # reads the subject and the body, and an airline that sends the itinerary as
+    # an attachment leaves both nearly empty -- so the test below fails and the
+    # email is never looked at, however plainly the ticket is a ticket.
+    #
+    # A BOOKING WORD IS STILL REQUIRED. Dropping both tests would send every
+    # PDF-bearing email to the model, which is a bill rather than a feature; a
+    # payslip and a bank statement are both PDFs. What is dropped is only the
+    # flight-number test, because that is the one the attachment is hiding.
+    if m.get("pdfs") and any(w in lower for w in BOOKING_WORDS):
+        return True
+    if not FLIGHT_IN_TEXT_RE.search(text.upper()):
+        return False
     return any(w in lower for w in BOOKING_WORDS)
 
 
@@ -584,13 +641,56 @@ def _message_for_model(m: dict) -> str:
     )
 
 
+def _pdf_pages(blob: bytes) -> int:
+    """How many pages the document claims, or a large number if it will not say.
+
+    COUNTED SO IT CAN BE REFUSED, not so it can be rendered. A cheap structural
+    count of the page objects is enough for a spending decision and needs no PDF
+    library; being wrong by one on an itinerary changes nothing, and being wrong
+    on a file this crude cannot parse is the case the fallback covers.
+
+    AN UNREADABLE COUNT READS AS TOO MANY. A document this cannot count is one
+    nothing here understands, and the safe answer for a question about spending
+    is the one that declines.
+    """
+    try:
+        n = blob.count(b"/Type/Page") + blob.count(b"/Type /Page")
+        # /Type/Pages is the tree node and matches the prefix above, so it is
+        # taken back off rather than counted as a page.
+        n -= blob.count(b"/Type/Pages") + blob.count(b"/Type /Pages")
+        return n if n > 0 else PDF_MAX_PAGES + 1
+    except Exception:  # noqa: BLE001
+        return PDF_MAX_PAGES + 1
+
+
+def _messages_for_model(m: dict) -> list[dict]:
+    """The text of the email, and the ticket where the airline attached one.
+
+    THE TEXT ALWAYS GOES, even when it is nearly empty, because the subject and
+    the received date are in it and the received date is what the year-rollover
+    rule is measured against.
+
+    THE PAGE LIMIT IS ENFORCED HERE rather than in the decoder, because it is a
+    question about spending rather than about memory. Gemini bills a page at 258
+    tokens whatever is printed on it, so a fare brochure costs the same per page
+    as an itinerary and is worth nothing. An oversized document is dropped and
+    the email still goes as text; the extraction simply has less to work with,
+    which is what it had before any of this existed.
+    """
+    out = [llm.user_text(_message_for_model(m))]
+    for blob in (m.get("pdfs") or []):
+        if _pdf_pages(blob) <= PDF_MAX_PAGES:
+            out.append(llm.user_file(blob, PDF_MEDIA_TYPE))
+    return out
+
+
 def extract_with_model(m: dict, today) -> list[dict]:
     """The model's raw legs for one email. Empty on refusal or any failure."""
     try:
         turn = llm.generate(
             model=llm.PARSE_MODEL,
             system=_system_prompt(today),
-            messages=[llm.user_text(_message_for_model(m))],
+            messages=_messages_for_model(m),
             tools=[EXTRACT_TOOL],
             forced_tool="flight_bookings",
             max_tokens=EXTRACT_MAX_TOKENS,

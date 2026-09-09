@@ -283,7 +283,23 @@ def _ripe_tickets(states, now):
     return ripe
 
 
-def collect_receipts(states, now, post=None):
+def _token_for(watched, device_id):
+    """The live token for a device, from the watch store, or None.
+
+    LOOKED UP RATHER THAN REMEMBERED. See the note at the claim in send_due: the
+    alternative was keeping a copy on every flight's state object, which put a
+    credential in the one file that holds no other thing about a person.
+    """
+    if not device_id:
+        return None
+    for row in watched:
+        for device in row.get("devices") or []:
+            if device.get("device_id") == device_id:
+                return device.get("push_token")
+    return None
+
+
+def collect_receipts(states, watched, now, post=None):
     """Ask Expo what actually happened, and act on what it says.
 
     A RECEIPT IS THE ONLY HONEST ANSWER. The ticket returned at send time says
@@ -325,7 +341,8 @@ def collect_receipts(states, now, post=None):
         else:
             failed += 1
             if error == DEAD_TOKEN:
-                token = (_slots(states.get(flight_key)).get(slot_id) or {}).get("token")
+                slot = _slots(states.get(flight_key)).get(slot_id) or {}
+                token = _token_for(watched, slot.get("device_id"))
                 if token:
                     dead_tokens.add(token)
         updates.setdefault(flight_key, {})[slot_id] = {
@@ -475,9 +492,15 @@ def send_due(watched, states, now, post=None):
     # precondition the poller uses.
     claims = {}
     for flight_key, slot_id, device, _env in work:
+        # THE DEVICE ID, NOT THE TOKEN. A push token is a credential for
+        # reaching somebody's phone, and this object is the one the privacy
+        # policy describes as shared between everyone watching a flight. Writing
+        # a token here put a credential into a file that is not otherwise about
+        # a person, to save one lookup fifteen minutes later. The receipt sweep
+        # resolves it from the watch store instead, which is where tokens live
+        # and where one is deleted when it dies.
         claims.setdefault(flight_key, {})[slot_id] = {
-            "claimed_at": _iso(now), "token": device.get("push_token"),
-            "device_id": device.get("device_id"),
+            "claimed_at": _iso(now), "device_id": device.get("device_id"),
         }
     for flight_key, changes in claims.items():
         _merge_slots(flight_key, changes, states)
@@ -627,7 +650,7 @@ def run_once(now=None, post=None):
         if doc is not None:
             states[(row["flight_number"], row["flight_date"])] = doc
 
-    receipts = collect_receipts(states, now, post=post)
+    receipts = collect_receipts(states, watched, now, post=post)
     sends = send_due(watched, states, now, post=post)
 
     out = {

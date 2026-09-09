@@ -42,6 +42,7 @@ FIRST ASKED FOR, not at import, so the service still boots and /flight, /route
 and /quota -- which never call a model -- are untouched by a misconfiguration
 they have nothing to do with.
 """
+import base64
 import os
 import threading
 from dataclasses import dataclass, field
@@ -206,6 +207,24 @@ def user_text(text: str) -> dict:
     return {"kind": "user_text", "text": text}
 
 
+def user_file(data: bytes, media_type: str) -> dict:
+    """The user attached this. Bytes and a media type, and nothing else.
+
+    THE FOURTH KIND, AND IT IS A TRANSPORT RATHER THAN A PDF FEATURE. It carries
+    bytes and says what they are; it does not know what a booking is, how many
+    pages a document has, or what any caller intends to do with the answer.
+    Every judgement of that sort -- how large is too large, how many pages are
+    worth paying for -- belongs to the caller, because those are questions about
+    a use rather than about a wire format. gmail_flights.py holds both.
+
+    BOTH PROVIDERS TAKE IT INLINE, which is why there is no upload step here.
+    Gemini accepts inline data to 50MB; Anthropic takes a base64 document block.
+    A file large enough to need an upload API is one this service should be
+    refusing anyway, and refusing it early is the caller's job.
+    """
+    return {"kind": "user_file", "data": data, "media_type": media_type}
+
+
 def model_turn(turn: Turn) -> dict:
     """The model said this. Carries the provider's own object, see Turn.raw."""
     return {"kind": "raw", "value": turn.raw}
@@ -285,6 +304,17 @@ def _generate_anthropic(*, model, system, messages, tools, forced_tool,
     for m in messages:
         if m["kind"] == "user_text":
             native.append({"role": "user", "content": m["text"]})
+        elif m["kind"] == "user_file":
+            # A DOCUMENT BLOCK, base64 in the source field. The same shape an
+            # image block takes, with a media type that says which it is.
+            native.append({"role": "user", "content": [{
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": m["media_type"],
+                    "data": base64.b64encode(m["data"]).decode("ascii"),
+                },
+            }]})
         elif m["kind"] == "raw":
             native.append({"role": "assistant", "content": m["value"]})
         elif m["kind"] == "tool_results":
@@ -340,6 +370,13 @@ def _generate_gemini(*, model, system, messages, tools, forced_tool,
         if m["kind"] == "user_text":
             contents.append(types.Content(
                 role="user", parts=[types.Part(text=m["text"])]))
+        elif m["kind"] == "user_file":
+            # RAW BYTES, NOT BASE64. The SDK encodes inline data itself, so
+            # encoding here would send the base64 OF the base64 and the model
+            # would be handed a wall of text rather than a document.
+            contents.append(types.Content(role="user", parts=[
+                types.Part.from_bytes(data=m["data"], mime_type=m["media_type"]),
+            ]))
         elif m["kind"] == "raw":
             # VERBATIM, AND THIS IS THE THOUGHT-SIGNATURE RULE. Gemini 3 attaches
             # signatures to the parts of a turn that used thinking, and requires

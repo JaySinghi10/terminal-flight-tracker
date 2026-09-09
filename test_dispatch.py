@@ -484,5 +484,32 @@ check("and the bad one is recorded, not retried for ever",
       (list(w36.slots("AI505").values())[0] if w36.slots("AI505") else {}).get("drop_reason")
       == "unrenderable", w36.slots("AI505"))
 
+print("-- a push token never lands on a flight's state file --")
+# The state object is the one thing on the server that holds no person. The
+# privacy policy says so in those words, and it is shared by everyone watching
+# that flight. A push token is a credential for reaching somebody's phone, so
+# writing one here would put a credential in the one file that is not about
+# anybody. The receipt sweep resolves it from the watch store instead.
+w40 = World([watched()], [state(outbox=[msg()])]).install()
+w40.reply = ok_tickets(1)
+dispatch.run_once(now=NOW, post=w40.post)
+slot40 = list(w40.slots().values())[0] if w40.slots() else {}
+check("no token in the slot", "token" not in slot40, slot40)
+check("the device id is there, because the slot is keyed by it",
+      slot40.get("device_id") == "dev-1", slot40)
+check("and nothing anywhere in the state object is a push token",
+      "ExponentPushToken" not in repr(w40.states), w40.states)
+
+# ...and the dead-token path still works without it, which is what the stored
+# copy was for.
+ripe40 = {"k1|dev-1": {"sent_at": iso(NOW - timedelta(minutes=20)), "ticket": "T-9",
+                       "device_id": "dev-1"}}
+w41 = World([watched()], [state(outbox=[msg()], sent=ripe40)]).install()
+w41.reply = {"data": {"T-9": {"status": "error", "message": "gone",
+                              "details": {"error": "DeviceNotRegistered"}}}}
+dispatch.run_once(now=NOW, post=w41.post)
+check("a dead token is still found, by lookup rather than by memory",
+      w41.forgotten == ["ExponentPushToken[aaa]"], w41.forgotten)
+
 print("\nPASSED: %d   FAILURES: %d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)
