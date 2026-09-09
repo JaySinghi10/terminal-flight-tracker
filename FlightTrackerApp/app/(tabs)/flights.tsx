@@ -86,6 +86,11 @@ import { mapRouteFor } from '../../lib/flightcard';
 // dataset. airportByCode is the accessor; the rows are not exported and must
 // not be. See showsBelt.
 import { airportByCode } from '../../lib/airports';
+// THE ONE CONVERSION A PENDING LEG NEEDS. Its departure is a clock printed in
+// an email with no zone attached; this reads those digits IN a named zone,
+// which is the only way an interval either side of it can be real. See its own
+// note in lib/time.
+import { zonedIsoToTs } from '../../lib/time';
 // formatClock IS HOME'S HEADER LINE, and it is imported rather than restated
 // because this screen now wears the same header. See the note where it lives.
 // CD_LATE JOINS CD_GREEN for the folder's accent. They are the app's one pair
@@ -719,28 +724,123 @@ function gapLabel(ms: number): string {
   return `${Math.floor(total / 60)}h ${String(total % 60).padStart(2, '0')}m`;
 }
 
-function Layover({ prev, next }: { prev: SavedFlight; next: SavedFlight }) {
-  // THE GAP IS ARRIVAL TO DEPARTURE, both as INSTANTS rather than as clocks --
-  // which is the only way it can be right when the two legs are in different
-  // zones, and a connection through Frankfurt usually is.
-  //
-  // NULL WHEN IT CANNOT BE READ, and that includes a NEGATIVE gap. A null is a
-  // pre-v3 record or a missing timezone; a negative is a stored contradiction,
-  // two legs that overlap. Neither is a duration, and printing "0h 00m" for
-  // either would be inventing the one number this row exists to state.
-  const arr = arrivalTs(prev);
-  const dep = departureTs(next);
-  const gap = arr !== null && dep !== null && dep >= arr ? dep - arr : null;
+// ── ONE END OF A LAYOVER, WHICHEVER KIND OF LEG IT IS ──────────────────────
+//
+// A JOURNEY IS TWO KINDS OF ROW AND THE WAIT BETWEEN THEM IS ONE QUESTION, so
+// the pair is described rather than the legs. Exactly one field is set on each
+// end, and everything below asks the same two things of it: when does it get
+// in, and when does the next one leave.
+type LayoverEnd = { saved: SavedFlight | null; pend: PendingLeg | null };
 
-  // AND WITH THE DURATION GONE THERE IS NO ROW. It was the last thing left after
-  // the other three lines came out, so an unreadable gap leaves an empty label
-  // sitting on the thread -- a break in the line marking nothing. The line runs
-  // unbroken past a leg it cannot time, which is the honest drawing of it.
-  if (gap === null) return null;
+// A GAP LONGER THAN A DAY IS NOT A LAYOVER, IT IS A STAY. Printing "31h 10m"
+// where a connection goes would be arithmetic answering a question nobody
+// asked, and the number is just as likely to be a wrong year or a mis-read
+// clock on an unpublished leg. Above this the row says so instead.
+const MAX_LAYOVER_MS = 24 * 60 * 60 * 1000;
+
+// An IATA code, or nothing. A saved record stores '' for an airport it has no
+// code for, and '' would win a ?? chain and print as a blank half of a route.
+const codeOf = (v: string | null | undefined): string | null =>
+  (typeof v === 'string' && v.trim() !== '' ? v : null);
+
+// ── AN AIRPORT AS SOMEBODY WOULD SAY IT ────────────────────────────────────
+//
+// THE CARDS PRINT CODES AND KEEP THEM. A card is a departure board and a board
+// prints CPH; the eye reads it against a boarding pass. This row is a SENTENCE,
+// and nobody says "layover in CPH" out loud -- they say Copenhagen. The two
+// treatments differ because the two things are read differently, not by
+// accident.
+//
+// THE DATASET IS THE ONE ALREADY HERE, keyed on the code, which is the same
+// lookup pendingDepartureTs makes for the zone a few lines down.
+//
+// THE CODE IS THE FALLBACK AND NOT A FAILURE. The dataset holds most airports
+// and not all, and a leg whose email printed no code at all arrives here
+// carrying a name already -- which misses the index and is returned untouched,
+// as it should be. Either way the row gets the best label available and never
+// an empty one.
+const cityOf = (place: string | null): string | null => {
+  if (place === null) return null;
+  const airport = airportByCode(place);
+  return (airport === null ? null : codeOf(airport.city)) ?? place;
+};
+
+// ── THE INSTANT A PENDING LEG DEPARTS, WHICH NOTHING HAS STORED ─────────────
+//
+// A PENDING LEG HAS A DATE AND A PRINTED CLOCK AND NO ZONE. "16:10" in an
+// email is 16:10 where the aircraft is, and the only thing that knows where
+// that is is the origin's IATA code -- so the code is looked up in the
+// dataset the rest of the app already carries and the digits are read in that
+// airport's zone.
+//
+// AN AIRPORT THE DATASET DOES NOT HOLD RETURNS NULL, and the row above says
+// the departure is not confirmed rather than guessing at UTC or at the phone's
+// own zone -- either of which would be wrong by hours and look exact.
+function pendingDepartureTs(leg: PendingLeg | null): number | null {
+  if (leg === null || leg.departureTime === null) return null;
+  if (!ISO_DAY_RE.test(leg.date)) return null;
+  const airport = leg.origin !== null ? airportByCode(leg.origin) : null;
+  if (airport === null) return null;
+  return zonedIsoToTs(`${leg.date}T${leg.departureTime}`, airport.tz);
+}
+
+// ── THE WAIT BETWEEN TWO LEGS, OR WHY IT CANNOT BE STATED ───────────────────
+//
+// IT USED TO RENDER NOTHING WHEN IT COULD NOT COUNT. That was right while every
+// leg in a trip was a provider record and a missing gap meant a pre-v3 row --
+// rare, and a silent line was the honest drawing of it. It stopped being right
+// the moment unpublished legs joined the journey: an unpublished leg HAS no
+// arrival, so the row it could not compute is now the common case, and drawing
+// nothing said "these two cards are adjacent" where the truth is "nobody has
+// published when this one lands".
+//
+// SO IT ALWAYS DRAWS, AND SAYS WHICH OF THE TWO IT IS. A duration when both
+// ends are known; otherwise a line naming the leg whose time is missing. What
+// it never does is put a number on the screen that nothing supports.
+//
+// THE ARRIVAL IS THE PUBLISHED ONE, THROUGH arrivalTs, so it takes that
+// function's precedence -- actual, then estimated, then scheduled -- and the
+// figure moves down as the provider revises the landing. A pending leg has no
+// arrival of any kind: not a scheduled one, not an estimate. That is what
+// "unpublished" means.
+//
+// BOTH ENDS ARE INSTANTS, NEVER CLOCKS, which is the only way the answer is
+// right when the two legs are in different zones -- and a connection through
+// Copenhagen always is.
+function Layover({ prev, next }: { prev: LayoverEnd; next: LayoverEnd }) {
+  const prevFrom = cityOf(codeOf(prev.saved?.from.iata) ?? codeOf(prev.pend?.origin) ?? codeOf(prev.pend?.originName)) ?? '?';
+  const prevTo = cityOf(codeOf(prev.saved?.to.iata) ?? codeOf(prev.pend?.destination) ?? codeOf(prev.pend?.destinationName)) ?? '?';
+  const nextFrom = cityOf(codeOf(next.saved?.from.iata) ?? codeOf(next.pend?.origin) ?? codeOf(next.pend?.originName)) ?? '?';
+  const nextTo = cityOf(codeOf(next.saved?.to.iata) ?? codeOf(next.pend?.destination) ?? codeOf(next.pend?.destinationName)) ?? '?';
+  // WHERE THE WAIT HAPPENS: the earlier leg's destination, and the later leg's
+  // origin only when the first is missing. On a real connection the two name
+  // one airport; where they disagree the arrival's own airport is the one this
+  // row is measured at.
+  const hub = cityOf(codeOf(prev.saved?.to.iata) ?? codeOf(prev.pend?.destination)
+    ?? codeOf(next.saved?.from.iata) ?? codeOf(next.pend?.origin));
+  const at = hub === null ? '' : ` in ${hub}`;
+
+  const arr = prev.saved !== null ? arrivalTs(prev.saved) : null;
+  const dep = next.saved !== null ? departureTs(next.saved) : pendingDepartureTs(next.pend);
+
+  // THE MISSING END IS NAMED, NOT THE ROW. "arrival not published yet" beside a
+  // route is a fact somebody can act on -- it says which airline owes which
+  // number -- where "layover unknown" says only that the app failed.
+  const label = (() => {
+    if (arr === null) return `${prevFrom} to ${prevTo} arrival not published yet`;
+    if (dep === null) return `${nextFrom} to ${nextTo} departure time not confirmed`;
+    const gap = dep - arr;
+    // A NEGATIVE GAP IS A CONTRADICTION AND NOT A DURATION. Two legs that
+    // overlap are a wrong year, a mis-read clock, or a record saved against the
+    // wrong day; "0h 00m" would hide all three.
+    if (gap < 0) return `Layover${at} not shown · times overlap`;
+    if (gap > MAX_LAYOVER_MS) return `Layover${at} not shown · over a day between legs`;
+    return `Layover${at} · ${gapLabel(gap)}`;
+  })();
 
   return (
     <View style={st.layover}>
-      <Text style={st.layoverTime}>{gapLabel(gap)}</Text>
+      <Text style={st.layoverTime}>{label}</Text>
     </View>
   );
 }
@@ -1880,6 +1980,10 @@ export default function Flights() {
         sort: legOrderKey(leg.flightDate, leg.from.scheduledIso?.slice(11, 16) ?? null),
         node: null as React.ReactNode,
         leg,
+        // THE LAYOVER NEEDS THE LEG, NOT THE CARD. A pending row carries only
+        // its rendered node, which nothing can read a departure out of, so the
+        // leg itself rides along beside it. Null here, set on the pending rows.
+        pend: null as PendingLeg | null,
         i,
       })),
       ...unpublished.map(p => ({
@@ -1898,17 +2002,43 @@ export default function Flights() {
           />
         ),
         leg: null as SavedFlight | null,
+        pend: p,
         i: -1,
       })),
     ].sort((a, b) => (a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0));
 
-    return rows.map(row => {
+    return rows.map((row, ri) => {
+      // ── THE LAYOVER BELONGS TO THE PAIR, SO IT IS BUILT FROM THE ROWS ─────
+      //
+      // IT USED TO BE BUILT FROM legs[i + 1], which is the next SAVED leg --
+      // so on a journey with an unpublished leg between two published ones it
+      // measured PAST the leg in the middle and reported the wrong wait, and
+      // between two unpublished legs it drew nothing at all. rows is the list
+      // in the order the screen actually shows, both kinds interleaved, so the
+      // neighbour here is the card that is really underneath.
+      //
+      // AFTER EVERY ROW BUT THE LAST. A layover is what sits BETWEEN two legs,
+      // so there is always exactly one fewer of them than there are rows, and a
+      // trailing one would be the space after the journey ends.
+      const after = ri < rows.length - 1 ? (
+        <Layover
+          prev={{ saved: row.leg, pend: row.pend }}
+          next={{ saved: rows[ri + 1].leg, pend: rows[ri + 1].pend }}
+        />
+      ) : null;
       // IN A SLOT, LIKE EVERY PUBLISHED LEG BELOW. It was returned bare, so it
       // started at the column's left edge -- ON the thread, RAIL_INSET to the
       // left of every card around it. The slot is the one thing that holds a
       // leg off the line, and there is no reason this leg should be the
       // exception.
-      if (row.leg === null) return <View key={row.key} style={st.legSlot}>{row.node}</View>;
+      if (row.leg === null) {
+        return (
+          <Fragment key={row.key}>
+            <View style={st.legSlot}>{row.node}</View>
+            {after}
+          </Fragment>
+        );
+      }
       const leg = row.leg;
       const i = row.i;
       // ONE ANSWER PER LEG, ASKED ONCE. legState reads the two
@@ -1982,11 +2112,6 @@ export default function Flights() {
       // itself, and the gap that follows it -- and React keys the
       // thing that is returned.
       //
-      // AFTER EVERY LEG BUT THE LAST. A layover is what sits between
-      // two legs, so there are always exactly one fewer of them than
-      // there are legs, and a trailing one would be the space after
-      // the journey ends.
-      //
       // A Fragment ADDS NO VIEW. Its children become direct children
       // of st.trip, so CARD_GAP falls between the card and the row
       // exactly as it falls between two cards.
@@ -1998,9 +2123,7 @@ export default function Flights() {
               are wrapped, which also keeps the two variants the same
               distance from the line. */}
           <View style={st.legSlot}>{card}</View>
-          {i < legs.length - 1 && (
-            <Layover prev={leg} next={legs[i + 1]} />
-          )}
+          {after}
         </Fragment>
       );
     });
@@ -2872,10 +2995,17 @@ const st = StyleSheet.create({
   //
   // paddingLeft: RAIL_INSET puts the text's own left edge level with the cards
   // above and below, while the background still reaches back over RAIL_X.
+  //
+  // flexShrink SO A SENTENCE STAYS INSIDE THE TRIP. The row used to hold four
+  // characters and could not overflow anything; it now holds lines like "CPH to
+  // BOM arrival not published yet", and a Text that cannot shrink reports its
+  // intrinsic width to the layout and wins against its parent. Shrinking is
+  // what makes it wrap at the trip's own width instead of running past it.
   layoverTime: {
     fontFamily: MONO_BOLD, fontSize: 13, color: DIM,
     backgroundColor: PAGE_BG,
     paddingLeft: RAIL_INSET, paddingRight: 8, paddingVertical: 2,
+    flexShrink: 1,
   },
   legHead: { flexDirection: 'row', alignItems: 'center' },
   legNum: { fontFamily: MONO_BOLD, fontSize: 13, color: '#ffffff' },
