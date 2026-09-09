@@ -2122,7 +2122,20 @@ export default function Flights() {
           first-child walk happens to reach. flex: 1 keeps the scroll view
           bounded; the full reasoning is at the marker on home. */}
       <ScrollViewMarker style={{ flex: 1 }}>
+      {/* THE BOTTOM MARGIN IS THE TAB BAR, AND UIKit MEASURES IT.
+          React Native sets contentInsetAdjustmentBehavior to Never on every
+          scroll view it creates -- RCTScrollViewComponentView does it at
+          init -- which is the opposite of UIKit's own default and is why
+          content ran under the tab bar on every screen. "automatic" hands
+          the measurement back to UIKit, which knows the bar's real height,
+          the home indicator under it, and what happens when the bar
+          minimises.
+          THIS IS NOT THE PADDING COMING BACK. Stage 8 removed four hardcoded
+          bottom paddings and said to measure rather than restore if a device
+          ever showed the last row hidden. A device did. This is the measure:
+          one prop, no number, and it stays right when the bar changes size. */}
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[st.scroll, st.scrollFill]}
         showsVerticalScrollIndicator={false}
         // THE HOME SCREEN'S OWN CONTROL, value for value -- the same green, the

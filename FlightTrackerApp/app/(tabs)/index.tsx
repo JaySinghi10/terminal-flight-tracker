@@ -2052,7 +2052,20 @@ export default function Index() {
             set, which expo-router's own config plugin writes into the Podfile
             at prebuild. That is unchanged by which path imports it. */}
         <ScrollViewMarker style={{ flex: 1 }}>
+        {/* THE BOTTOM MARGIN IS THE TAB BAR, AND UIKit MEASURES IT.
+            React Native sets contentInsetAdjustmentBehavior to Never on every
+            scroll view it creates -- RCTScrollViewComponentView does it at
+            init -- which is the opposite of UIKit's own default and is why
+            content ran under the tab bar on every screen. "automatic" hands
+            the measurement back to UIKit, which knows the bar's real height,
+            the home indicator under it, and what happens when the bar
+            minimises.
+            THIS IS NOT THE PADDING COMING BACK. Stage 8 removed four hardcoded
+            bottom paddings and said to measure rather than restore if a device
+            ever showed the last row hidden. A device did. This is the measure:
+            one prop, no number, and it stays right when the bar changes size. */}
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -2172,11 +2185,6 @@ export default function Index() {
                       : gmailPull.status === 'done'
                         ? 'pull from gmail again'
                         : 'add flights from gmail'}
-                </Text>
-                <Text style={gm.rowSub}>
-                  {gmailPull.status === 'loading'
-                    ? 'a year of confirmations, checked one by one'
-                    : 'booking emails from the last year, added to your watchlist'}
                 </Text>
               </TouchableOpacity>
 
@@ -2523,8 +2531,13 @@ const gm = StyleSheet.create({
     paddingVertical: 13, paddingHorizontal: CARD_PAD,
     backgroundColor: CARD_FILL, borderRadius: CARD_RADIUS, marginBottom: CARD_GAP,
   },
+  // ONE LINE, LIKE EVERY OTHER ROW ON THIS PAGE. It carried a second line
+  // describing what the pull does -- "booking emails from the last year" --
+  // which made the control roughly twice the height of the rows under it and
+  // read as a banner rather than as something to tap. The title already says
+  // what it does, and changes to "reading your gmail" while it runs, so the
+  // second line was explaining a thing the first line had said.
   rowTitle: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
-  rowSub: { fontFamily: SANS, fontSize: 11, color: 'rgba(226,226,226,0.4)', marginTop: 4 },
   msg: { fontFamily: SANS, fontSize: 11, color: 'rgba(226,226,226,0.5)', paddingVertical: 6 },
   leg: {
     paddingVertical: 13, paddingHorizontal: CARD_PAD,
