@@ -1,6 +1,6 @@
 # Terminal — project context
 
-For an assistant that cannot read the repository. It describes what exists, why it was built that way, and what has already been ruled out. Written 9 September 2026, replacing the version of the 8th, which is stale in almost every section. Where a number was measured it says so; where it was estimated it says that too.
+For an assistant that cannot read the repository. It describes what exists, why it was built that way, and what has already been ruled out. Written 9 September 2026 and revised the same evening, after a day spent almost entirely on the path from a booking email to a card on the screen. Where a number was measured it says so; where it was estimated it says that too.
 
 ---
 
@@ -14,7 +14,7 @@ Terminal is an iPhone flight tracker. Three things distinguish it from the categ
 
 First, no human has confirmed seeing a notification on a phone. Delivery receipts prove Apple accepted the pushes; they do not prove anything appeared on a lock screen. That last step is unverified.
 
-Second, the app on the tester's phone lags the repository. Two builds are in TestFlight: one from the stable line and one carrying the native tab bar. Both predate the notification staleness rule, the iOS 26 floor, the Apple-glass toasts, the tab bar inset fix and the whole of the Gmail screen rework, all of which exist only in the repository until the next build lands.
+Second, the app on the tester's phone lags the repository, and it lags it further today than it did this morning. Two builds are in TestFlight and both are now weeks of work behind: they predate the notification staleness rule, the iOS 26 floor, the Apple-glass toasts, the tab bar inset fix, and the whole of the Gmail rework described below. The development client is the only place any of today's work has been seen, which is a real device and a real phone but not the build the tester has.
 
 Third, and this is a product decision rather than a defect, notification permission is only ever requested when someone turns on a reminder for a saved flight. A person who never does that has no push token and will never be reached, no matter how well the server behaves.
 
@@ -30,9 +30,15 @@ React Native and Expo, file-based routing, four tabs. In tab order: Home, My Fli
 
 **The tab bar is Apple's, not hand-built.** A hand-drawn glass tab bar of about four and a half thousand lines was deleted and replaced with the system control. It carries one unresolved defect, described in the gaps section.
 
-**Home** is the search field and the result. You type a flight number and get a card. Under it sit the watchlist, a single-line row that pulls flights out of Gmail, a labelled section for legs the airline has not published yet, and a profile sheet holding Google sign-in. The pull used to echo its own results in a third list below the button; that list was a duplicate of the two places the legs had already gone, and it was deleted.
+**Home** is the search field and the result. You type a flight number and get a card. Under it sit the watchlist, a single-line row that pulls flights out of Gmail, a short list of unpublished legs that belong to no journey, and a profile sheet holding Google sign-in. That last list used to hold every unpublished leg; it now holds only the orphans, because a leg that belongs to a trip is shown inside the trip.
 
 **My Flights** is the saved list arranged as journeys. Flights that belong together fold into a trip, and the folder for the journey you are on opens by default, computed fresh each time rather than remembered, because a set of open folders seeded at mount goes stale the moment one journey finishes and the next is promoted.
+
+**A journey now shows the legs no provider carries, and the waits between them.** A leg extracted from a booking email that no data provider has ever heard of sits in the trip between the legs either side, in the same card the published legs use and at the same height, saying only what the booking said: the date, the number, the airline, the route, the booked departure clock, and a chip reading UNPUBLISHED. It never shows a gate, a terminal, an arrival, a countdown or a status, because none of those exists for it and a countdown against an unconfirmed time would be the most confident thing on the screen and the least founded. Tapping it adds two lines: the booking reference, and what the app has tried. At most one leg in a journey is open at a time, of either kind.
+
+**Between two legs there is now a layover row.** Where both ends can be resolved to real instants it gives the wait in hours and minutes at the connecting city. Where the earlier leg has no published arrival, which is every unpublished leg, it says so and names the leg rather than printing a number nothing supports. It refuses a negative gap and refuses anything over a day, and says which. The cards keep IATA codes because a card is read like a departure board; the layover row uses city names because it is read as a sentence.
+
+**A leg the airline has cancelled says so.** The chip reads CANCELLED in the same red a cancelled published flight takes, on Home as well as in the trip, and the open card says the airline cancelled the flight and that the app read that in the booking email rather than from a data provider. A cancelled leg is never looked up again, and is not deleted either: it keeps its place in the journey until the person removes it.
 
 **Deck** answers where you are and what is near you. It derives the airport from your journey rather than asking, and a manual pick overrides that. For a layover it computes a reserve of time from the layover length and both terminals, using estimates for immigration, security and a terminal change. Those are estimates and the file says so; no vendor sells walking times for a set of airports this size. Under that sits the dining list split by security side, and where the data exists, a schematic of the terminal with its gates.
 
@@ -63,6 +69,12 @@ Public and unauthenticated: the flight lookup that a card is built from, a route
 Session-authenticated by a bearer token: the Google OAuth exchange that issues a session, a sign-out that destroys it and revokes at Google, and the Gmail reader that returns flight legs. The assistant also accepts a session, which is how it can answer questions about your own next flight.
 
 Secret-gated: three alert routes carrying their secret in the path, which receive and read back webhook deliveries from the landing provider; the watch and unwatch pair behind one header secret; the poller behind another; and the dispatcher behind a third. Every one answers a bad secret with 404 rather than 403, because a 403 confirms the route exists and tells a prober they have found something worth probing.
+
+**The Gmail extractor classifies an email before it reads one.** It used to answer a single question -- is this a booking, yes or no -- and a cancellation was a no, which meant the one email that says a flight will not operate was the one email thrown away. It now places every email as a confirmation, a change, a cancellation, or other, and refuses to guess: an email it cannot place with confidence is other and returns nothing. A confirmation returns every leg it contains; a cancellation or a change returns the legs it names, which is often one, because that is how airlines write them. Every leg carries a status of its own, scheduled or cancelled.
+
+**Emails about one leg are now ordered and merged rather than pooled.** The old merge kept whichever copy the model was surest of and filled its blanks from the rest, which meant nothing could supersede anything: a reschedule lost to a surer original, and a cancellation could not touch a confirmation at all. Emails are now walked oldest to newest by the instant Gmail itself received them, to the millisecond, and the newest email wins a field the two disagree on -- because confidence measures how well a value was read, not whether it is still true. Three exceptions are written into that rule. A cancellation marks a leg and nothing unmarks it, since a re-sent itinerary is a copy of the original and not a reinstatement. A later email that abbreviates an airline's name to its carrier code does not win, because that is the same fact with the name taken off rather than a newer one. And absence is never removal: an itinerary that no longer lists a leg says nothing about it, and only an explicit cancellation may mark one.
+
+**Nothing is fetched and then discarded before the model sees it.** The fetch cap and the extract cap were twenty-five and ten, so fifteen emails could be downloaded, decoded, and pass the spend gate -- every one of them looking like a booking -- and then be dropped on nothing but their position in a list. They are equal now. The gate is the filter, and it reads the email; the cap only stops a runaway.
 
 **Landing detection is a separate endpoint on purpose.** Folding it into the flight lookup would mean every two-minute check near an arrival also spent a unit of the scarce provider's budget, so the constrained budget would pay for the unconstrained one. It also keeps schedules, gates and route search structurally out of reach of a landing-provider outage.
 
@@ -142,6 +154,14 @@ The watch store distinguishes "could not be read" from "is empty". Collapsing th
 
 A booking email dated more than sixty days before the message that carried it has its year rolled forward, because an email received in late December for a flight on the fifteenth of January means next January. The gap is sixty days rather than something smaller so that a post-flight thank-you note, which names a date a few days in the past, is not turned into next year's flight.
 
+Two legs of one journey may carry two different booking references. A rule that refused to link them was written to stop an unrelated flight joining a real trip, and it cut the last leg off a real three-leg journey booked under two references. The reference is a positive signal and is a blocker nowhere; the coincidence it used to prevent is accepted as the cheaper of the two failures, because a wrong join is visible and can be undone where a missing leg is neither.
+
+A local day key is built with a padded, one-based month. An unpadded zero-based one made every date in the second half of a year sort before today, so every future leg was refused as past.
+
+A field absent from a stored record is normalised on read rather than migrated on write, and the readers test the value rather than its existence. A pending leg written before journeys existed carried no trip field at all, and undefined matched neither the test for a trip nor the test for no trip, so those legs vanished from both places at once.
+
+A cap that refuses silently is a bug with a countdown on it. The pending queue held ten, filled with test mail, and every further leg of a real booking was refused without a word. Every refusal is now counted by reason and said out loud.
+
 A message older than its kind's useful life is dropped rather than sent. Written the same evening the first dispatch pass delivered a six-hour-old cancellation.
 
 A message that cannot be rendered is dropped rather than raising, so one malformed row cannot silence every flight.
@@ -166,13 +186,15 @@ The poller and the dispatcher have separate secrets even though one scheduler dr
 
 ## 7. State of play
 
-**Verified on a real device.** The app runs from TestFlight on an iPhone. Google sign-in completes end to end, which was unverified two days ago. A Gmail pull against a real inbox works: a set of five deliberately constructed test emails produced exactly the six legs predicted, including a three-leg itinerary, a codeshare filed under its marketing number, and a leg whose details were carried in structured data rather than prose. The email dated in the past was correctly rejected and did not appear. Two of the six resolved against the provider and were saved; four did not and were queued as unpublished, which is the designed behaviour and not a failure.
+**Verified on a real device.** The app runs from TestFlight on an iPhone, and today's work runs on the development client on the same phone. Google sign-in completes end to end. A Gmail pull against a real inbox works: a set of deliberately constructed test emails produced exactly the legs predicted, including a three-leg itinerary, a codeshare filed under its marketing number, and a leg whose details were carried in structured data rather than prose. A real three-leg booking -- San Francisco to Copenhagen to Mumbai to Indore, under two booking references, with two legs no provider carries -- now appears whole in one journey, which is the thing that did not work this morning.
 
-**Verified in production, on the server.** The poller runs live against a real watchlist. The dispatcher runs every minute, and its first pass sent nine messages for which Expo returned a positive delivery receipt in every case. Later passes correctly send nothing, which is the never-twice guarantee holding against real storage rather than against a test double. Landing detection, flight lookup and the route board all work. The refresh-token sign-in works. The public website carries a privacy policy and terms at real URLs.
+**The pending-leg store was not working, and the reason it looked as though it was is worth recording.** Two legs of that booking were invisible, and six independent faults were each sufficient on their own: a queue capped at ten and already full of test mail, a day key whose unpadded month made every future date read as past, legs stored before journeys existed carrying no trip field at all, a stale closure that split one journey into two, an adoption rule that only ever ran for legs with no trip and so could not rescue one carrying a dead trip, and a rule that refused to link two legs whose booking references differed. Each was found by adding logging rather than by reading, and each was fixed separately. The lesson recorded here is that a store which reports only its successes will hide any number of failures behind the first one.
+
+**Verified in production, on the server.** Three deploys today, the last of which is the one running. The extractor's own fixture suite -- eight synthetic airline emails, pushed through the deployed code path with the real model -- classifies each correctly, including the cancellation notice that names a flight, which comes back as one cancelled leg. The unit suite is eighty-one checks and passes. The poller runs live against a real watchlist. The dispatcher runs every minute, and its first pass sent nine messages for which Expo returned a positive delivery receipt in every case. Later passes correctly send nothing, which is the never-twice guarantee holding against real storage rather than against a test double. Landing detection, flight lookup and the route board all work. The refresh-token sign-in works. The public website carries a privacy policy and terms at real URLs.
 
 **Built, deployed, and not yet exercised.** The staleness rule is live but no message has been old enough to trip it since. The dead-token path has never fired, because no token has died. The unrenderable-message guard has never fired outside its tests.
 
-**Built and never on a device at all.** Everything in the last seven commits: the Apple-glass toasts, the iOS 26 deployment floor, the tab bar inset fix, the removal of the Gmail echo, the booking details on the card, and the swipe on unpublished legs. All of it is in the repository and none of it is in any build.
+**Built and never in a TestFlight build.** The Apple-glass toasts, the iOS 26 deployment floor, the tab bar inset fix, the booking details on the card, the swipe on unpublished legs, and everything from today: the unpublished leg inside the journey, the layover row, the cancelled-leg rendering, and the whole of the extractor's classification and merge work. Today's client half has been seen on a phone through the development client; none of it is in a build the tester can install.
 
 **Half-built.** The conversion of the app's surfaces to Apple's glass. Two of fourteen sites are converted, both toasts. The remaining twelve are the sheets, panels and menus across four files, plus three map controls. The plan for the rest is written and the material choice is settled.
 
@@ -184,7 +206,7 @@ The poller and the dispatcher have separate secrets even though one scheduler dr
 
 ## 8. Known gaps
 
-**Secrets that need rotating, and this is the most urgent item here.** Three values have been exposed in chat transcripts and none has been rotated. The landing provider's API token was pasted some days ago. The dispatcher's secret was pasted yesterday, and it currently protects the endpoint that sends notifications to people. The fixture-inbox token is set to a trivially guessable development value; it gates a test path rather than real mail, but it is on the production service. Rotation is the owner's decision and has been flagged each time.
+**Secrets that need rotating, and this is the most urgent item here.** Four values have been exposed in chat transcripts and none has been rotated. The fourth is the watch secret, which the build tooling echoed while it was being set as an environment variable. The landing provider's API token was pasted some days ago. The dispatcher's secret was pasted yesterday, and it currently protects the endpoint that sends notifications to people. The fixture-inbox token is set to a trivially guessable development value; it gates a test path rather than real mail, but it is on the production service. Rotation is the owner's decision and has been flagged each time.
 
 **The build tooling reported a submission failure that did not happen.** Build 4 was submitted twice; both runs ended with a generic message saying something had gone wrong at Apple's end, with no detail surfaced. App Store Connect shows that build as complete, ready to submit, and already installed once. So the binary arrived and the tooling misreported the outcome. The practical lesson is that this submission step cannot be trusted to say whether it worked, and App Store Connect is the only reliable check.
 
@@ -194,13 +216,21 @@ The poller and the dispatcher have separate secrets even though one scheduler dr
 
 **Poll state objects are never deleted.** The function to delete one exists and nothing calls it, so an object outlives its flight indefinitely. The privacy policy says this outright and calls it a gap in the code rather than a policy, which is honest but does not make it less of a gap.
 
-**No human has confirmed a notification appearing on a phone.** Delivery receipts are strong evidence and are not proof.
+**No human has confirmed a notification appearing on a phone.** Delivery receipts are strong evidence and are not proof. Nothing about this changed today.
+
+**A cancelled leg is shown but nothing is sent about it.** The extractor learns from the email that a flight will not operate, and the app renders it, but that fact never reaches the poller or the notification path -- those know only what a provider says. Somebody who does not open the app is not told.
+
+**The cancellation fixture that names no flight is named as though it does.** It carries a booking reference, a refund and an order number and no flight number or date, so it classifies as a cancellation and correctly returns nothing; the file was renamed on the assumption that it would return its legs, and a second fixture that does name a flight was added beside it. The first one's name is now misleading.
+
+**A stopover of more than a day is not shown as a layover.** The row says the gap is over a day rather than printing it, on the grounds that a number that large is as likely to be a wrong year as a real wait. For somebody genuinely stopping over for two days this is less useful than the number would have been.
+
+**Legs already stored on a device keep whatever the last pull wrote.** The rule that stops an airline's name being overwritten by its code only affects future pulls. The name map on the client was extended by hand for the one carrier this surfaced with, which fixes the display without fixing the stored value.
 
 **The app lints dirty.** About 150 problems, most of them a rule that objects to the way this codebase writes animation values, which is the pattern the animation library itself documents. The count is stable and known rather than growing unnoticed.
 
 **Sign-out revoking access at Google has never run on a device.** The code is written and tested against a fake. If it is broken, the privacy policy describes something that does not happen.
 
-**A test helper sits untracked in the repository root.** It sends the five Gmail test emails. It is a throwaway tool rather than project code and should be moved or deleted.
+**A test helper still sits untracked in the repository root.** It sends the Gmail test emails, reads its credentials from the environment, and carries no secret of its own. It is a throwaway tool rather than project code and should be moved or deleted; it has been left out of every commit rather than filed somewhere it does not belong.
 
 **Dead code.** A client-side landing sweep and parts of an auto-refresh path were superseded by the poller and have not been removed. A pending-leg retry reports the wrong trigger name on one path, which is harmless and will confuse whoever reads the events.
 
