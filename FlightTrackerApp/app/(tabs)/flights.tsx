@@ -741,10 +741,16 @@ function gapLabel(ms: number): string {
 // in, and when does the next one leave.
 type LayoverEnd = { saved: SavedFlight | null; pend: PendingLeg | null };
 
-// A GAP LONGER THAN A DAY IS NOT A LAYOVER, IT IS A STAY. Printing "31h 10m"
-// where a connection goes would be arithmetic answering a question nobody
-// asked, and the number is just as likely to be a wrong year or a mis-read
-// clock on an unpublished leg. Above this the row says so instead.
+// A GAP LONGER THAN A DAY IS NOT A LAYOVER, IT IS A STAY -- and now it is not
+// a row either. It used to print "not shown · over a day between legs", which
+// was true and was noise: a return booked a week apart said it on every screen,
+// about two legs that were never going to connect.
+//
+// THE SAME WINDOW connectionGap USES, and deliberately the same number. That
+// function decides which legs are one JOURNEY; this decides which pairs get a
+// row, and two answers to "do these connect" that could drift apart is the
+// thing to avoid. It is restated rather than imported because connectionGap
+// takes two provider records and half the pairs here have none.
 const MAX_LAYOVER_MS = 24 * 60 * 60 * 1000;
 
 // An IATA code, or nothing. A saved record stores '' for an airport it has no
@@ -839,9 +845,28 @@ function pendingArrivalTs(leg: PendingLeg | null): number | null {
 // nothing said "these two cards are adjacent" where the truth is "nobody has
 // published when this one lands".
 //
-// SO IT ALWAYS DRAWS, AND SAYS WHICH OF THE TWO IT IS. A duration when both
-// ends are known; otherwise a line naming the leg whose time is missing. What
-// it never does is put a number on the screen that nothing supports.
+// SO IT DRAWS WHENEVER THE TWO LEGS CONNECT, and says which of the two it is:
+// a duration when both ends are known, otherwise a line naming the leg whose
+// time is missing. What it never does is put a number on the screen that
+// nothing supports.
+//
+// ── AND IT DRAWS NOTHING BETWEEN LEGS THAT DO NOT CONNECT ─────────────────
+//
+// A JOURNEY IS NOT ONLY CONNECTIONS. A return booked under one reference is two
+// legs a week apart; a multi-city booking can land at one airport and leave
+// from another the next day, with a drive in between. Both used to get a row
+// saying the gap was over a day, which is arithmetic on legs that were never
+// going to meet -- true, useless, and on the screen every time.
+//
+// THE TEST IS THE ONE connectionGap ALREADY MAKES: the earlier leg's
+// destination is the later leg's origin, and the wait is under a day. Not a
+// second definition of connecting, the same one -- see MAX_LAYOVER_MS.
+//
+// THE WINDOW ONLY BINDS WHEN IT CAN BE MEASURED. Where the arrival cannot be
+// resolved there is no gap to test, and a shared airport is the whole of what
+// is known: the pair connects, and the row says which end is missing. Refusing
+// to draw there would hide the one case the row exists for -- an unpublished
+// leg in the middle of a journey.
 //
 // THE ARRIVAL IS THE PUBLISHED ONE, THROUGH arrivalTs, so it takes that
 // function's precedence -- actual, then estimated, then scheduled -- and the
@@ -853,16 +878,20 @@ function pendingArrivalTs(leg: PendingLeg | null): number | null {
 // right when the two legs are in different zones -- and a connection through
 // Copenhagen always is.
 function Layover({ prev, next }: { prev: LayoverEnd; next: LayoverEnd }) {
+  // THE PLACES, ONCE, BEFORE THEY ARE DRESSED FOR READING. The connection test
+  // needs the codes and the sentence needs the city names, and both come from
+  // one chain so the row cannot test one airport and name another.
+  const prevToPlace = codeOf(prev.saved?.to.iata) ?? codeOf(prev.pend?.destination) ?? codeOf(prev.pend?.destinationName);
+  const nextFromPlace = codeOf(next.saved?.from.iata) ?? codeOf(next.pend?.origin) ?? codeOf(next.pend?.originName);
   const prevFrom = cityOf(codeOf(prev.saved?.from.iata) ?? codeOf(prev.pend?.origin) ?? codeOf(prev.pend?.originName)) ?? '?';
-  const prevTo = cityOf(codeOf(prev.saved?.to.iata) ?? codeOf(prev.pend?.destination) ?? codeOf(prev.pend?.destinationName)) ?? '?';
-  const nextFrom = cityOf(codeOf(next.saved?.from.iata) ?? codeOf(next.pend?.origin) ?? codeOf(next.pend?.originName)) ?? '?';
+  const prevTo = cityOf(prevToPlace) ?? '?';
+  const nextFrom = cityOf(nextFromPlace) ?? '?';
   const nextTo = cityOf(codeOf(next.saved?.to.iata) ?? codeOf(next.pend?.destination) ?? codeOf(next.pend?.destinationName)) ?? '?';
-  // WHERE THE WAIT HAPPENS: the earlier leg's destination, and the later leg's
-  // origin only when the first is missing. On a real connection the two name
-  // one airport; where they disagree the arrival's own airport is the one this
-  // row is measured at.
-  const hub = cityOf(codeOf(prev.saved?.to.iata) ?? codeOf(prev.pend?.destination)
-    ?? codeOf(next.saved?.from.iata) ?? codeOf(next.pend?.origin));
+  // WHERE THE WAIT HAPPENS. The two are the same airport by the time this is
+  // read -- the test below has already refused the pair otherwise -- so the
+  // earlier leg's destination is taken and the later leg's origin is only the
+  // fallback for a record that carries no code at that end.
+  const hub = cityOf(prevToPlace ?? nextFromPlace);
   const at = hub === null ? '' : ` in ${hub}`;
 
   // THE PUBLISHED ARRIVAL FIRST AND ALWAYS. A leg with a provider record has an
@@ -872,19 +901,61 @@ function Layover({ prev, next }: { prev: LayoverEnd; next: LayoverEnd }) {
   const arr = prev.saved !== null ? arrivalTs(prev.saved) : pendingArrivalTs(prev.pend);
   const dep = next.saved !== null ? departureTs(next.saved) : pendingDepartureTs(next.pend);
 
+  // ── DO THESE TWO LEGS MEET AT ALL ────────────────────────────────────────
+  //
+  // THE AIRPORT, TRIMMED AND UPPERCASED, which is hubOf's whole rule in
+  // lib/saved: a code is a code whatever case it was stored in, and an empty
+  // one is not an airport. codeOf has already turned the empties into nulls.
+  const shared = prevToPlace !== null && nextFromPlace !== null
+    && prevToPlace.trim().toUpperCase() === nextFromPlace.trim().toUpperCase();
+  // AND THE WINDOW, WHERE THERE IS ONE TO MEASURE. A gap of a day or more is
+  // a stay between two journeys' worth of flying rather than a wait at a
+  // connection, and nothing is drawn for it at all.
+  const gap = arr !== null && dep !== null ? dep - arr : null;
+  // ── AND THE DATES WHERE THERE IS NOT ─────────────────────────────────────
+  //
+  // A SHARED AIRPORT IS NOT ENOUGH ON ITS OWN. A return flies the outbound
+  // backwards, so it leaves from exactly the airport the outbound landed at --
+  // and where the arrival cannot be resolved there is no gap to refuse it
+  // with, so a booking a week apart drew "arrival not published yet" between
+  // two legs that were never going to meet.
+  //
+  // THE DATES ARE THE COARSE ANSWER AND EVERY LEG HAS ONE. This is not a
+  // second definition of connecting: it is the same day-long window, measured
+  // in the only unit left when no instant can be built. More than a day
+  // between the two calendar dates and the pair is not a connection; a day or
+  // less and it may be, so the row stands and says which end is missing.
+  //
+  // UTC MIDNIGHT ON BOTH SIDES, so the difference is an exact whole number of
+  // days rather than a local one that a clock change could make 23 hours.
+  const dayTs = (d: string | null | undefined): number | null =>
+    (typeof d === 'string' && ISO_DAY_RE.test(d) ? Date.parse(`${d}T00:00:00Z`) : null);
+  const prevDay = dayTs(prev.saved?.flightDate ?? prev.pend?.date);
+  const nextDay = dayTs(next.saved?.flightDate ?? next.pend?.date);
+  const daysApart = prevDay !== null && nextDay !== null ? Math.abs(nextDay - prevDay) : null;
+  if (!shared) return null;
+  // THE MEASURED GAP DECIDES WHEREVER THERE IS ONE, and the dates only stand
+  // in for it. Null on either side is an UNKNOWN distance and not a wide one,
+  // so neither test refuses a pair it cannot measure.
+  if (gap !== null ? gap >= MAX_LAYOVER_MS : daysApart !== null && daysApart > MAX_LAYOVER_MS) return null;
+
   // THE MISSING END IS NAMED, NOT THE ROW. "arrival not published yet" beside a
   // route is a fact somebody can act on -- it says which airline owes which
   // number -- where "layover unknown" says only that the app failed.
   const label = (() => {
     if (arr === null) return `${prevFrom} to ${prevTo} arrival not published yet`;
     if (dep === null) return `${nextFrom} to ${nextTo} departure time not confirmed`;
-    const gap = dep - arr;
-    // A NEGATIVE GAP IS A CONTRADICTION AND NOT A DURATION. Two legs that
-    // overlap are a wrong year, a mis-read clock, or a record saved against the
-    // wrong day; "0h 00m" would hide all three.
-    if (gap < 0) return `Layover${at} not shown · times overlap`;
-    if (gap > MAX_LAYOVER_MS) return `Layover${at} not shown · over a day between legs`;
-    return `Layover${at} · ${gapLabel(gap)}`;
+    const wait = dep - arr;
+    // A NEGATIVE GAP IS A CONTRADICTION AND NOT A DURATION, and it survives the
+    // test above on purpose: two legs that share an airport inside the window
+    // and still overlap in time are a wrong year, a mis-read clock, or a record
+    // saved against the wrong day. "0h 00m" would hide all three.
+    //
+    // THE OVER-A-DAY MESSAGE IS GONE FROM HERE because it can no longer be
+    // reached: a gap that long is not a connection now, and the pair left
+    // without a row several lines above.
+    if (wait < 0) return `Layover${at} not shown · times overlap`;
+    return `Layover${at} · ${gapLabel(wait)}`;
   })();
 
   return (
