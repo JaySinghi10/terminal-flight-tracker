@@ -190,4 +190,100 @@ Air India Customer Support
 """)
 write("07_cancellation_named_flight.eml", ai_cancel)
 
-print("wrote 8 fixtures to", HERE)
+# ── 8. A DOMESTIC RETURN: ONE LEG OUT, ONE LEG BACK A WEEK LATER ────────────
+# The commonest booking there is, and the suite had none: two legs under one
+# reference that are NOT a connection -- seven days apart, and the second flies
+# the first backwards. The return is a red-eye, so it lands on the day after it
+# leaves and the email prints that day: the only fixture besides the agency
+# itinerary that exercises an arrival date of its own.
+indigo_rt = base("Booking Confirmation - PNR K4L9WD | 6E 2134 / 6E 2137 | Mumbai - Delhi - Mumbai",
+                 "IndiGo <no-reply@goindigo.in>", "Tue, 25 Aug 2026 11:20:00 +0530")
+indigo_rt.set_content("""Dear Jay Singhi, your return booking is confirmed.
+
+PNR  K4L9WD
+
+ONWARD
+6E 2134   Mumbai (BOM) Terminal 1  ->  Delhi (DEL) Terminal 2
+Mon, 12 Oct 2026   Departs 06:15   Arrives 08:25
+
+RETURN
+6E 2137   Delhi (DEL) Terminal 2  ->  Mumbai (BOM) Terminal 1
+Departs Mon, 19 Oct 2026 23:50   Arrives Tue, 20 Oct 2026 02:05
+
+Passenger: MR JAY SINGHI   Seat 9C / 14A
+Fare INR 10,240   Convenience fee INR 350   Total INR 10,590
+Web check-in opens 48 hours before departure.
+""")
+write("08_domestic_return.eml", indigo_rt)
+
+# ── 9. A STOPOVER, NOT A CONNECTION ────────────────────────────────────────
+# Two legs on one reference where the second leaves the NEXT DAY from a
+# DIFFERENT AIRPORT than the first landed at. Nothing joins them but the
+# booking: there is no airport in common and no gap a connection rule would
+# recognise, because the traveller drives between the two cities overnight.
+multicity = base("Air India: multi-city booking confirmed - R2M8ZC",
+                 "Air India <noreply@airindia.com>", "Thu, 27 Aug 2026 16:05:00 +0530")
+multicity.set_content("""Dear Mr Singhi,
+
+Your multi-city booking is confirmed.
+
+Booking reference  R2M8ZC
+
+Segment 1
+AI 2914   Mumbai (BOM) Terminal 2  ->  Ahmedabad (AMD)
+Tue, 03 Nov 2026   Departs 17:55   Arrives 19:20
+
+Segment 2
+AI 476    Udaipur (UDR)  ->  New Delhi (DEL) Terminal 3
+Wed, 04 Nov 2026   Departs 11:30   Arrives 12:55
+
+Surface travel between Ahmedabad and Udaipur is not included in this booking.
+Passenger: SINGHI/JAY MR   Ticket 098-7712340099
+Total INR 14,860
+""")
+write("09_stopover_two_cities.eml", multicity)
+
+# ── 10a. A CONFIRMATION THAT WILL BE SUPERSEDED ────────────────────────────
+# One leg, so the change notice beside it has exactly one thing to move.
+change_conf = base("Your booking is confirmed - H3P7QK - AI 2986 Delhi to Bengaluru",
+                   "Air India <noreply@airindia.com>", "Mon, 24 Aug 2026 09:15:00 +0530")
+change_conf.set_content("""Dear Mr Singhi,
+
+Thank you for booking with Air India. Your booking is confirmed.
+
+Booking reference  H3P7QK
+
+AI 2986   New Delhi (DEL) Terminal 3  ->  Bengaluru (BLR) Terminal 2
+Fri, 20 Nov 2026   Departs 09:40   Arrives 12:25
+
+Passenger: SINGHI/JAY MR   Seat 18F   Ticket 098-7712345566
+Fare INR 8,140
+""")
+write("10a_change_original.eml", change_conf)
+
+# ── 10b. THE CHANGE, SIXTEEN DAYS LATER, SAME REFERENCE ────────────────────
+# A schedule revision that moves the leg to a different NUMBER and a different
+# DAY, and names the flight it replaces the way an airline actually writes one.
+# The merge keys on number and date, so what this fixture is really asking is
+# whether a leg whose identity changed can supersede the leg it replaced.
+change_notice = base("Important: schedule change to your booking H3P7QK",
+                     "Air India <noreply@airindia.com>", "Fri, 04 Sep 2026 08:45:00 +0530")
+change_notice.set_content("""Dear Mr Singhi,
+
+Due to a schedule revision, one flight on your booking has changed.
+
+Booking reference  H3P7QK
+
+Previously   AI 2986   New Delhi (DEL) -> Bengaluru (BLR)   Fri, 20 Nov 2026   09:40
+Now          AI 2992   New Delhi (DEL) Terminal 3 -> Bengaluru (BLR) Terminal 2
+             Sat, 21 Nov 2026   Departs 14:15   Arrives 17:05
+
+Your seat assignment and baggage allowance carry over to the new flight. No
+action is required. If the new timing does not suit you, a full refund is
+available at airindia.com/manage.
+
+Air India Customer Support
+""")
+write("10b_change_notice.eml", change_notice)
+
+print("wrote 12 fixtures to", HERE)
