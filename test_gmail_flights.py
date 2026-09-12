@@ -179,10 +179,12 @@ check("different legs stay separate and sort by date", [l["flight_number"] for l
 # the replacement rule below is the same marking under another name, and a
 # change that broke stickiness would break both at once.
 #
-# EVERY MERGE BELOW BUILDS ITS OWN LEGS, because merge() stores the dicts it is
-# given and marks them in place. Sharing one leg across two merges means the
-# second reads what the first did to it, which passes for the wrong reason or
-# fails for one that is not the code's fault. Fresh legs, every time.
+# THE LEGS ARE BUILT ONCE AND REUSED, WHICH IS ITSELF THE POINT. merge copies
+# every leg on the way in and writes to nothing the caller holds, so the same
+# object can go into two merges and come out of the second saying what it said
+# going into the first. These were per-merge factories until that was true --
+# a workaround for a mutation that no longer happens, and one that quietly hid
+# the bug rather than pinning it.
 print()
 print("-- the merge: a cancellation marks, and the mark sticks --")
 AUG = {"subject": "Booking", "received": "2026-08-24", "received_at": "2026-08-24T03:45:00.000+00:00"}
@@ -190,39 +192,44 @@ SEP1 = {"subject": "Change", "received": "2026-09-01", "received_at": "2026-09-0
 SEP4 = {"subject": "Cancelled", "received": "2026-09-04", "received_at": "2026-09-04T03:15:00.000+00:00"}
 SEP6 = {"subject": "Itinerary", "received": "2026-09-06", "received_at": "2026-09-06T03:15:00.000+00:00"}
 
-# THE FLIGHT AN EARLIER EMAIL CONFIRMED, and the one a change moves it to.
-# THE DEFAULTS ARE BUILT FIRST AND OVERRIDDEN SECOND, rather than splatted into
-# one dict() call beside the keywords they are meant to replace: a keyword given
-# twice is a TypeError, not an override.
-def a_leg(number, day, src, **over):
-    fields = dict(good, flight_number=number, date=day, origin="DEL", destination="BLR",
-                  pnr="H3P7QK", departure_time="09:40", airline="Air India")
-    fields.update(over)
-    return g.clean_leg(fields, TODAY, src)
+OLD_FIELDS = dict(good, flight_number="AI2986", date="2026-11-20", origin="DEL",
+                  destination="BLR", pnr="H3P7QK", departure_time="09:40",
+                  airline="Air India")
+NEW_FIELDS = dict(OLD_FIELDS, flight_number="AI2992", date="2026-11-21",
+                  departure_time="14:15", email_kind="change")
 
-def confirmed(src=AUG, **over):
-    return a_leg("AI2986", "2026-11-20", src, **over)
+# ONE OBJECT EACH, HANDED TO MERGE AFTER MERGE.
+CONFIRMED = g.clean_leg(dict(OLD_FIELDS), TODAY, AUG)
+CONFIRMED_LATER = g.clean_leg(dict(OLD_FIELDS), TODAY, SEP6)
+CANCELLED = g.clean_leg(dict(OLD_FIELDS, leg_status="cancelled",
+                             email_kind="cancellation"), TODAY, SEP4)
+MOVED = g.clean_leg(dict(NEW_FIELDS), TODAY, SEP4)
 
-def moved(src=SEP4, **over):
-    fields = dict(departure_time="14:15", email_kind="change")
-    fields.update(over)
-    return a_leg("AI2992", "2026-11-21", src, **fields)
+# ── AND THE INPUTS ARE STILL WHAT THEY WERE ────────────────────────────────
+#
+# THE ONE ASSERTION THE FACTORIES MADE IMPOSSIBLE. While merge marked what it
+# was given, every leg here was a fresh object and nothing could ever check
+# that a caller's dict survived. This is the rule itself, stated once, on the
+# leg the merges below mark hardest.
+BEFORE = dict(CONFIRMED)
+g.merge([CONFIRMED, CANCELLED])
+check("merge does not write to the dicts it is given", CONFIRMED == BEFORE,
+      {k: (BEFORE.get(k), CONFIRMED.get(k)) for k in BEFORE if BEFORE.get(k) != CONFIRMED.get(k)})
+check("nor to the cancellation it read the mark from",
+      CANCELLED["leg_status"] == "cancelled" and CANCELLED["email_kind"] == "cancellation")
 
-def cancelled(src=SEP4):
-    return confirmed(src, leg_status="cancelled", email_kind="cancellation")
-
-m = g.merge([confirmed(), cancelled()])
+m = g.merge([CONFIRMED, CANCELLED])
 check("a cancellation marks the leg an earlier email confirmed",
       len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
 check("and changes nothing else on it",
       m[0]["departure_time"] == "09:40" and m[0]["pnr"] == "H3P7QK", m[0])
-m = g.merge([confirmed(), cancelled(), confirmed(SEP6)])
+m = g.merge([CONFIRMED, CANCELLED, CONFIRMED_LATER])
 check("a later restatement does not put it back to scheduled",
       len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
-m = g.merge([cancelled()])
+m = g.merge([CANCELLED])
 check("a cancellation with nothing stored is added, carrying cancelled",
       len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
-m = g.merge([cancelled(), confirmed(SEP6)])
+m = g.merge([CANCELLED, CONFIRMED_LATER])
 check("and the mark still sticks when the cancellation was read first",
       len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
 
@@ -232,40 +239,42 @@ print("-- the merge: a change retires the leg it names --")
 OLD = ("AI2986", "2026-11-20")
 NEWLEG = ("AI2992", "2026-11-21")
 CH = {"flight_number": "AI 2986", "date": "2026-11-20"}
+MOVED_REPLACING = g.clean_leg(dict(NEW_FIELDS, replaces=CH), TODAY, SEP4)
 check("the replacement is carried, normalised",
-      moved(replaces=CH)["replaces"] == {"flight_number": "AI2986", "date": "2026-11-20"},
-      moved(replaces=CH)["replaces"])
-m = g.merge([confirmed(), moved(replaces=CH)])
+      MOVED_REPLACING["replaces"] == {"flight_number": "AI2986", "date": "2026-11-20"},
+      MOVED_REPLACING["replaces"])
+m = g.merge([CONFIRMED, MOVED_REPLACING])
 by = {(l["flight_number"], l["date"]): l for l in m}
 check("both legs are present -- a replacement marks, it never removes", len(m) == 2, m)
 check("the replaced leg is cancelled", by[OLD]["leg_status"] == "cancelled", m)
 check("the new leg is scheduled", by[NEWLEG]["leg_status"] == "scheduled", m)
 check("the replaced leg keeps everything else it had", by[OLD]["departure_time"] == "09:40", by[OLD])
-m = g.merge([moved(replaces=CH)])
+m = g.merge([MOVED_REPLACING])
 check("with nothing stored under the named flight, only the new leg is added",
       [(l["flight_number"], l["leg_status"]) for l in m] == [("AI2992", "scheduled")], m)
 
 # OUT OF ORDER: the change is read BEFORE the confirmation it supersedes, which
 # is what an email with no instant on it, or two in the same millisecond, does.
-m = g.merge([moved(SEP1, replaces=CH), confirmed()])
+m = g.merge([g.clean_leg(dict(NEW_FIELDS, replaces=CH), TODAY, SEP1), CONFIRMED])
 by = {(l["flight_number"], l["date"]): l for l in m}
 check("a confirmation arriving after the change that replaced it is still marked",
       by[OLD]["leg_status"] == "cancelled", m)
 
 # AND A RESTATEMENT AFTER THE RETIREMENT DOES NOT REVIVE IT.
-m = g.merge([confirmed(), moved(replaces=CH), confirmed(SEP6)])
+m = g.merge([CONFIRMED, MOVED_REPLACING, CONFIRMED_LATER])
 by = {(l["flight_number"], l["date"]): l for l in m}
 check("a re-sent itinerary does not put the retired leg back",
       len(m) == 2 and by[OLD]["leg_status"] == "cancelled", m)
 
 # ABSENCE STILL NEVER REMOVES.
-m = g.merge([confirmed(), moved()])
+m = g.merge([CONFIRMED, MOVED])
 by = {(l["flight_number"], l["date"]): l for l in m}
 check("a change that names nothing leaves the original scheduled",
       len(m) == 2 and by[OLD]["leg_status"] == "scheduled", m)
 
 # A REPLACEMENT NAMING A FLIGHT NOBODY BOOKED marks nothing and invents nothing.
-m = g.merge([confirmed(), moved(replaces={"flight_number": "AI9999", "date": "2026-11-20"})])
+m = g.merge([CONFIRMED,
+             g.clean_leg(dict(NEW_FIELDS, replaces={"flight_number": "AI9999", "date": "2026-11-20"}), TODAY, SEP4)])
 check("a replacement naming an unknown flight adds the new leg and nothing else",
       len(m) == 2 and all(l["leg_status"] == "scheduled" for l in m), m)
 
@@ -296,6 +305,20 @@ rolled_pair = g.clean_leg(dict(good, date="2026-01-15", replaces={"flight_number
                           date(2026, 12, 29), LATE_DEC)
 check("a rolled year bumps the replacement as well as the leg",
       rolled_pair["date"] == "2027-01-15" and rolled_pair["replaces"]["date"] == "2027-01-14", rolled_pair)
+
+# ── THE SAME LEGS, MERGED TWICE, GIVE THE SAME ANSWER ──────────────────────
+#
+# THE PROPERTY THE COPY BUYS, checked rather than asserted in a comment. Every
+# merge above reused CONFIRMED, CANCELLED and MOVED_REPLACING; if any of them
+# had been marked in place, this last run would differ from the first.
+again = g.merge([CONFIRMED, MOVED_REPLACING])
+by_again = {(l["flight_number"], l["date"]): l for l in again}
+check("merging the same objects a second time gives the same answer",
+      len(again) == 2 and by_again[OLD]["leg_status"] == "cancelled"
+      and by_again[NEWLEG]["leg_status"] == "scheduled", again)
+check("and the originals are untouched after every merge above",
+      CONFIRMED["leg_status"] == "scheduled" and MOVED_REPLACING["leg_status"] == "scheduled",
+      (CONFIRMED["leg_status"], MOVED_REPLACING["leg_status"]))
 
 # ── JSON-LD: THE AIRLINE SAID IT OUTRIGHT ──────────────────────────────────
 print()

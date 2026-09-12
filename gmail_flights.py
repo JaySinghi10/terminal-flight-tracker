@@ -1206,6 +1206,9 @@ def merge(legs: list[dict]) -> list[dict]:
       - A leg is NEVER removed by absence. An itinerary that no longer lists
         a leg says nothing about it; only an explicit cancellation or a named
         replacement may mark one.
+      - NOTHING THE CALLER HANDED IN IS WRITTEN TO. Every leg is copied on the
+        way in, so the dicts in `legs` are exactly as they were when this
+        returns, and the objects that come back are this function's own.
     """
     stored = {}
     # ── WHAT A CHANGE HAS RETIRED, KEPT RATHER THAN APPLIED ONCE ─────────────
@@ -1221,6 +1224,29 @@ def merge(legs: list[dict]) -> list[dict]:
     # must not flip back on a restatement.
     retired = set()
     for leg in sorted(legs, key=_received_order):
+        # ── THE CALLER'S DICT IS NOT OURS TO WRITE TO ───────────────────────
+        #
+        # THIS FUNCTION USED TO STORE AND MARK THE OBJECTS IT WAS HANDED.
+        # `stored[key] = leg` kept the caller's dict by reference and the
+        # branches below then wrote leg_status into it, filled its blanks from
+        # the stored copy, and rewrote its name fields -- so merging a list
+        # changed the list, and merging it twice did not do the same thing
+        # twice.
+        #
+        # SAFE IN PRODUCTION AND NOT SAFE TO RELY ON. upcoming_flights builds
+        # every leg fresh from clean_leg and merges once, so nothing there ever
+        # saw it. The tests are where it surfaced, twice in one day: a leg
+        # reused across two merges came to the second already marked by the
+        # first, which failed one assertion honestly and made two others pass
+        # for no reason at all.
+        #
+        # ONE COPY AT THE TOP FIXES EVERY SITE, because all of them are below
+        # this line. From here `leg` is this function's own, and `cur` and `old`
+        # are only ever legs copied on an earlier turn of this same loop --
+        # already ours, already safe to mark. A deep copy is not needed and is
+        # not taken: `source` and `replaces` are read and never written, and the
+        # copy is what stops the TOP-LEVEL keys being rebound under a caller.
+        leg = dict(leg)
         key = (leg["flight_number"], leg["date"])
         kind = leg.get("email_kind") or "confirmation"
         cur = stored.get(key)
