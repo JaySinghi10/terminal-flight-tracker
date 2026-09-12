@@ -67,9 +67,13 @@ for path in files:
             extra.append("operated as " + leg["operating_flight_number"])
         elif leg["operated_by"]:
             extra.append("operated by " + leg["operated_by"])
-        print("  -> %-7s %s %s  %-14s pnr %-7s conf %.2f  [%s]%s"
+        # THE STATUS AND WHAT IT RETIRED, because the merge's whole job on a
+        # change email is invisible without them.
+        if leg.get("replaces"):
+            extra.append("replaces %s %s" % (leg["replaces"]["flight_number"], leg["replaces"]["date"]))
+        print("  -> %-7s %s %s  %-14s pnr %-7s conf %.2f  %-9s [%s]%s"
               % (leg["flight_number"], leg["date"], leg["departure_time"] or "--:--", where,
-                 leg["pnr"] or "-", leg["confidence"], leg["method"],
+                 leg["pnr"] or "-", leg["confidence"], leg["leg_status"], leg["method"],
                  ("  " + ", ".join(extra)) if extra else ""))
 
 # ── ALL TOGETHER, which is what a real inbox is: the dedupe across emails ───
@@ -81,8 +85,10 @@ r = g.upcoming_flights("tok", today, fetch=fetch, extract=extract, lister=lambda
 print("  scanned %d | structured %d | sent to model %d | upcoming legs %d"
       % (r["scanned"], r["structured"], r["extracted"], len(r["flights"])))
 for leg in r["flights"]:
-    print("  %-7s %s  %-4s -> %-4s  pnr %-7s [%s]" % (
+    print("  %-7s %s  %-4s -> %-4s  pnr %-7s %-9s [%s]%s" % (
         leg["flight_number"], leg["date"], leg["origin"] or "?", leg["destination"] or "?",
-        leg["pnr"] or "-", leg["method"]))
+        leg["pnr"] or "-", leg["leg_status"], leg["method"],
+        ("  replaces %s %s" % (leg["replaces"]["flight_number"], leg["replaces"]["date"]))
+        if leg.get("replaces") else ""))
 print()
 print("total model calls this run: %d" % len(calls))

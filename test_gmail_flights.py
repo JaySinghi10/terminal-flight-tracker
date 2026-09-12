@@ -170,6 +170,133 @@ check("and the surer copy wins, with the other's PNR filled in", merged[0]["pnr"
 two = g.merge([b, g.clean_leg(dict(good, flight_number="6E5072", date="2026-09-20"), TODAY, src)])
 check("different legs stay separate and sort by date", [l["flight_number"] for l in two] == ["6E5071", "6E5072"])
 
+# ── A CANCELLATION THROUGH THE MERGE, AND THE MARK THAT STICKS ──────────────
+#
+# NOTHING PINNED THIS BEFORE. The JSON-LD test above proves a cancelled
+# reservation yields cancelled legs; what happens when one reaches the MERGE --
+# marking a leg an earlier email confirmed, and surviving a later restatement --
+# was the documented rule and the untested one. It is pinned here first because
+# the replacement rule below is the same marking under another name, and a
+# change that broke stickiness would break both at once.
+#
+# EVERY MERGE BELOW BUILDS ITS OWN LEGS, because merge() stores the dicts it is
+# given and marks them in place. Sharing one leg across two merges means the
+# second reads what the first did to it, which passes for the wrong reason or
+# fails for one that is not the code's fault. Fresh legs, every time.
+print()
+print("-- the merge: a cancellation marks, and the mark sticks --")
+AUG = {"subject": "Booking", "received": "2026-08-24", "received_at": "2026-08-24T03:45:00.000+00:00"}
+SEP1 = {"subject": "Change", "received": "2026-09-01", "received_at": "2026-09-01T03:15:00.000+00:00"}
+SEP4 = {"subject": "Cancelled", "received": "2026-09-04", "received_at": "2026-09-04T03:15:00.000+00:00"}
+SEP6 = {"subject": "Itinerary", "received": "2026-09-06", "received_at": "2026-09-06T03:15:00.000+00:00"}
+
+# THE FLIGHT AN EARLIER EMAIL CONFIRMED, and the one a change moves it to.
+# THE DEFAULTS ARE BUILT FIRST AND OVERRIDDEN SECOND, rather than splatted into
+# one dict() call beside the keywords they are meant to replace: a keyword given
+# twice is a TypeError, not an override.
+def a_leg(number, day, src, **over):
+    fields = dict(good, flight_number=number, date=day, origin="DEL", destination="BLR",
+                  pnr="H3P7QK", departure_time="09:40", airline="Air India")
+    fields.update(over)
+    return g.clean_leg(fields, TODAY, src)
+
+def confirmed(src=AUG, **over):
+    return a_leg("AI2986", "2026-11-20", src, **over)
+
+def moved(src=SEP4, **over):
+    fields = dict(departure_time="14:15", email_kind="change")
+    fields.update(over)
+    return a_leg("AI2992", "2026-11-21", src, **fields)
+
+def cancelled(src=SEP4):
+    return confirmed(src, leg_status="cancelled", email_kind="cancellation")
+
+m = g.merge([confirmed(), cancelled()])
+check("a cancellation marks the leg an earlier email confirmed",
+      len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
+check("and changes nothing else on it",
+      m[0]["departure_time"] == "09:40" and m[0]["pnr"] == "H3P7QK", m[0])
+m = g.merge([confirmed(), cancelled(), confirmed(SEP6)])
+check("a later restatement does not put it back to scheduled",
+      len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
+m = g.merge([cancelled()])
+check("a cancellation with nothing stored is added, carrying cancelled",
+      len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
+m = g.merge([cancelled(), confirmed(SEP6)])
+check("and the mark still sticks when the cancellation was read first",
+      len(m) == 1 and m[0]["leg_status"] == "cancelled", m)
+
+# ── A CHANGE THAT NAMES THE FLIGHT IT REPLACES ──────────────────────────────
+print()
+print("-- the merge: a change retires the leg it names --")
+OLD = ("AI2986", "2026-11-20")
+NEWLEG = ("AI2992", "2026-11-21")
+CH = {"flight_number": "AI 2986", "date": "2026-11-20"}
+check("the replacement is carried, normalised",
+      moved(replaces=CH)["replaces"] == {"flight_number": "AI2986", "date": "2026-11-20"},
+      moved(replaces=CH)["replaces"])
+m = g.merge([confirmed(), moved(replaces=CH)])
+by = {(l["flight_number"], l["date"]): l for l in m}
+check("both legs are present -- a replacement marks, it never removes", len(m) == 2, m)
+check("the replaced leg is cancelled", by[OLD]["leg_status"] == "cancelled", m)
+check("the new leg is scheduled", by[NEWLEG]["leg_status"] == "scheduled", m)
+check("the replaced leg keeps everything else it had", by[OLD]["departure_time"] == "09:40", by[OLD])
+m = g.merge([moved(replaces=CH)])
+check("with nothing stored under the named flight, only the new leg is added",
+      [(l["flight_number"], l["leg_status"]) for l in m] == [("AI2992", "scheduled")], m)
+
+# OUT OF ORDER: the change is read BEFORE the confirmation it supersedes, which
+# is what an email with no instant on it, or two in the same millisecond, does.
+m = g.merge([moved(SEP1, replaces=CH), confirmed()])
+by = {(l["flight_number"], l["date"]): l for l in m}
+check("a confirmation arriving after the change that replaced it is still marked",
+      by[OLD]["leg_status"] == "cancelled", m)
+
+# AND A RESTATEMENT AFTER THE RETIREMENT DOES NOT REVIVE IT.
+m = g.merge([confirmed(), moved(replaces=CH), confirmed(SEP6)])
+by = {(l["flight_number"], l["date"]): l for l in m}
+check("a re-sent itinerary does not put the retired leg back",
+      len(m) == 2 and by[OLD]["leg_status"] == "cancelled", m)
+
+# ABSENCE STILL NEVER REMOVES.
+m = g.merge([confirmed(), moved()])
+by = {(l["flight_number"], l["date"]): l for l in m}
+check("a change that names nothing leaves the original scheduled",
+      len(m) == 2 and by[OLD]["leg_status"] == "scheduled", m)
+
+# A REPLACEMENT NAMING A FLIGHT NOBODY BOOKED marks nothing and invents nothing.
+m = g.merge([confirmed(), moved(replaces={"flight_number": "AI9999", "date": "2026-11-20"})])
+check("a replacement naming an unknown flight adds the new leg and nothing else",
+      len(m) == 2 and all(l["leg_status"] == "scheduled" for l in m), m)
+
+# ── WHAT A REPLACEMENT HAS TO CARRY TO COUNT ────────────────────────────────
+print()
+print("-- a replacement is refused unless it is whole --")
+check("a replacement with no date is dropped, and the leg is kept",
+      g.clean_leg(dict(good, replaces={"flight_number": "AI2986"}), TODAY, src)["replaces"] is None)
+check("a replacement with no number is dropped too",
+      g.clean_leg(dict(good, replaces={"date": "2026-11-20"}), TODAY, src)["replaces"] is None)
+check("an unparseable replacement date is dropped",
+      g.clean_leg(dict(good, replaces={"flight_number": "AI2986", "date": "20 Nov 2026"}), TODAY, src)["replaces"] is None)
+check("a replacement naming a non-flight is dropped",
+      g.clean_leg(dict(good, replaces={"flight_number": "SAVE20", "date": "2026-11-20"}), TODAY, src)["replaces"] is None)
+check("a leg naming ITSELF is refused -- it would mark what the email announces",
+      g.clean_leg(dict(good, replaces={"flight_number": "6E5071", "date": "2026-09-14"}), TODAY, src)["replaces"] is None)
+check("the same number on another date is not self-reference",
+      g.clean_leg(dict(good, replaces={"flight_number": "6E5071", "date": "2026-09-13"}), TODAY, src)["replaces"] is not None)
+check("a replacement that is a string, not an object, is dropped",
+      g.clean_leg(dict(good, replaces="AI2986 on 2026-11-20"), TODAY, src)["replaces"] is None)
+check("absent means None, not a guess", g.clean_leg(good, TODAY, src)["replaces"] is None)
+
+# THE ROLLOVER TAKES BOTH FLIGHTS WITH IT: one email, one missing year. The
+# December source is spelled out here rather than borrowed from the rollover
+# section, which is further down the file than this runs.
+LATE_DEC = {"subject": "Booking", "received": "2026-12-28"}
+rolled_pair = g.clean_leg(dict(good, date="2026-01-15", replaces={"flight_number": "6E5070", "date": "2026-01-14"}),
+                          date(2026, 12, 29), LATE_DEC)
+check("a rolled year bumps the replacement as well as the leg",
+      rolled_pair["date"] == "2027-01-15" and rolled_pair["replaces"]["date"] == "2027-01-14", rolled_pair)
+
 # ── JSON-LD: THE AIRLINE SAID IT OUTRIGHT ──────────────────────────────────
 print()
 print("-- json-ld, read before anything else --")

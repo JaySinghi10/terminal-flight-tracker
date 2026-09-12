@@ -286,4 +286,42 @@ Air India Customer Support
 """)
 write("10b_change_notice.eml", change_notice)
 
-print("wrote 12 fixtures to", HERE)
+# ── 11a. A CONFIRMATION THE CHANGE BELOW MOVES BY A DAY ────────────────────
+# The other shape of a schedule change, and the one that proves the key is the
+# number AND the date rather than the number alone: same flight, one day later.
+# 10a/10b move the number and the day together; this moves only the day, so a
+# merge keyed on the number alone would look correct on that pair and wrong here.
+akasa_conf = base("Akasa Air: Booking confirmed - QP 1405 BOM-DEL",
+                  "Akasa Air <care@akasaair.com>", "Tue, 01 Sep 2026 10:05:00 +0530")
+akasa_conf.set_content("""Hi Jay, your booking is confirmed.
+
+PNR  W2N8KD
+QP 1405   Mumbai (BOM) Terminal 1  ->  New Delhi (DEL) Terminal 2
+Thu, 10 Dec 2026   Departs 07:20   Arrives 09:35
+
+Passenger: Jay Singhi   Seat 12A
+Amount paid INR 7,480
+""")
+write("11a_date_change_original.eml", akasa_conf)
+
+# ── 11b. THE SAME FLIGHT, ONE DAY LATER, NAMING WHAT IT REPLACES ───────────
+akasa_change = base("Akasa Air: revised departure for PNR W2N8KD",
+                    "Akasa Air <care@akasaair.com>", "Sat, 05 Sep 2026 17:40:00 +0530")
+akasa_change.set_content("""Hi Jay,
+
+Your flight has been rescheduled to the next day.
+
+PNR  W2N8KD
+
+Originally   QP 1405   Mumbai (BOM) -> New Delhi (DEL)   Thu, 10 Dec 2026   07:20
+Revised      QP 1405   Mumbai (BOM) Terminal 1 -> New Delhi (DEL) Terminal 2
+             Fri, 11 Dec 2026   Departs 07:20   Arrives 09:35
+
+Your seat and baggage allowance carry over. If the new date does not work for
+you, a full refund is available in Manage Booking.
+
+Akasa Air Guest Care
+""")
+write("11b_date_change_notice.eml", akasa_change)
+
+print("wrote 14 fixtures to", HERE)

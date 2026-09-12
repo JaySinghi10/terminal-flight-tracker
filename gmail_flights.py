@@ -722,6 +722,38 @@ EXTRACT_TOOL = {
                                 "to scheduled."
                             ),
                         },
+                        "replaces": {
+                            "type": "object",
+                            "description": (
+                                "The flight this leg REPLACES, and only when the "
+                                "email names it. A schedule-change notice "
+                                "usually prints the old flight beside the new "
+                                "one, under 'previously', 'originally', 'was' or "
+                                "'old'. Give the NEW flight as the leg and the "
+                                "OLD flight here. Both fields are required "
+                                "together: without the old flight's date as well "
+                                "as its number, omit this object. Never work out "
+                                "which flight is being replaced from the booking "
+                                "reference, the route, or any other leg."
+                            ),
+                            "properties": {
+                                "flight_number": {
+                                    "type": "string",
+                                    "description": (
+                                        "The replaced flight's number exactly as "
+                                        "printed, spaces removed."
+                                    ),
+                                },
+                                "date": {
+                                    "type": "string",
+                                    "description": (
+                                        "The replaced flight's departure date as "
+                                        "YYYY-MM-DD, as printed in this email."
+                                    ),
+                                },
+                            },
+                            "required": ["flight_number", "date"],
+                        },
                     },
                     "required": ["flight_number", "date", "confidence"],
                 },
@@ -757,6 +789,16 @@ def _system_prompt(today) -> str:
         "when it does not restate the full itinerary -- airlines often send a "
         "notice naming one flight only. Mark every leg named in a cancellation "
         "leg_status cancelled; every other leg is scheduled.\n"
+        "A CHANGE THAT NAMES THE FLIGHT IT REPLACES SAYS SO IN replaces. A "
+        "schedule-change notice usually prints both flights: the old one on a "
+        "line labelled previously, originally, was or old, and the new one "
+        "under now or new. Return the NEW flight as the leg, and put the OLD "
+        "flight's number and date in replaces. BOTH ARE REQUIRED TOGETHER -- if "
+        "the email does not print the old flight's date as well as its number, "
+        "omit replaces entirely. NEVER work out which flight is being replaced: "
+        "not from the booking reference, not from the route, not from another "
+        "email, not from a flight you happen to know. An email that prints only "
+        "the new flight has no replaces, and that is an ordinary answer.\n"
         "Dates are the departure's local calendar date as YYYY-MM-DD. If no "
         "year is printed, resolve it from the received date in the message: "
         "the next occurrence on or after that date.\n"
@@ -977,6 +1019,40 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
                     arr_day = arr_when.replace(year=arr_when.year + 1).isoformat()
                 except ValueError:
                     arr_day = None
+    # ── THE FLIGHT THIS LEG REPLACES, WHERE THE EMAIL NAMED ONE ─────────────
+    #
+    # BOTH HALVES OR NEITHER. The merge keys a stored leg on number AND date, so
+    # a replacement naming only one of the two names nothing it can act on --
+    # and half of a replacement is the guess the prompt forbids.
+    #
+    # A BAD VALUE COSTS THE FIELD, NOT THE LEG, as with the arrival above: the
+    # new flight is still a flight somebody is on, whatever the notice said
+    # about the old one.
+    #
+    # THE SAME YEAR BUMP THE DEPARTURE TOOK, when it took one. Both flights are
+    # printed in one email, so a missing year is missing from both, and a
+    # replacement pointing a year behind its own leg would name nothing.
+    #
+    # AND NEVER ITSELF. A leg naming its own number and date would mark the leg
+    # the email exists to announce, which cannot be what the email meant.
+    replaces = None
+    raw_rep = raw.get("replaces")
+    if isinstance(raw_rep, dict):
+        rep_num = re.sub(r"\s+", "", str(raw_rep.get("flight_number") or "")).upper()
+        rep_day = _s(raw_rep.get("date"), 10)
+        if FLIGHT_RE.match(rep_num) and rep_day is not None and DAY_RE.match(rep_day):
+            try:
+                rep_when = datetime.strptime(rep_day, "%Y-%m-%d").date()
+            except ValueError:
+                rep_day = None
+            else:
+                if rolled:
+                    try:
+                        rep_day = rep_when.replace(year=rep_when.year + 1).isoformat()
+                    except ValueError:
+                        rep_day = None
+            if rep_day is not None and not (rep_num == number and rep_day == day):
+                replaces = {"flight_number": rep_num, "date": rep_day}
     o_iata, o_name = _place(raw.get("origin"))
     d_iata, d_name = _place(raw.get("destination"))
     op_num = re.sub(r"\s+", "", str(raw.get("operating_flight_number") or "")).upper() or None
@@ -1022,6 +1098,9 @@ def clean_leg(raw: dict, today, source: dict | None = None) -> dict | None:
         # word it logs. Beside leg_status rather than inside source, because
         # source is what the app shows a person and this is bookkeeping.
         "email_kind": kind,
+        # THE LEG THIS ONE RETIRES, as {flight_number, date}, or None. The merge
+        # marks that leg cancelled exactly as a cancellation notice marks one.
+        "replaces": replaces,
         # WHERE IT CAME FROM: the subject and the received date, so the app can
         # say "from your BA email of 3 March". Never the body. received_at is
         # the same arrival to the millisecond, for ordering.
@@ -1110,6 +1189,14 @@ def merge(legs: list[dict]) -> list[dict]:
       - A cancellation leg MARKS the stored copy cancelled and changes nothing
         else on it. With no stored copy the leg is added as it is, carrying
         cancelled, so the app can still show what was called off.
+      - A CHANGE LEG THAT NAMES THE FLIGHT IT REPLACES MARKS THAT FLIGHT, by
+        the same rule and with the same effect: leg_status cancelled on the
+        stored copy of the named number and date, nothing else touched. The new
+        leg is added or updated as any change leg is. Without a stored copy of
+        the named flight there is nothing to mark, and the new leg is added and
+        nothing else happens -- a replacement never invents the leg it retires.
+        The naming is the airline's, read off the email; see `replaces` in the
+        schema, which the prompt forbids inferring.
       - CANCELLED IS STICKY. Once marked, no later confirmation or change leg
         on the same number and date puts leg_status back to scheduled; it may
         update every other field. A rebooking onto the same flight is rare
@@ -1117,13 +1204,40 @@ def merge(legs: list[dict]) -> list[dict]:
         the status that costs a person a trip is the one that must not flip
         on a restatement.
       - A leg is NEVER removed by absence. An itinerary that no longer lists
-        a leg says nothing about it; only an explicit cancellation may mark.
+        a leg says nothing about it; only an explicit cancellation or a named
+        replacement may mark one.
     """
     stored = {}
+    # ── WHAT A CHANGE HAS RETIRED, KEPT RATHER THAN APPLIED ONCE ─────────────
+    #
+    # THE EMAIL THAT CONFIRMED THE OLD LEG CAN ARRIVE AFTER THE ONE THAT
+    # REPLACED IT: a re-sent itinerary, two emails in the same millisecond, a
+    # fixture with no instant on it at all -- _received_order puts those last.
+    # A replacement that only looked backwards would miss exactly that leg and
+    # leave it live, which is the fault this whole rule exists to fix. So a
+    # retired key is remembered and applied to whatever arrives under it after.
+    #
+    # STICKY, for the reason cancelled is: the status that costs somebody a trip
+    # must not flip back on a restatement.
+    retired = set()
     for leg in sorted(legs, key=_received_order):
         key = (leg["flight_number"], leg["date"])
         kind = leg.get("email_kind") or "confirmation"
         cur = stored.get(key)
+        # ── WHAT THIS LEG RETIRES, BEFORE WHAT THIS LEG IS ──────────────────
+        #
+        # Read off `replaces`, which clean_leg has already checked has both
+        # halves and does not name this leg itself. The mark is a cancellation's
+        # mark: the status and nothing else.
+        rep = leg.get("replaces")
+        if isinstance(rep, dict) and rep.get("flight_number") and rep.get("date"):
+            rkey = (rep["flight_number"], rep["date"])
+            retired.add(rkey)
+            old = stored.get(rkey)
+            if old is not None and old.get("leg_status") != "cancelled":
+                old["leg_status"] = "cancelled"
+                logger.info("gmail merge %s %s kind=%s retired by %s %s",
+                            rkey[0], rkey[1], kind, leg["flight_number"], leg["date"])
         if leg.get("leg_status") == "cancelled":
             if cur is None:
                 stored[key] = leg
@@ -1132,8 +1246,16 @@ def merge(legs: list[dict]) -> list[dict]:
                 cur["leg_status"] = "cancelled"
                 action = "marked cancelled"
         elif cur is None:
-            stored[key] = leg
-            action = "added"
+            # A LEG SOME EARLIER-READ CHANGE ALREADY RETIRED ARRIVES CANCELLED.
+            # See `retired`: the naming happened, and which email reached the
+            # merge first is not a fact about the booking.
+            if key in retired:
+                leg["leg_status"] = "cancelled"
+                stored[key] = leg
+                action = "added cancelled (retired)"
+            else:
+                stored[key] = leg
+                action = "added"
         else:
             # THE LATER EMAIL WINS; the earlier one fills what it left blank.
             for k, v in cur.items():
@@ -1146,7 +1268,10 @@ def merge(legs: list[dict]) -> list[dict]:
                 if _name_lost(leg.get(field), cur.get(field)):
                     leg[field] = cur[field]
             # EXCEPT THE STATUS, WHICH ONLY EVER GOES ONE WAY. See the rules.
-            if cur.get("leg_status") == "cancelled":
+            # A RETIRED KEY COUNTS AS CANCELLED whether or not the stored copy
+            # had been marked yet, so a restatement cannot revive a leg some
+            # change notice has already replaced.
+            if cur.get("leg_status") == "cancelled" or key in retired:
                 leg["leg_status"] = "cancelled"
             stored[key] = leg
             action = "updated"
