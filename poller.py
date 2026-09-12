@@ -260,10 +260,36 @@ def tier_for(doc, now=None, day=None):
         return DONE
 
     arrival_at = _movement_time(dto, "arrival")
-    if arrival_at is not None and not landed \
-            and now > arrival_at + GIVE_UP_AFTER_ARRIVAL:
-        # Three hours past arrival with no landing recorded. Either it diverted
-        # or nobody is reporting it; either way it is not worth two-minute polls.
+    if arrival_at is not None and now > arrival_at + GIVE_UP_AFTER_ARRIVAL:
+        # Three hours past arrival. Either it diverted, or nobody is reporting
+        # it, or it landed and no gate time ever followed; none of the three is
+        # worth two-minute polls.
+        #
+        # ── THIS USED TO SAY `and not landed`, AND THOSE THREE WORDS COST
+        # ── ROUGHLY 1,440 FR24 CREDITS A DAY ─────────────────────────────────
+        #
+        # The exclusion assumed that a recorded landing would reach DONE by the
+        # other route, `landed and at_gate` above. That assumption holds only
+        # while the gate arrival actually arrives. When AeroDataBox never
+        # publishes arrival.actual_iso -- which it does not, for flights it has
+        # stopped answering for at all -- `at_gate` is false for ever, `not
+        # landed` is false as well, and the flight satisfies NEITHER exit. It
+        # stays ARRIVAL, the two-minute tier, indefinitely.
+        #
+        # OBSERVED, NOT IMAGINED: B62220 and VS45 into JFK on 2026-09-09, both
+        # landed per FR24 (touchdown recorded), both with arrival.actual_iso
+        # null and adb_misses at 12, still being polled every two minutes on
+        # 2026-09-12 -- 1,332 and 1,616 FR24 calls each, about 1,440 credits a
+        # day between them, on two flights that had been on the ground for days.
+        #
+        # A LANDING MAKES THE GIVE-UP MORE CORRECT, NOT LESS. Three hours past
+        # arrival with a touchdown already recorded, there is nothing further to
+        # learn: the one fact still outstanding is a gate time from a provider
+        # that has stopped answering.
+        #
+        # THE GATE WINDOW IS UNTOUCHED. A healthy flight reaches DONE by
+        # `landed and at_gate` minutes after touchdown, long inside these three
+        # hours, so this changes nothing for any flight whose gate time comes.
         return DONE
 
     status = str(dto.get("status") or "").lower()

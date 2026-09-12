@@ -141,6 +141,50 @@ check("but two hours past arrival is still watched",
                                     arr_sched=iso(NOW - timedelta(hours=2)))),
                       NOW) != poller.DONE)
 
+# ── LANDED, AND NO GATE TIME EVER CAME ──────────────────────────────────────
+#
+# THE GAP THAT RAN FOR DAYS WITH NOTHING TO CATCH IT. Two exits to DONE and this
+# shape satisfied neither: `landed and at_gate` waits on a gate time that never
+# arrives, and the give-up guard used to exclude anything already landed. The
+# flight stayed in ARRIVAL -- the two-minute tier -- for ever.
+#
+# B62220 and VS45 into JFK, 2026-09-09: touchdown recorded by FR24,
+# arrival.actual_iso null, AeroDataBox no longer answering. Still polling on
+# 2026-09-12, about 1,440 FR24 credits a day between them.
+#
+# BOTH EDGES ARE PINNED HERE, and the second is not padding. The way this fix
+# goes wrong is the opposite fault -- retiring a flight during the window where
+# the belt and the arrival gate are published, which is the window the guard
+# exists to protect. One test alone would pass just as happily if DONE came
+# three hours too early.
+landed_no_gate = dict(dto(dep_actual=iso(NOW - timedelta(hours=8)),
+                          arr_sched=iso(NOW - timedelta(hours=4))))
+check("landed with no gate time is DONE three hours past arrival",
+      poller.tier_for(state(landing=landed, dto=landed_no_gate), NOW) == poller.DONE,
+      poller.tier_for(state(landing=landed, dto=landed_no_gate), NOW))
+
+still_waiting = dict(dto(dep_actual=iso(NOW - timedelta(hours=6)),
+                         arr_sched=iso(NOW - timedelta(hours=2))))
+check("but two hours past arrival it is still waiting for that gate",
+      poller.tier_for(state(landing=landed, dto=still_waiting), NOW) != poller.DONE,
+      poller.tier_for(state(landing=landed, dto=still_waiting), NOW))
+
+# AND THE TIER IT WOULD OTHERWISE SIT IN IS THE EXPENSIVE ONE, which is why the
+# gap cost what it did rather than merely lingering.
+check("the tier it was stuck in is ARRIVAL, the two-minute one",
+      poller.tier_for(state(landing=landed, dto=still_waiting), NOW) == poller.ARRIVAL,
+      poller.tier_for(state(landing=landed, dto=still_waiting), NOW))
+
+# THE ESTIMATE IS WHAT THE REAL ROWS CARRIED, not a scheduled time: both stuck
+# flights had arr_est set and arr_actual null, and _movement_time prefers the
+# estimate. A guard reading only the schedule would have missed them.
+on_estimate = dict(dto(dep_actual=iso(NOW - timedelta(hours=9)),
+                       arr_sched=iso(NOW - timedelta(hours=7)),
+                       arr_est=iso(NOW - timedelta(hours=4))))
+check("the three hours run from the estimate, as the stuck rows had",
+      poller.tier_for(state(landing=landed, dto=on_estimate), NOW) == poller.DONE,
+      poller.tier_for(state(landing=landed, dto=on_estimate), NOW))
+
 print()
 print("-- is it due --")
 
