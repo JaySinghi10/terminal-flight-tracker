@@ -26,7 +26,7 @@ import {
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
@@ -1912,6 +1912,63 @@ export default function Flights() {
     setOpenTrips({});
   });
 
+  // ── A PUSH CAN NAME THE LEG TO OPEN ───────────────────────────────────────
+  //
+  // THE ROOT LAYOUT SENDS `open`, A SAVED FLIGHT'S ID, AND `tap`, A NONCE, when
+  // a flight notification is tapped for a flight on a journey -- see
+  // destinationFor in app/_layout.tsx. The nonce makes a second tap on the same
+  // flight a new request; the ref stops a re-render carrying the same params
+  // from being mistaken for one.
+  //
+  // IT STAYS ARMED UNTIL IT IS MET OR THE TAB IS LEFT. The root only sends this
+  // once the saved list has loaded, so it is normally met on arrival; staying
+  // armed costs nothing and covers a list still settling under it. A leg whose
+  // whole journey is past is not in `current`, so it lands on the fallback
+  // below. The blur reset drops the request.
+  const linkParams = useLocalSearchParams<{ open?: string; tap?: string }>();
+  const [openRequest, setOpenRequest] = useState<{ id: string; tap: string } | null>(null);
+  const lastOpenTap = useRef<string | null>(null);
+  useEffect(() => {
+    const open = linkParams.open;
+    const tap = linkParams.tap;
+    if (!open || !tap || lastOpenTap.current === tap) return;
+    lastOpenTap.current = tap;
+    setOpenRequest({ id: open, tap });
+  }, [linkParams.open, linkParams.tap]);
+
+  // THE SCREEN'S OWN TWO RECORDS, NOT openLeg. openLeg TOGGLES: on the leg the
+  // journey has open by default it would CLOSE the card the push asked for. So
+  // the folder is opened and the leg is named directly, which is exactly what
+  // openLeg writes when it opens rather than closes.
+  //
+  // AND NO MATCH MEANS NOTHING EXPANDED. Every journey nobody has chosen gets
+  // null -- no open card -- instead of the leg the screen would open on its own.
+  // Only MISSING entries are filled, so a leg the person taps while the request
+  // is still armed is never overruled, and folders are left as they are. This
+  // is the strip and divider layout; the carousel's one-open-trip rule is not
+  // handled here, and FOLDER_STYLE is 'strip'.
+  useEffect(() => {
+    if (openRequest === null) return;
+    const legs = current.find(t => t.some(l => l.id === openRequest.id));
+    if (legs !== undefined) {
+      const tripId = legs[0].tripId as string;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a push's request can only be met by writing this screen's open state, and an effect is where it arrives
+      setOpenTrips(prev => ({ ...prev, [tripId]: true }));
+      setOpenByTrip(prev => ({ ...prev, [tripId]: openRequest.id }));
+      setOpenRequest(null);
+      return;
+    }
+    setOpenByTrip(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const t of current) {
+        const k = t[0].tripId as string;
+        if (!(k in next)) { next[k] = null; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [openRequest, current]);
+
 
 
 
@@ -1972,7 +2029,9 @@ export default function Flights() {
   //
   // THE CLEANUP IS THE WHOLE THING, which is the same shape app/search.tsx uses
   // for its card: the effect does nothing on focus and everything on blur.
-  useFocusEffect(useCallback(() => () => setOpenByTrip({}), []));
+  // AND AN ARMED PUSH REQUEST GOES WITH IT: a request left armed would open a
+  // card the next time this list changed, long after anybody asked.
+  useFocusEffect(useCallback(() => () => { setOpenByTrip({}); setOpenRequest(null); }, []));
 
   // TAPPING A COLLAPSED LEG OPENS IT, AND TAPPING THE ONE THE JOURNEY WOULD
   // HAVE CHOSEN ANYWAY GIVES CONTROL BACK.

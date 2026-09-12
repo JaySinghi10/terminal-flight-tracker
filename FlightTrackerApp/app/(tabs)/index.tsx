@@ -1,4 +1,7 @@
-import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, memo } from "react";
+// A TAPPED NOTIFICATION CAN NAME A CARD TO OPEN HERE. See the push block above
+// this screen's render.
+import { useLocalSearchParams } from "expo-router";
 import Svg, { Path, Rect, G } from 'react-native-svg';
 // The Reanimated one, deliberately. The root export's Swipeable is marked
 // "@deprecated use Reanimated version of Swipeable instead" in the installed
@@ -2132,6 +2135,42 @@ export default function Index() {
     setSaveError("");
     setError("");
   };
+
+  // ── A PUSH CAN NAME THE CARD TO OPEN ──────────────────────────────────────
+  //
+  // THE ROOT LAYOUT SENDS `open`, A SAVED FLIGHT'S ID, AND `tap`, A NONCE, when a
+  // flight notification is tapped for a flight on no journey -- a watched one,
+  // the common case for a push about a flight somebody is meeting -- or for one
+  // this app does not have at all. See destinationFor in app/_layout.tsx.
+  //
+  // THE SAME CARD A ROW TAP OPENS, through the same function, so a push and a
+  // tap cannot come to show one flight two ways. No match means nothing
+  // expanded: whatever card was up is closed, so a push about one flight is not
+  // answered with another flight's card.
+  //
+  // THE ROOT SENDS THIS ONLY ONCE THE SAVED LIST HAS LOADED, so the lookup reads
+  // a list that has come back. The ref stops a re-render with the same params,
+  // or a later return to this tab, from opening it a second time.
+  const linkParams = useLocalSearchParams<{ open?: string; tap?: string }>();
+  const lastOpenTap = useRef<string | null>(null);
+  // AN EFFECT EVENT, SO THE EFFECT BELOW NEEDS NEITHER FUNCTION AS A DEPENDENCY.
+  // renderSavedFlight and clearResultView are rebuilt every render. Listing them
+  // re-ran the effect on every render, and suppressing exhaustive-deps instead
+  // would make the React Compiler -- on in app.json -- skip compiling this whole
+  // screen. An effect event always sees the current list and the current
+  // functions, and by design it is not a dependency.
+  const openFromPush = useEffectEvent((open: string) => {
+    const found = savedFlights.find(f => f.id === open);
+    if (found !== undefined) renderSavedFlight(found);
+    else clearResultView();
+  });
+  useEffect(() => {
+    const open = linkParams.open;
+    const tap = linkParams.tap;
+    if (!open || !tap || lastOpenTap.current === tap) return;
+    lastOpenTap.current = tap;
+    openFromPush(open);
+  }, [linkParams.open, linkParams.tap]);
 
   return (
     <View style={s.root}>
