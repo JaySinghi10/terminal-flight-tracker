@@ -58,7 +58,7 @@ import {
   cancelFor,
   reconcile,
 } from './reminders';
-import { registerWatch, deregisterWatch } from './watch';
+import { registerWatch, deregisterWatch, backfillWatches } from './watch';
 // THE PENDING LEGS: flights the user has booked that the provider does not
 // carry yet. Their own store beside this one, never inside it -- see the note
 // at the top of lib/pendingRules.ts for why a pending leg is not a SavedFlight.
@@ -1249,6 +1249,10 @@ export type RefreshReport = {
 
 type SavedContextValue = {
   savedFlights: SavedFlight[];
+  // TRUE ONCE THIS ACCOUNT'S LIST HAS COME BACK FROM DISK, whatever it held.
+  // savedFlights is [] before that as well, so only this tells "nothing saved"
+  // from "not read yet".
+  hydrated: boolean;
   email: string | null;
   setEmail: (email: string | null) => void;
   refreshing: boolean;
@@ -1323,6 +1327,18 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   const [pending, setPendingState] = useState<PendingLeg[]>([]);
   const [email, setEmail] = useState<string | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
+  // ── WHICH ACCOUNT'S LIST HAS FINISHED ITS FIRST LOAD ──
+  //
+  // THE LIST STARTS EMPTY, SO EMPTY CANNOT MEAN "NOTHING SAVED". A consumer that
+  // has to decide something from it -- the root layout sending a tapped flight
+  // notification to whichever screen holds that flight's card -- has to know
+  // the read has come back.
+  //
+  // THE EMAIL IT CAME BACK FOR, NOT A BOOLEAN. An account switch is then "not
+  // loaded" the moment the email moves, with no reset to write at the start of
+  // the load effect; `hydrated` on the value is the comparison. undefined is "no
+  // load has finished yet", which null -- the signed-out account -- must not be.
+  const [hydratedFor, setHydratedFor] = useState<string | null | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
 
   const refreshingRef = useRef(false);
@@ -1639,7 +1655,13 @@ export function SavedProvider({ children }: { children: ReactNode }) {
         setPendingState(pend);
         autoRefresh(list, () => cancelled);
       }
-    })();
+    })().finally(() => {
+      // IN finally, SO A READ THAT THROWS STILL ENDS THE WAIT. Nothing above is
+      // caught, and a consumer holding a decision for this flag would otherwise
+      // hold it for ever: an empty list is an answer it can act on, a flag that
+      // never turns is not. A cancelled load is superseded, so it says nothing.
+      if (!cancelled) setHydratedFor(email);
+    });
     return () => { cancelled = true; };
   }, [authHydrated, email]);
 
@@ -2346,8 +2368,31 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; clearInterval(id); };
   }, [authHydrated, email, retryPending]);
 
+  // LOADED FOR THE ACCOUNT THAT IS SIGNED IN NOW. See hydratedFor.
+  const hydrated = hydratedFor === email;
+
+  // ── EVERY SAVED FLIGHT HAS THE DEVICE'S PUSH TOKEN ────────────────────────
+  //
+  // A FLIGHT SAVED BEFORE PERMISSION WAS GRANTED IS REGISTERED WITHOUT A TOKEN,
+  // and registration happens on the save and never again -- so that flight stays
+  // unreachable for ever while later ones arrive fine. This re-registers the
+  // whole list the first time a token exists. See backfillWatches.
+  //
+  // IT CANNOT PUT A DIALOG ON SCREEN. The backfill reads the permission it has
+  // and asks for nothing; the one prompt this install gets belongs to a save.
+  //
+  // IT WAITS FOR THE LIST. An empty list before the read comes back would
+  // register nothing and mark the token as done, which is the one outcome worth
+  // guarding against; everything else about running twice is handled in
+  // lib/watch.ts, which is why this can depend on savedFlights without care.
+  useEffect(() => {
+    if (!hydrated) return;
+    void backfillWatches(API_BASE, savedFlights);
+  }, [hydrated, savedFlights]);
+
   const value = useMemo(() => ({
     savedFlights,
+    hydrated,
     email,
     setEmail,
     refreshing,
@@ -2366,7 +2411,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     removePendingLeg,
     retryPending,
   }), [
-    savedFlights, email, setEmail, refreshing,
+    savedFlights, hydrated, email, setEmail, refreshing,
     saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
     handleRemind, setArchived, setTrip, ownFlight, disownFlight,
     pending, addPendingLeg, removePendingLeg, retryPending,

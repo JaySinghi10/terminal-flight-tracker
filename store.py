@@ -398,11 +398,27 @@ def register_watch(device_id, push_token, platform, flight_number, flight_date, 
             if (r.get("device_id") == did
                     and r.get("flight_number") == num
                     and r.get("flight_date") == day):
-                # EXISTING ROW: the token and platform are refreshed and
-                # created_at is kept. A device that reinstalls gets a new token
-                # against the same watch rather than a second one.
+                # EXISTING ROW: the platform is refreshed and created_at is
+                # kept. A device that reinstalls gets a new token against the
+                # same watch rather than a second one.
+                #
+                # AND A REGISTRATION WITH NO TOKEN LEAVES THE STORED ONE ALONE.
+                # This assigned unconditionally, so any re-registration made
+                # while the device could not produce a token -- offline, in Expo
+                # Go, on a simulator, before permission was granted, or with
+                # permission since revoked -- overwrote a good token with null
+                # and made that flight unreachable, silently. Ownership changes
+                # and restores both come through here, so it was reachable by
+                # ordinary use rather than by accident.
+                #
+                # ONLY A REAL TOKEN REPLACES A REAL TOKEN. Clearing one is
+                # forget_push_token's job, which is what a DeviceNotRegistered
+                # receipt calls -- an explicit statement that the address is
+                # dead, rather than the absence of one in a request about
+                # something else. See dispatch.py.
                 updated = dict(r)
-                updated["push_token"] = tok
+                if tok is not None:
+                    updated["push_token"] = tok
                 updated["platform"] = plat
                 # Ownership follows the latest registration: owning a watched
                 # flight re-registers it, and so does disowning one.
