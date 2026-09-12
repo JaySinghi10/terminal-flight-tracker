@@ -223,13 +223,22 @@ check("the first poll fetches", calls["adb"] == 1 and r["adb"], (calls, r))
 check("and records no change, because there was nothing to compare to",
       r["changes"] == [], r)
 check("it is NEAR -- 45 minutes to departure", r["tier"] == poller.NEAR, r["tier"])
-check("FR24 is not asked before wheels-up", calls["fr24"] == 0, calls)
+# NOT BECAUSE NEAR NEVER ASKS -- it does now, see FR24_TIERS -- but because
+# the FIRST poll has no stored DTO and therefore no scheduled departure to
+# narrow the window with. An unnarrowed query bills up to eight records and can
+# hand back the previous day's rotation of the same number.
+check("FR24 is not asked until there is a departure time to narrow the window",
+      calls["fr24"] == 0, calls)
 
-# Immediately again: the NEAR interval is five minutes, so nothing is due.
+# Immediately again: the AeroDataBox interval is five minutes, so no schedule
+# call is due. FR24 has never been asked and the DTO stored by the first poll
+# now carries a scheduled departure, so this is the poll that asks it.
 r2 = poller.poll_one("6E5071", "2026-09-07", now=NOW + timedelta(minutes=1))
-check("a second poll one minute later costs nothing",
+check("a second poll one minute later costs no AeroDataBox unit",
       calls["adb"] == 1 and not r2["adb"], (calls, r2))
-check("and says why", r2.get("skipped") == "not due", r2)
+check("but it does ask FR24, which is what catches a departure the schedule misses",
+      calls["fr24"] == 1 and r2["fr24"], (calls, r2))
+check("so it is not recorded as skipped", r2.get("skipped") is None, r2)
 
 # Six minutes on, with a new gate.
 FIXED[0] = dto(gate="B4", dep_sched=iso(NOW + timedelta(minutes=45)),
@@ -331,6 +340,122 @@ enroute_late = dto(dep_sched=iso(NOW - timedelta(minutes=30)),
                    arr_sched=iso(NOW + timedelta(hours=2)), status="enroute")
 check("EnRoute after the scheduled time is believed",
       poller._has_departed(enroute_late, NOW))
+
+print()
+print("-- FR24's takeoff is the third proof of a departure --")
+
+# THE CASE THIS EXISTS FOR. The AeroDataBox quota is exhausted, so the stored
+# DTO still says "scheduled" and carries no actual departure. The aircraft is
+# in the air. Only FR24 knows, and it has always been told -- on a `landing`
+# dict the poller stored and never read.
+stale = dto(dep_sched=iso(NOW - timedelta(hours=1)),
+            arr_sched=iso(NOW + timedelta(hours=6)))
+
+check("no landing at all: the schedule still decides, and it says not departed",
+      not poller._has_departed(stale, NOW, None))
+check("an FR24 pending with a takeoff in the past IS a departure",
+      poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                        "takeoff_utc": "2026-09-07T11:20:00"}))
+check("so is a landed one -- it carries the same takeoff",
+      poller._has_departed(stale, NOW, {"outcome": fr24.LANDED,
+                                        "takeoff_utc": "2026-09-07T11:20:00",
+                                        "landed_utc": "2026-09-07T11:55:00"}))
+# UNKNOWN AND ERROR ASSERT NOTHING. That is the whole reason fr24 has four
+# outcomes rather than two, and it must not be collapsed here.
+check("an unknown outcome is not a departure, whatever else is on it",
+      not poller._has_departed(stale, NOW, {"outcome": fr24.UNKNOWN,
+                                            "takeoff_utc": "2026-09-07T11:20:00"}))
+check("nor is an error",
+      not poller._has_departed(stale, NOW, {"outcome": fr24.ERROR,
+                                            "takeoff_utc": "2026-09-07T11:20:00"}))
+check("a takeoff in the FUTURE is not a departure either",
+      not poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                            "takeoff_utc": "2026-09-07T13:30:00"}))
+check("and a pending with no takeoff time says nothing",
+      not poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                            "takeoff_utc": None}))
+
+# ── THE WRONG-ROTATION GUARD ──
+#
+# `stale` is scheduled out at 11:00. FR24's window reaches back to 05:00, so an
+# earlier rotation of the same number sits inside it and, on a repeated route,
+# survives the destination filter. See FR24_TAKEOFF_EARLY_SLACK.
+check("a takeoff an hour and a half early is a different rotation, not this one",
+      not poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                            "takeoff_utc": "2026-09-07T09:30:00"}))
+check("half an hour early is a real early departure and is believed",
+      poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                        "takeoff_utc": "2026-09-07T10:30:00"}))
+check("exactly sixty minutes early is still believed",
+      poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                        "takeoff_utc": "2026-09-07T10:00:00"}))
+check("a minute past that is not",
+      not poller._has_departed(stale, NOW, {"outcome": fr24.PENDING,
+                                            "takeoff_utc": "2026-09-07T09:59:00"}))
+# NO UPPER BOUND. A delay has no limit and a flight that leaves late is still
+# this flight; `late` is scheduled at 06:00 and left at 11:20, five hours down.
+late = dto(dep_sched=iso(NOW - timedelta(hours=6)),
+           arr_sched=iso(NOW + timedelta(hours=3)))
+check("however late it leaves, it is still this flight",
+      poller._has_departed(late, NOW, {"outcome": fr24.PENDING,
+                                       "takeoff_utc": "2026-09-07T11:20:00"}))
+# AND WITH NOTHING TO CHECK IT AGAINST, THE PROOF IS REFUSED. A DTO can carry a
+# departure with no scheduled time; the takeoff then has no anchor at all.
+no_sched = dto(arr_sched=iso(NOW + timedelta(hours=6)))
+check("no stored schedule means the FR24 proof is not accepted",
+      not poller._has_departed(no_sched, NOW, {"outcome": fr24.PENDING,
+                                               "takeoff_utc": "2026-09-07T11:20:00"}))
+
+# ── THE PROMOTION THAT BUYS ──
+#
+# Without the third proof this flight is NEAR on a stale scheduled time, is
+# skipped by the budget floor, never asks FR24 again, and is marked DONE three
+# hours after an arrival that nobody checked.
+grounded = state(dto=stale)
+check("with no landing it is stuck at NEAR",
+      poller.tier_for(grounded, NOW) == poller.NEAR, poller.tier_for(grounded, NOW))
+flying = state(dto=stale, landing={"outcome": fr24.PENDING,
+                                   "takeoff_utc": "2026-09-07T11:20:00"})
+check("FR24's takeoff promotes it to AIRBORNE with no schedule call at all",
+      poller.tier_for(flying, NOW) == poller.AIRBORNE, poller.tier_for(flying, NOW))
+# And within half an hour of the arrival it is ARRIVAL, exactly as it would be
+# had AeroDataBox been the one to report the departure.
+near_arrival = state(dto=dto(dep_sched=iso(NOW - timedelta(hours=6)),
+                             arr_sched=iso(NOW + timedelta(minutes=20))),
+                     landing={"outcome": fr24.PENDING,
+                              "takeoff_utc": "2026-09-07T06:05:00"})
+check("and ARRIVAL once it is nearly down",
+      poller.tier_for(near_arrival, NOW) == poller.ARRIVAL)
+
+print()
+print("-- below the floor, NEAR still asks FR24 --")
+
+# THE FLOOR IS A REFUSAL OF ONE CURRENCY. FR24 bills credits against a balance
+# the floor does not measure, so refusing the flight outright spent nothing and
+# lost the landing.
+pollstate.forget_local()
+fr24.forget_cached()
+asked_fr = {"n": 0}
+poller.fetch_flight_full = lambda number, date=None, origin=None, max_age=None: (
+    (_ for _ in ()).throw(AssertionError("AeroDataBox must not be called below the floor")))
+fr24.landing_for = lambda *a, **k: (asked_fr.__setitem__("n", asked_fr["n"] + 1),
+                                    {"outcome": fr24.PENDING, "takeoff_utc": None})[1]
+pollstate.write_state("6E5071", "2026-09-07", state(dto=stale), None)
+r = poller.poll_one("6E5071", "2026-09-07", now=NOW, budget_ok=False)
+check("the AeroDataBox call is still refused, and said so",
+      r["adb"] is False and r.get("skipped") == "budget floor", r)
+check("but FR24 was asked anyway", asked_fr["n"] == 1 and r["fr24"], (asked_fr, r))
+
+# AND A FAR ONE IS STILL SILENT. Only NEAR was added to FR24_TIERS; the cheap
+# tiers below it spend nothing at all, which is what the floor is for.
+pollstate.forget_local()
+asked_fr["n"] = 0
+far_doc = state(dto=dto(dep_sched=iso(NOW + timedelta(hours=10)),
+                        arr_sched=iso(NOW + timedelta(hours=13))))
+pollstate.write_state("6E5071", "2026-09-07", far_doc, None)
+r = poller.poll_one("6E5071", "2026-09-07", now=NOW, budget_ok=False)
+check("a FAR flight below the floor still costs nothing in either currency",
+      asked_fr["n"] == 0 and not r["adb"] and not r["fr24"], (asked_fr, r))
 
 # ── AND THE CONSEQUENCE THAT MATTERED ──
 pollstate.forget_local()

@@ -20,7 +20,7 @@ had walked to the old one.
   DISTANT   > 48h to departure     once every 12 hours
   FAR       6h .. 48h               once every 6 hours
   DAY       6h .. 90m              every 30 minutes
-  NEAR      90m before departure   every 5 minutes
+  NEAR      90m before departure   every 5 minutes   (+ FR24, see below)
   AIRBORNE  departed, not landed   every 15 minutes  (FR24 only, see below)
   ARRIVAL   30m before arrival     every 2 minutes
   DONE      landed and at a gate   never again
@@ -37,8 +37,11 @@ together:
 
   * AERODATABOX IS ASKED FOR SCHEDULE FACTS -- times, terminal, gate, belt,
     stand. Every tier asks it, subject to the budget floor.
-  * FR24 IS ASKED WHETHER IT HAS LANDED, and nothing else. Only the AIRBORNE and
-    ARRIVAL tiers ask, because before wheels-up the answer cannot be yes.
+  * FR24 IS ASKED WHETHER IT HAS LANDED -- and, from NEAR, WHETHER IT HAS LEFT
+    THE GROUND. AIRBORNE and ARRIVAL ask the first. NEAR asks the second,
+    because FR24's takeoff time is the only proof of a departure that costs no
+    schedule unit, and without it a flight AeroDataBox cannot be asked about
+    never reaches AIRBORNE at all. See _has_departed's third proof.
 
 FR24 REMAINS THE ONLY THING THAT SAYS A FLIGHT HAS LANDED. This module does not
 relitigate that; it calls fr24.landing_for and stores what comes back.
@@ -46,9 +49,16 @@ relitigate that; it calls fr24.landing_for and stores what comes back.
 ── THE BUDGET FLOOR IS A REFUSAL, NOT A WARNING ────────────────────────────────
 
 pollstate.budget_floor() is units-per-day-remaining until the billing date. Below
-it, the cheap tiers stop being polled entirely and only ARRIVAL runs. A month
-that runs out on the 20th is worse than a month that polls the FAR tier half as
-often, because the flights that matter are the ones about to land.
+it, the cheap tiers stop asking AERODATABOX and only ARRIVAL and AIRBORNE do. A
+month that runs out on the 20th is worse than a month that polls the FAR tier
+half as often, because the flights that matter are the ones about to land.
+
+IT IS A REFUSAL OF ONE CURRENCY, NOT OF THE FLIGHT. It used to return before the
+FR24 call was even considered, which spent nothing and cost everything: with the
+schedule quota exhausted, a flight that was never seen to depart stayed NEAR, was
+skipped here, never became AIRBORNE, and finished with no landing recorded at
+all. FR24 bills credits against a balance this floor knows nothing about, so the
+floor now suppresses the AeroDataBox half and leaves the FR24 half to run.
 """
 import logging
 import os
@@ -80,11 +90,28 @@ TIER_INTERVAL = {
     ARRIVAL: timedelta(minutes=2),
 }
 
-# Which tiers may ask FR24 whether it is down. Before wheels-up the answer
-# cannot be yes, so asking is a credit spent on a guaranteed no.
-FR24_TIERS = {AIRBORNE, ARRIVAL}
+# ── WHICH TIERS MAY ASK FR24 ────────────────────────────────────────────────
+#
+# AIRBORNE AND ARRIVAL ASK WHETHER IT HAS LANDED. Before wheels-up that answer
+# cannot be yes, which is why the cheap tiers never asked.
+#
+# NEAR ASKS A DIFFERENT QUESTION: HAS IT LEFT THE GROUND. FR24 returns
+# takeoff_utc on every outcome, pending included, and that is the only evidence
+# of a departure in this system that does not cost an AeroDataBox unit. Without
+# it, a flight the schedule provider cannot be asked about is tiered NEAR on its
+# stale scheduled time, never satisfies _has_departed, never becomes AIRBORNE,
+# and is marked DONE three hours past its scheduled arrival having told nobody
+# anything.
+#
+# IT IS THE EXPENSIVE TIER IN CREDITS, and that is the trade being made: five
+# minutes over a ninety-minute window is eighteen queries per departure, and
+# fr24 bills per returned record.
+FR24_TIERS = {NEAR, AIRBORNE, ARRIVAL}
 
 # Which tiers survive the budget floor. See the note at the top.
+#
+# NEAR IS DELIBERATELY NOT HERE. It may ask FR24, which the floor does not
+# govern; it may not ask AeroDataBox, which the floor exists to protect.
 ESSENTIAL_TIERS = {ARRIVAL, AIRBORNE}
 
 NEAR_BEFORE_DEPARTURE = timedelta(minutes=90)
@@ -106,6 +133,30 @@ ARRIVAL_BEFORE_ARRIVAL = timedelta(minutes=30)
 # provider does not carry yet is indistinguishable from a typo today, and will
 # resolve on its own nearer the day.
 MISS_BACKOFF_CAP = timedelta(hours=6)
+
+# ── HOW EARLY A TAKEOFF MAY BE AND STILL BE THIS FLIGHT ─────────────────────
+#
+# FR24 IS ASKED OVER A WINDOW, NOT FOR AN INSTANT. fr24._window reaches six
+# hours back from the scheduled departure, and a flight number that operates
+# twice in a day puts its EARLIER rotation inside that reach. On a repeated
+# route the destination filter cannot separate the two -- both go to the same
+# airport -- and fr24._pick then sorts by nearest takeoff, which the leg we are
+# actually asking about loses, because it has not taken off and so sorts last.
+# The earlier rotation wins, it is genuinely airborne, and its takeoff would
+# promote an aircraft still at its gate to AIRBORNE. When that rotation lands,
+# the person meeting this flight is told it has landed.
+#
+# SIXTY MINUTES IS THE LINE, and it is drawn where the two explanations part.
+# A departure more than an hour before schedule is not something airlines do:
+# boarding closes at minus fifteen to minus twenty, and a pushback an hour
+# early would leave booked passengers behind. A takeoff that early is far more
+# likely to be a different rotation of the same number than a punctual one. An
+# hour is also comfortably wider than any real early departure, so the guard
+# costs nothing on the flights it is not aimed at.
+#
+# IT IS A FLOOR, NOT A WINDOW. There is no upper bound: a delay has no limit
+# and a flight that leaves nine hours late is still this flight.
+FR24_TAKEOFF_EARLY_SLACK = timedelta(minutes=60)
 
 # HOW LONG AFTER A SCHEDULED ARRIVAL WE KEEP ASKING. A flight that never reports
 # a landing -- diverted, or simply not covered -- would otherwise be polled at
@@ -161,6 +212,18 @@ def _movement_time(dto, movement):
     return None
 
 
+def _dep_scheduled(doc):
+    """The stored scheduled departure, which is what narrows an FR24 window.
+
+    fr24._window falls back to 48 hours around the DATE without one, and that
+    window reaches back far enough to return the previous day's rotation of the
+    same flight number -- billed per record, up to eight of them. Every FR24
+    query in this module passes this; where it is absent the query is not made.
+    """
+    dep = (((doc or {}).get("dto") or {}).get("departure") or {})
+    return dep.get("scheduled_iso") or None
+
+
 # ── WHAT TIER IS THIS FLIGHT IN ─────────────────────────────────────────────
 
 def tier_for(doc, now=None, day=None):
@@ -208,7 +271,8 @@ def tier_for(doc, now=None, day=None):
         return DONE
 
     departure_at = _movement_time(dto, "departure")
-    departed = _has_departed(dto, now)
+    # THE LANDING GOES IN because it carries a takeoff time. See _has_departed.
+    departed = _has_departed(dto, now, landing)
 
     if departed or status in ("enroute", "en route", "airborne"):
         if arrival_at is not None and now >= arrival_at - ARRIVAL_BEFORE_ARRIVAL:
@@ -227,8 +291,15 @@ def tier_for(doc, now=None, day=None):
     return DISTANT
 
 
-def _has_departed(dto, now):
+def _has_departed(dto, now, landing=None):
     """Has this aircraft actually left the ground?
+
+    THREE PROOFS, AND THE THIRD COSTS NO SCHEDULE UNIT. The first two are
+    AeroDataBox's and are unchanged. The third is FR24's takeoff time, which
+    arrives on a `landing` dict this poller has always stored and never read --
+    and which is the only one of the three still available when the AeroDataBox
+    quota is exhausted. Without it a flight that was never seen to depart is
+    tiered NEAR for ever on a stale scheduled time.
 
     AN actual_iso IN THE FUTURE IS NOT AN ACTUAL, AND AERODATABOX PUBLISHES
     THEM. Observed live on 6E6188 BOM->BLR: status "EnRoute", delay 0, and
@@ -248,6 +319,36 @@ def _has_departed(dto, now):
     actual = _parse(dep.get("actual_iso"))
     if actual is not None and actual <= now:
         return True
+
+    # ── FR24 SAW IT LEAVE ───────────────────────────────────────────────────
+    #
+    # PENDING AND LANDED BOTH CARRY A TAKEOFF, and both mean the aircraft is off
+    # the ground: pending is "FR24 knows this leg and it is still in the air".
+    # UNKNOWN and ERROR carry no takeoff and assert nothing, which is the whole
+    # point of there being four outcomes rather than two.
+    #
+    # IN THE PAST, for the reason the actual above has to be: a claimed
+    # departure that has not happened yet is not a departure. FR24 reports
+    # observed positions rather than schedules, so this is belt and braces.
+    #
+    # AND NOT TOO FAR BEFORE THE SCHEDULE, which is the wrong-rotation guard --
+    # see FR24_TAKEOFF_EARLY_SLACK for why an hour and why there is no upper
+    # bound. WITHOUT A STORED SCHEDULE THE PROOF IS REFUSED OUTRIGHT: there is
+    # nothing to check the takeoff against, and an unchecked takeoff from a
+    # window six hours wide is exactly the claim this guard exists to reject.
+    #
+    # IT IS BEFORE THE STATUS TEST BELOW AND NOT AFTER IT, because that test
+    # returns outright on an enroute status -- False included -- and a third
+    # proof written under it would be unreachable for exactly the flights whose
+    # status is enroute while the schedule is stale.
+    outcome = (landing or {}).get("outcome")
+    if outcome in (fr24.PENDING, fr24.LANDED):
+        took_off = _parse((landing or {}).get("takeoff_utc"))
+        sched_dep = _parse(dep.get("scheduled_iso"))
+        if took_off is not None and took_off <= now and sched_dep is not None \
+                and took_off >= sched_dep - FR24_TAKEOFF_EARLY_SLACK:
+            return True
+
     # The provider's word for it, but only once the scheduled time has passed --
     # "EnRoute" on a flight not due out for two hours is the same claim in
     # different clothes.
@@ -387,17 +488,35 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     if tier == DONE and not searching:
         return record
 
-    # THE FLOOR SKIPS THE CHEAP TIERS, NOT THE FLIGHT. An ARRIVAL flight is
+    # THE FLOOR SKIPS THE AERODATABOX CALL, NOT THE FLIGHT. An ARRIVAL flight is
     # still polled with the last unit in the account; a FAR one is not.
-    if not budget_ok and tier not in ESSENTIAL_TIERS:
+    #
+    # IT USED TO RETURN HERE, AND THE RETURN TOOK THE FR24 CALL WITH IT -- a
+    # call in a different currency, against a balance this floor does not
+    # measure. The record still says "budget floor" and the AeroDataBox call is
+    # still refused; what has changed is that want_fr24 below is now reachable.
+    # See the note at the top of this file.
+    adb_allowed = budget_ok or tier in ESSENTIAL_TIERS
+    if not adb_allowed:
         record["skipped"] = "budget floor"
-        return record
 
-    want_adb = _due(doc, tier, now, "last_adb_at", misses)
+    want_adb = adb_allowed and _due(doc, tier, now, "last_adb_at", misses)
     # FR24 IS NOT BACKED OFF ON AERODATABOX'S MISSES. They are different
     # providers with different coverage, and a flight one cannot resolve is
     # exactly the case where the other's answer is worth having.
     want_fr24 = tier in FR24_TIERS and _due(doc, tier, now, "last_fr24_at")
+
+    # AND NEAR ASKS ONLY WHEN THE WINDOW CAN BE NARROWED.
+    #
+    # NEAR IS THE ONLY FR24 TIER THAT CAN ARRIVE HERE WITHOUT A DTO. AIRBORNE
+    # and ARRIVAL are decided FROM one, so they always have a scheduled
+    # departure to send; NEAR is also what _tier_without_data returns for a
+    # flight nothing is stored for. Asking without a departure instant is the
+    # 48-hour window fr24 documents as grudging: billed per record, up to eight
+    # of them, and able to return the previous day's rotation as this one.
+    if want_fr24 and tier == NEAR and _dep_scheduled(doc) is None:
+        want_fr24 = False
+        record["skipped"] = record.get("skipped") or "no departure time for fr24"
 
     if want_adb and spend.get("adb", 0) >= MAX_ADB_CALLS_PER_RUN:
         want_adb = False
@@ -471,6 +590,16 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
             # A dated board is two provider calls; counted against this run's
             # cap exactly as a flight fetch is, and refused past it so a
             # cancellation cannot spend the poll's whole budget on one route.
+            #
+            # AND REFUSED BELOW THE FLOOR, which it did not have to be while the
+            # floor returned early -- the early return reached this path too. It
+            # is an AeroDataBox call like any other, so the floor governs it
+            # like any other; without this line, removing that return would have
+            # quietly opened a two-unit spend the floor used to close.
+            # _search_next treats a raise as "not searched" and retries the same
+            # day on the next poll, which is what the cap already relies on.
+            if not adb_allowed:
+                raise RuntimeError("budget floor")
             if spend.get("adb", 0) + notify.NEXT_CALLS_PER_DAY > MAX_ADB_CALLS_PER_RUN:
                 raise RuntimeError("adb cap for this run")
             spend["adb"] = spend.get("adb", 0) + notify.NEXT_CALLS_PER_DAY
