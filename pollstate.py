@@ -239,6 +239,76 @@ def delete_state(number, day):
         pass
 
 
+# ── EVERY STATE OBJECT OLDER THAN A BOUND, WHATEVER ELSE IS TRUE ───────────
+#
+# THE BACKSTOP UNDER THE POLLER'S OWN DELETE, and it exists because that delete
+# cannot reach everything. poll_one only ever sees flights returned by
+# store.watched_flights, and store._prune drops a watch once its date is
+# PRUNE_PAST_DAYS behind -- two days. A flight whose watch is pruned before its
+# state is deleted is never visited again by anything, and its object sits in the
+# bucket for ever. MEASURED: eight of twenty-six objects were already in exactly
+# that position, four of them holding a provider DTO more than three days old.
+#
+# THE DATE COMES OUT OF THE KEY, NOT OUT OF THE OBJECT. state/<NUMBER>/<date>.json
+# carries the flight date in the name, so this lists and deletes without
+# downloading anything -- one Class A operation for the listing and one Class A
+# per delete, rather than a read of every object on every pass.
+#
+# IT IS THE FLIGHT'S DATE AND NOT THE WRITE TIME, deliberately. A stale object's
+# updated_at could be refreshed by any later write; the date it names cannot move,
+# and it is the date the retention rule is actually about.
+#
+# AN UNPARSEABLE KEY IS LEFT ALONE. Something not written by state_key is
+# something this function did not put there and does not understand, and deleting
+# by a rule it does not fit is how a sweep takes out the wrong object.
+def sweep_state(older_than_days, now=None):
+    """Delete every state object whose flight date is older than the bound.
+
+    Returns the number removed. Never raises: a sweep that cannot list is a
+    sweep that does nothing, and it must not take the poll down with it.
+    """
+    now = now or _now()
+    cutoff = (now - timedelta(days=older_than_days)).date()
+
+    def expired(key):
+        m = re.match(r"^state/[^/]+/(\d{4}-\d{2}-\d{2})\.json$", key)
+        if m is None:
+            return False
+        try:
+            return datetime.strptime(m.group(1), "%Y-%m-%d").date() < cutoff
+        except ValueError:
+            return False
+
+    bucket = _bucket()
+    if bucket is None:
+        # THE SAME RULE OVER THE IN-PROCESS FALLBACK, so this is testable with no
+        # bucket at all -- which is the only way the poller's tests run.
+        doomed = [k for k in list(_local_state) if expired(k)]
+        for k in doomed:
+            _local_state.pop(k, None)
+        return len(doomed)
+
+    removed = 0
+    try:
+        names = [b.name for b in bucket.list_blobs(prefix="state/")]
+    except gcs.errors().GoogleAPIError:
+        logger.warning("pollstate: could not list state/ to sweep it")
+        return 0
+    for name in names:
+        if not expired(name):
+            continue
+        try:
+            bucket.blob(name).delete()
+            removed += 1
+        except gcs.errors().GoogleAPIError:
+            # One object that will not delete must not stop the rest.
+            logger.warning("pollstate: could not delete %s", name)
+    if removed:
+        logger.info("pollstate: swept %d state object(s) older than %d days",
+                    removed, older_than_days)
+    return removed
+
+
 # ── THE FR24 RUNTIME, SHARED ACROSS INSTANCES ───────────────────────────────
 #
 # READ ONCE PER POLL AND CACHED IN PROCESS FOR A FEW SECONDS. A GCS read per

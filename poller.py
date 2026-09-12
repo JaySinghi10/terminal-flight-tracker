@@ -163,6 +163,42 @@ FR24_TAKEOFF_EARLY_SLACK = timedelta(minutes=60)
 # the two-minute rate for ever.
 GIVE_UP_AFTER_ARRIVAL = timedelta(hours=3)
 
+# ── HOW LONG A FINISHED FLIGHT'S STATE OBJECT IS KEPT ───────────────────────
+#
+# TWENTY-SIX HOURS PAST DONE, AND THE NUMBER IS DISPATCH'S RATHER THAN A ROUND
+# ONE. dispatch.TICKET_GIVE_UP is 24 hours: a push ticket is asked about from
+# fifteen minutes after the send and abandoned unread at a day, so a delivery
+# record is not final until then. Deleting at 24 would race the last receipt
+# sweep for a message sent moments before the flight finished; two hours past it
+# means every ticket has reached a terminal answer before the object goes.
+#
+# IT IS ALSO WHY THE DELETE IS NOT AT ZERO. A gate or a belt can still be
+# published after the aircraft is on stand -- that is the whole reason DONE waits
+# for at_gate rather than stopping at the landing -- and a flight deleted the
+# instant it finished would lose a belt number that arrived a minute later, with
+# no record that it had ever been asked about.
+#
+# AND IT KEEPS A SIBLING'S SUBJECT LINE HONEST FOR A DAY. See the note at the
+# delete itself.
+DELETE_AFTER_DONE = timedelta(hours=26)
+
+# ── AND THE BACKSTOP, WHICH IS NOT ABOUT THIS FLIGHT AT ALL ────────────────
+#
+# FIVE DAYS FROM THE FLIGHT'S OWN DATE, swept regardless of whether anybody is
+# still watching it. The delete above can only ever reach a flight the poller
+# still visits, and store._prune drops a watch two days after its date -- so a
+# state object whose watch is pruned first is invisible to every code path in
+# this file. Eight of twenty-six objects in the live bucket were already exactly
+# that.
+#
+# FIVE RATHER THAN SEVEN, because seven is the ceiling rather than the target:
+# from 7 November the provider's terms forbid holding raw provider data beyond
+# it, and a bound set AT a limit is a bound that is breached by the first slow
+# poll. Two days of margin costs nothing -- nothing reads a five-day-old state
+# object -- and it is the difference between a rule this app keeps and one it
+# keeps on average.
+SWEEP_STATE_AFTER_DAYS = 5
+
 # A POLL MUST NOT BE SERVED DATA OLDER THAN ITS OWN TIER. See fetch_flight_full's
 # max_age. Half the interval, so two watchers on one flight in the same pass
 # still share one call but the next pass always fetches.
@@ -512,6 +548,39 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     # search fetches nothing from either provider.
     searching = bool(doc and (((doc.get("notify") or {}).get("next_search") or {}).get("done") is False))
     if tier == DONE and not searching:
+        # ── A FINISHED FLIGHT IS EVENTUALLY FORGOTTEN ───────────────────────
+        #
+        # THIS BRANCH USED TO BE FREE AND SILENT, and that is why state objects
+        # outlived their flights indefinitely: the one path a DONE flight takes
+        # returned before writing anything, so nothing ever recorded that it had
+        # finished and nothing ever cleaned up after it.
+        #
+        # IT COSTS ONE WRITE, ONCE. done_at is stamped the first time DONE is
+        # seen and never rewritten, so every later pass reads it, finds the grace
+        # period unexpired or the outbox undrained, and returns as free as before.
+        #
+        # ── WHAT THE DELETE TAKES WITH IT, AND WHO ELSE FEELS IT ────────────
+        #
+        # dispatch._reader_index READS THE dto OF EVERY WATCHED FLIGHT, not just
+        # the one it is sending about. It is what turns "your flight to Delhi"
+        # into "your 9:30 PM flight to Delhi" when somebody watches two flights
+        # to Delhi on one day, and it reads the city and the departure clock off
+        # each sibling's stored provider record. So deleting THIS object can make
+        # ANOTHER flight's subject line less specific than it would have been.
+        #
+        # THE 26 HOURS ARE WHAT MAKE THAT RARE. The disambiguation only matters
+        # while two flights to one city on one day are both live, and a flight
+        # that finished more than a day ago is not competing for a subject line
+        # with anything -- its own day is over. The degradation is real, it is
+        # bounded to a less specific but still correct sentence, and it is the
+        # price of not keeping a provider's record for ever.
+        if _deletable(doc, now):
+            pollstate.delete_state(number, day)
+            record["deleted"] = True
+            logger.info("poll: %s/%s is done and drained; state deleted", number, day)
+        elif doc is not None and not doc.get("done_at"):
+            pollstate.mutate_state(number, day, _stamp_done(now))
+            record["done_at"] = pollstate._iso(now)
         return record
 
     # THE FLOOR SKIPS THE AERODATABOX CALL, NOT THE FLIGHT. An ARRIVAL flight is
@@ -695,6 +764,68 @@ def poll_one(number, day, now=None, budget_ok=True, spend=None):
     return record
 
 
+# ── WHEN A FINISHED FLIGHT MAY BE FORGOTTEN ─────────────────────────────────
+
+def _drained(doc):
+    """Has everything this flight had to say been sent, or given up on?
+
+    A MESSAGE IS FINISHED WHEN ITS SLOT IS TERMINAL. dispatch writes sent_at on a
+    delivery and gave_up on one it will not retry -- a dead token, a stale
+    message, one it could not render -- and _claimable treats both as closed. So
+    "drained" is: every message still in the outbox has a terminal slot.
+
+    AN EMPTY OUTBOX IS DRAINED. A flight nothing was ever said about has nothing
+    outstanding, which is the common case for a quiet flight.
+
+    A MESSAGE WITH NO SLOT AT ALL IS NOT DRAINED, and that is the case worth
+    being careful about: it means dispatch has never reached this flight -- no
+    device had a token, or the pass has not run since the message was written --
+    and deleting it would be deleting something nobody has been told. One of the
+    live objects, QP1149, is in exactly that state with three unsent messages.
+    """
+    ns = (doc or {}).get("notify") or {}
+    outbox = ns.get("outbox") or []
+    if not outbox:
+        return True
+    slots = (doc or {}).get("sent")
+    if not isinstance(slots, dict):
+        return False
+    for msg in outbox:
+        key = msg.get("key")
+        mine = [s for sid, s in slots.items()
+                if isinstance(s, dict) and sid.split("|", 1)[0] == key]
+        if not mine or not all(s.get("sent_at") or s.get("gave_up") for s in mine):
+            return False
+    return True
+
+
+def _deletable(doc, now):
+    """DONE long enough, and with nothing left to say."""
+    if doc is None:
+        return False
+    stamped = _parse(doc.get("done_at"))
+    if stamped is None or now - stamped < DELETE_AFTER_DONE:
+        return False
+    return _drained(doc)
+
+
+def _stamp_done(now):
+    """Write done_at once, and never move it.
+
+    NEVER REWRITTEN, because the grace period must count from when the flight
+    FINISHED rather than from the last time anything happened to the object. A
+    stamp that moved would make the window unreachable on any flight something
+    kept touching.
+    """
+    def apply(existing):
+        if existing is None or existing.get("done_at"):
+            return None
+        d = dict(existing)
+        d["done_at"] = pollstate._iso(now)
+        return d
+    return apply
+
+
 # ── ONE PASS ────────────────────────────────────────────────────────────────
 
 def run_once(now=None):
@@ -740,6 +871,18 @@ def run_once(now=None):
     except Exception:  # noqa: BLE001
         pass
 
+    # ── AND THE OBJECTS NO WATCH POINTS AT ANY MORE ────────────────────────
+    #
+    # ONE LIST CALL PER PASS, UNGATED. At a two-minute schedule that is about
+    # 21,600 Class A operations a month, which is roughly eleven cents; a gate
+    # would save that and cost a stored timestamp, a write to maintain it and a
+    # third way for the sweep to silently stop running. The cheaper thing to
+    # spend here is the money.
+    #
+    # AFTER THE FLIGHTS, so a pass that deletes a flight's state on the tier
+    # rule does not then list it again in the same breath.
+    swept = pollstate.sweep_state(SWEEP_STATE_AFTER_DAYS, now=now)
+
     tiers = {}
     for r in records:
         tiers[r.get("tier", "?")] = tiers.get(r.get("tier", "?"), 0) + 1
@@ -760,6 +903,11 @@ def run_once(now=None):
         "adb_calls": spend["adb"],
         "fr24_calls": spend["fr24"],
         "flights_changed": changed,
+        # WHAT WAS FORGOTTEN THIS PASS. Both numbers, because they answer
+        # different questions: `deleted` is flights that finished cleanly and
+        # `swept` is objects nothing was watching any more.
+        "deleted": sum(1 for r in records if r.get("deleted")),
+        "swept": swept,
         "budget": budget,
         "unresolved": [{"flight": n, "date": d, "misses": m}
                        for n, d, m in stale],
@@ -772,8 +920,9 @@ def run_once(now=None):
         "notifications": [{"flight": r["flight"], "date": r["date"], "kinds": r["notifications"]}
                           for r in records if r.get("notifications")],
     }
-    logger.info("poll: %d flights, %d adb, %d fr24, %d changed",
-                out["flights"], out["adb_calls"], out["fr24_calls"], changed)
+    logger.info("poll: %d flights, %d adb, %d fr24, %d changed, %d deleted, %d swept",
+                out["flights"], out["adb_calls"], out["fr24_calls"], changed,
+                out["deleted"], out["swept"])
     return out
 
 

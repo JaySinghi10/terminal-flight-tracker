@@ -773,5 +773,120 @@ check("the next poll, with budget, finds it and says so",
       r.get("notifications") == [notify.NEXT_FLIGHT] and len(board_calls) >= 1, (r.get("notifications"), board_calls))
 
 print()
+print("-- a finished flight is eventually forgotten --")
+
+# ── THE FOUR RULES, AND WHY EACH IS HERE ───────────────────────────────────
+#
+# A STATE OBJECT HOLDS A PROVIDER'S RAW RECORD -- the whole AeroDataBox dto --
+# and from 7 November that provider's terms forbid keeping one beyond seven days.
+# It also outlived its flight indefinitely because the DONE branch returned
+# before writing anything. These pin the rule that replaces that.
+DONE_DTO = dto(dep_actual=iso(NOW - timedelta(hours=6)),
+               arr_sched=iso(NOW - timedelta(hours=2)),
+               arr_actual=iso(NOW - timedelta(hours=1)))
+DONE_LANDING = {"outcome": fr24.LANDED, "landed_utc": iso(NOW - timedelta(hours=2))}
+
+
+def done_state(**over):
+    st = pollstate.blank_state("AI999", "2026-09-07")
+    st["dto"] = DONE_DTO
+    st["landing"] = DONE_LANDING
+    st.update(over)
+    return st
+
+
+def put(st, num="AI999", day="2026-09-07"):
+    pollstate.forget_local()
+    pollstate.write_state(num, day, st, None)
+
+
+# NOTHING IS FETCHED ON ANY OF THESE. A DONE flight asks no provider, which is
+# what makes the branch free; the fake is here so a regression that started
+# fetching would be visible rather than silent.
+fetched = {"n": 0}
+poller.fetch_flight_full = lambda number, date=None, origin=None, max_age=None: (
+    fetched.__setitem__("n", fetched["n"] + 1), ("t", DONE_DTO))[1]
+
+# 1. THE FIRST SIGHT STAMPS AND KEEPS.
+put(done_state())
+r = poller.poll_one("AI999", "2026-09-07", now=NOW)
+doc, _ = pollstate.read_state("AI999", "2026-09-07")
+check("the first DONE poll stamps done_at rather than deleting",
+      doc is not None and doc.get("done_at") is not None, doc and doc.get("done_at"))
+check("and it is still DONE, and still free", r["tier"] == poller.DONE and fetched["n"] == 0, r)
+
+# 2. BEFORE THE GRACE PERIOD, NOTHING GOES.
+put(done_state(done_at=iso(NOW - timedelta(hours=25, minutes=30))))
+poller.poll_one("AI999", "2026-09-07", now=NOW)
+doc, _ = pollstate.read_state("AI999", "2026-09-07")
+check("25.5 hours after DONE the state is still there", doc is not None, doc)
+
+# 3. PAST IT, WITH NOTHING OUTSTANDING, IT GOES.
+put(done_state(done_at=iso(NOW - timedelta(hours=26, minutes=1))))
+r = poller.poll_one("AI999", "2026-09-07", now=NOW)
+doc, _ = pollstate.read_state("AI999", "2026-09-07")
+check("26 hours after DONE, with a drained outbox, the state is deleted",
+      doc is None and r.get("deleted") is True, (doc, r))
+
+# 4. AN UNDRAINED OUTBOX HOLDS IT, however long it has been.
+#
+# THE MESSAGE HAS NO SLOT AT ALL, which is dispatch never having reached this
+# flight -- the live bucket has one of these, QP1149, with three unsent
+# messages. Deleting it would delete something nobody was ever told.
+put(done_state(done_at=iso(NOW - timedelta(days=3)),
+               notify={"outbox": [{"key": "belt:1", "kind": notify.BELT}], "keys": ["belt:1"]}))
+poller.poll_one("AI999", "2026-09-07", now=NOW)
+doc, _ = pollstate.read_state("AI999", "2026-09-07")
+check("an undrained outbox keeps the state whatever the clock says",
+      doc is not None, doc)
+
+# AND A SENT ONE DOES NOT.
+put(done_state(done_at=iso(NOW - timedelta(days=3)),
+               notify={"outbox": [{"key": "belt:1", "kind": notify.BELT}], "keys": ["belt:1"]},
+               sent={"belt:1|dev-a": {"sent_at": iso(NOW - timedelta(days=2))}}))
+poller.poll_one("AI999", "2026-09-07", now=NOW)
+doc, _ = pollstate.read_state("AI999", "2026-09-07")
+check("once every message has a terminal slot it is deleted", doc is None, doc)
+
+# A GIVEN-UP MESSAGE IS FINISHED TOO. dispatch writes gave_up on a stale or
+# unrenderable message and on a dead token, and _claimable never offers it again.
+put(done_state(done_at=iso(NOW - timedelta(days=3)),
+               notify={"outbox": [{"key": "gate:1", "kind": notify.GATE}], "keys": ["gate:1"]},
+               sent={"gate:1|dev-a": {"gave_up": True, "drop_reason": "stale"}}))
+poller.poll_one("AI999", "2026-09-07", now=NOW)
+doc, _ = pollstate.read_state("AI999", "2026-09-07")
+check("a message given up on counts as drained", doc is None, doc)
+
+print()
+print("-- the sweep reaches what the poller cannot --")
+
+# ── THE ORPHAN CASE, WHICH IS THE WHOLE REASON THE SWEEP EXISTS ────────────
+#
+# store._prune DROPS A WATCH TWO DAYS PAST ITS DATE and poll_one only ever sees
+# flights watched_flights returns, so a state object whose watch is pruned first
+# is invisible to every rule above. Eight of the twenty-six objects in the live
+# bucket were exactly that, four holding a provider record over three days old.
+pollstate.forget_local()
+old_day = (NOW - timedelta(days=9)).strftime("%Y-%m-%d")
+recent_day = (NOW - timedelta(days=1)).strftime("%Y-%m-%d")
+pollstate.write_state("ZZ111", old_day, pollstate.blank_state("ZZ111", old_day), None)
+pollstate.write_state("ZZ222", recent_day, pollstate.blank_state("ZZ222", recent_day), None)
+# NOBODY IS WATCHING EITHER. The sweep does not consult the watch store at all,
+# which is the point: it is the rule for objects nothing points at.
+poller.store.watched_flights = lambda: []
+out = poller.run_once(now=NOW)
+gone, _ = pollstate.read_state("ZZ111", old_day)
+kept, _ = pollstate.read_state("ZZ222", recent_day)
+check("the sweep removes an orphan older than five days with no watch row",
+      gone is None and out.get("swept") == 1, (gone, out.get("swept")))
+check("and leaves one inside the window alone", kept is not None, kept)
+check("the pass reports what it swept", out.get("swept") == 1, out.get("swept"))
+
+# THE BOUND IS THE FLIGHT'S DATE, NOT THE WRITE TIME. Both objects above were
+# written this instant; only the one whose DATE is old goes.
+check("the bound reads the date out of the key, not updated_at",
+      pollstate.sweep_state(500, now=NOW) == 0)
+
+print()
 print("PASSED: %d   FAILURES: %d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)
