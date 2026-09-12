@@ -95,7 +95,6 @@ export function flightUrl(number: string, date: string | null, origin: string | 
 
 // These caps protect the AeroDataBox quota.
 const PULL_COOLDOWN_MS = 60 * 1000;
-const AUTO_REFRESH_MAX_FLIGHTS = 2;
 
 // ── HOW MANY LANDING CHECKS ONE SWEEP WILL MAKE ─────────────────────────────
 //
@@ -124,26 +123,26 @@ const LANDING_SWEEP_MAX = 4;
 // flight in the air is reached, only how far down the quiet end it goes.
 const PULL_MAX_FLIGHTS = 10;
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  AUTO-REFRESH IS OFF. FLIP THIS ONE CONSTANT TO TURN IT ON.              ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// ── THERE IS NO BACKGROUND REFRESH ON THE DEVICE, AND THAT IS THE DESIGN ────
 //
-// WHAT FLIPPING IT DOES: saved flights start refreshing themselves in the
-// background -- on launch, and on app-resume past AUTO_REFRESH_RESUME_COOLDOWN_MS
-// -- at most AUTO_REFRESH_MAX_FLIGHTS per run, on the schedule refreshIntervalFor
-// sets out. Nothing else changes. Pull-to-refresh is unaffected either way.
+// THE SERVER POLLS NOW. poller.py walks every watched flight every two minutes
+// on its own tiers, spends the AeroDataBox budget against its own floor, and
+// leaves what changed in an outbox the dispatcher sends. A second, weaker copy
+// of that on the phone -- two flights per launch, only while the app happens to
+// be open -- answered the same question worse and spent the same quota twice.
 //
-// WHAT IT COSTS: one API unit per flight per lookup. A saved flight days away is
-// about ONE UNIT A DAY; the same flight over its final day and its time in the
-// air is fifteen to twenty in total. Ten watched flights, mostly distant, is
-// roughly ten units a day. See refreshIntervalFor for the tiers those come from.
+// WHAT THE DEVICE STILL DOES: pull-to-refresh, which is the user asking, and
+// the landing sweep, which asks FR24 the one question no schedule call answers.
+// Both are below and both are live.
 //
-// IT WAS A HUNDRED YEARS, WHICH IS THE SAME OFF WRITTEN AS A NUMBER. A constant
-// called MIN_AGE set past any possible age is a disabled feature wearing the
-// clothes of a tunable one -- and it cost eight hours of a landed flight showing
-// DEPARTED before anybody noticed the schedule was not the reason.
-const AUTO_REFRESH_ENABLED = false;
-const AUTO_REFRESH_RESUME_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+// THERE USED TO BE A CONSTANT HERE CALLED AUTO_REFRESH_ENABLED, SET false, with
+// a boxed comment explaining how to turn it on. It had been false since before
+// the poller existed, so everything under it was unreachable -- and the last
+// reader of the machinery it fed was a resume check whose own cooldown could
+// never advance, because the only line that advanced it was itself unreachable.
+// An unreachable feature behind a flag reads like a decision somebody is about
+// to make rather than one already made, which is how this file came to be
+// confusing. The flag and the machinery are gone together.
 // The provider's BASIC plan caps requests at one per second and rejects the rest
 // with HTTP 429, so consecutive saved-flight lookups are spaced past that ceiling.
 const REFRESH_SPACING_MS = 1300;
@@ -604,53 +603,6 @@ function refreshable(f: SavedFlight, now: number): boolean {
   return ts === null || now - ts <= REFRESH_UNTIL_AFTER_ARRIVAL_MS;
 }
 
-// ── HOW OFTEN ONE FLIGHT IS WORTH ASKING ABOUT ──────────────────────────────
-//
-// PROXIMITY, NOT ONE INTERVAL. A flight next Tuesday changes when the airline
-// republishes a timetable; a flight boarding in an hour changes when a gate is
-// assigned; a flight in the air changes continuously. One number for all three
-// either wastes units on the first or is useless for the third.
-//
-//   in the air              30m     ~2 units an hour, for a few hours
-//   landed, inside 24h       1h     the belt and the actual arrival still land
-//   under 6h to departure    1h     gate, terminal, delay -- the actionable window
-//   6h to 48h                6h     4 a day
-//   beyond 48h              24h     1 a day
-//   past the window        never    see refreshable
-//
-// A TYPICAL FLIGHT COSTS ABOUT ONE UNIT A DAY while it is distant and fifteen to
-// twenty across its last day and its flight. Ten saved flights mostly days out is
-// around ten a day.
-//
-// AIRBORNE IS TESTED FIRST AND BY effectiveStatus, not by the clock. A flight
-// running late is still 'active' past its scheduled arrival, and that is when it
-// is most worth asking about -- ordering this test after the arrival check would
-// drop it to hourly at exactly the wrong moment.
-//
-// null MEANS NEVER, which is the only value that stops a record being asked
-// about at all. Every other branch returns a duration.
-function refreshIntervalFor(f: SavedFlight, now: number): number | null {
-  if (!refreshable(f, now)) return null;
-  const eff = effectiveStatus(f, now);
-  // A FLIGHT THE PROVIDER HAS LOST IS STILL WORTH ASKING ABOUT, BUT NOT EVERY
-  // HALF HOUR. They do catch up -- an arrival often lands in their data hours
-  // late -- so it stays on the list; at the active tier it would spend about
-  // forty-eight units across a day on a record nothing is changing.
-  if (eff === 'stale') return 60 * 60 * 1000;
-  if (eff === 'active') return 30 * 60 * 1000;
-  const arr = arrivalTs(f);
-  if (arr !== null && now > arr) return 60 * 60 * 1000;
-  const dep = departureTs(f);
-  // NO READABLE DEPARTURE FALLS TO THE MIDDLE TIER rather than to either end.
-  // Hourly would spend units on a record we cannot place; daily would leave a
-  // repairable record broken for a day.
-  if (dep === null) return 6 * 60 * 60 * 1000;
-  const until = dep - now;
-  if (until < 6 * 60 * 60 * 1000) return 60 * 60 * 1000;
-  if (until < 48 * 60 * 60 * 1000) return 6 * 60 * 60 * 1000;
-  return 24 * 60 * 60 * 1000;
-}
-
 // ── WHICH RECORD GETS THE UNIT WHEN THERE ARE MORE FLIGHTS THAN ATTEMPTS ────
 //
 // A CAP ON TOP OF A PURELY STALE-FIRST ORDER SPENT THE PULL ON THE WRONG
@@ -662,9 +614,11 @@ function refreshIntervalFor(f: SavedFlight, now: number): number | null {
 // leg being watched became the FRESHEST record in the store and sorted to the
 // very back of the queue that gets truncated. The workaround was the cause.
 //
-// THREE RANKS, AND THEY ARE refreshIntervalFor's OWN TIERS. That function
-// already decides what is worth asking about how often; disagreeing with it here
-// would mean two different opinions in one file about which flight is volatile.
+// THREE RANKS, AND THEY ARE THE TIERS THE POLLER USES, coarsened. The server
+// decides how often a flight is worth asking about -- see poller.py's tiers --
+// and this decides which records a HAND-PULLED refresh reaches first when there
+// are more flights than the cap allows. Same idea of volatility, one decision
+// each, neither pretending to be the other.
 //
 //   0  in the air        changing continuously, and the one thing a pull is for
 //   1  under 6h to go    the gate, the terminal and the delay land in this window
@@ -1343,25 +1297,6 @@ export function SavedProvider({ children }: { children: ReactNode }) {
 
   const refreshingRef = useRef(false);
   const lastRefreshRef = useRef(0);
-  const lastAutoRefreshRef = useRef(0);
-  // WHEN THE PROVIDER LAST ANSWERED ABOUT A FLIGHT, by id.
-  //
-  // THE FACT RECORDED IS "ATTEMPTED", NOT "FAILED", and that is the whole idea.
-  // The staleness filter in autoRefresh is meant to be self-clearing: attempt a
-  // flight, it leaves the candidate set, the next run reaches the ones behind
-  // it. That works because touchSavedFlight advances updatedAt — which it does
-  // only on success. So updatedAt is the only record of "we tried this", and a
-  // flight whose lookup fails never leaves the set: it sits at the head of the
-  // list consuming one of the two attempts on every run, for ever, starving
-  // everything behind it. Nothing here is a fairness rule bolted on top; this is
-  // the missing half of a fact the filter already depends on.
-  //
-  // MEMORY ONLY, and correctly so. A failure is a fact about one attempt, not
-  // about the flight, and there is no reason to believe an attempt that failed
-  // this morning still predicts anything after a relaunch. It dies with the
-  // process, which is also why it needs no eviction: it is bounded by the
-  // flights one session actually touches.
-  const lastTriedRef = useRef<Map<string, number>>(new Map());
   const dayRef = useRef(localDayKey(Date.now()));
   // THE WINDOW ITSELF: the deleted record and the timer that ends its life.
   //
@@ -1493,95 +1428,33 @@ export function SavedProvider({ children }: { children: ReactNode }) {
           flightUrl(f.flightNumber, day, f.from.iata || null),
         );
         const data = await response.json();
-        // THE PROVIDER ANSWERED, AND THE ANSWER WAS NO. Recorded, because that
-        // is a fact about THIS FLIGHT: a not-found will be a not-found again in
-        // five minutes, so backing off costs nothing and yields the turn.
-        //
-        // See the catch below for the half that is deliberately not recorded.
+        // THE PROVIDER ANSWERED, AND THE ANSWER WAS NO. Counted, not recorded
+        // against the flight: this loop is a pull, so the user is waiting and
+        // will see the count. There used to be a per-flight back-off map here
+        // for the background refresher to read; that refresher is gone, and the
+        // server's own miss back-off -- see MISS_BACKOFF_CAP in poller.py -- is
+        // where a flight the provider keeps not answering for is now handled.
         if (data.error || !response.ok) {
-          lastTriedRef.current.set(f.id, Date.now());
           failures++;
           continue;
         }
-        // A SUCCESS NEEDS NO ENTRY: touchSavedFlight below advances updatedAt,
-        // which the filter already reads.
         // f.id, not the fresh record's: a record filed under "unknown" has no
         // date for its id to have been built from, and this is what lets the
         // response supply one.
         await touchSavedFlight(email, savedFlightFromApi(data), f.id);
         if (openCardId && f.id === openCardId) openCardFresh = data;
       } catch {
-        // NOTHING RECORDED HERE, and the split from the branch above is
-        // load-bearing rather than tidiness. A thrown fetch is a fact about the
-        // NETWORK — offline, DNS, a timeout, a body that would not parse — and
-        // says nothing whatever about this flight. Record it and one offline
-        // stretch puts the first flights attempted into a twelve-hour back-off,
-        // so the run after connectivity returns skips precisely the flights that
-        // most need refreshing. While offline nothing can succeed anyway, so
-        // retrying the same two costs nothing and starves nobody.
+        // A THROWN FETCH IS A FACT ABOUT THE NETWORK — offline, DNS, a timeout,
+        // a body that would not parse — and says nothing whatever about this
+        // flight, which is why it is counted and nothing more. It reads the
+        // same as the branch above now; it did not when a per-flight back-off
+        // map existed, and the distinction between the two was the reason that
+        // map was never written from here.
         failures++;                                           // one failure must not abort the loop
       }
     }
     return { failures, openCardFresh };
   }, [email]);
-
-  // Silent background refresh: no spinner, no message. Failures are invisible — the row age tells the truth.
-  const autoRefresh = useCallback(async (list: SavedFlight[], isCancelled: () => boolean) => {
-    // THE SWITCH, AND IT IS THE FIRST LINE FOR A REASON. Everything below costs
-    // API units; nothing above it does. See AUTO_REFRESH_ENABLED.
-    if (!AUTO_REFRESH_ENABLED) return;
-    if (refreshingRef.current) return;
-    // THE LATER OF THE TWO. updatedAt says when this flight's data last came
-    // back; the map says when the provider last answered about it at all. A
-    // flight is a candidate only when BOTH are old enough, which is what makes
-    // the filter self-clearing again for failures as well as successes.
-    //
-    // updatedAt IS NOT ADVANCED ON A FAILURE, and must not be — it would be the
-    // shortest fix and it is wrong twice over. It is a storage write, and worse,
-    // updatedAt means "when this data was fetched": flightLineSegments reads it
-    // against COUNTDOWN_MAX_AGE_MS to decide whether a row may show a LIVE
-    // COUNTDOWN at all, so advancing it on a failure would put a ticking
-    // "departs in 2h 14m" over data that was never updated. The row would go
-    // from honestly stale to confidently wrong.
-    //
-    // ONLY autoRefresh READS THIS. onRefresh deliberately does not: a pull is
-    // the user asking, and the user is allowed to retry a flight the background
-    // gave up on.
-    // `at`, not `now`: this component already has a `now` state, and shadowing
-    // the ticking clock with a one-off reading inside a function is how the two
-    // get confused later.
-    const at = Date.now();
-    // ── PER FLIGHT, ON ITS OWN SCHEDULE ──
-    //
-    // ONE INTERVAL PER RECORD rather than one for the list, so a flight in the
-    // air and a flight next week are not asked about at the same rate. A null
-    // interval is a record that should not be asked about at all.
-    //
-    // THE LATER OF THE TWO CLOCKS, unchanged: updatedAt says when this flight's
-    // data last came back, and lastTriedRef says when the provider last answered
-    // about it AT ALL. A flight whose lookup fails never advances updatedAt, so
-    // without the second reading it would sit at the head of the queue for ever
-    // and starve everything behind it.
-    const stale = list.filter(f => {
-      const every = refreshIntervalFor(f, at);
-      if (every === null) return false;
-      return at - Math.max(f.updatedAt, lastTriedRef.current.get(f.id) ?? 0) > every;
-    });
-    if (stale.length === 0) return;
-    refreshingRef.current = true;
-    try {
-      // NULL, because this pass has never had an open card to feed. It called
-      // refreshFlights and discarded the returned payload, so passing no id is
-      // exactly what it already did — the capture simply never fires now.
-      await refreshFlights(stale, AUTO_REFRESH_MAX_FLIGHTS, null);
-      const fresh = await getSavedFlights(email);             // re-read once, set state once
-      if (isCancelled()) return;                              // account switched / unmounted mid-flight
-      setSavedFlights(fresh);
-      lastAutoRefreshRef.current = Date.now();
-    } finally {
-      refreshingRef.current = false;
-    }
-  }, [email, refreshFlights]);
 
   useEffect(() => {
     if (!authHydrated) return;
@@ -1653,7 +1526,6 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       if (!cancelled) {
         setSavedFlights(list);
         setPendingState(pend);
-        autoRefresh(list, () => cancelled);
       }
     })().finally(() => {
       // IN finally, SO A READ THAT THROWS STILL ENDS THE WAIT. Nothing above is
@@ -1680,10 +1552,22 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // five minutes and to the window around its own arrival, so this runs sixty
   // times an hour and usually calls out zero times.
   //
-  // IT IS NOT autoRefresh AND MUST NOT BE CONFUSED WITH IT. That one is switched
-  // off because it spends AeroDataBox units on flights nobody is looking at.
-  // This spends FR24 credits on the one question the app cannot answer without
-  // asking, during the ninety minutes a year per flight when the answer changes.
+  // THIS IS THE ONE THING THE DEVICE STILL ASKS A PROVIDER ON ITS OWN, and it
+  // is not the background refresher that used to sit beside it -- that spent
+  // AeroDataBox units on flights nobody was looking at and the server poller
+  // replaced it. This spends FR24 credits on the one question no schedule call
+  // answers, during the ninety minutes a year per flight when it changes.
+  //
+  // AND IT IS NOT SUPERSEDED BY THE POLLER, WHICH IS WORTH SAYING OUTRIGHT
+  // BECAUSE IT LOOKS AS THOUGH IT SHOULD BE. The poller asks FR24 the same
+  // question, but it writes the answer into its own state object in Cloud
+  // Storage; nothing carries that back onto this device. setFlightLanding, which
+  // only this sweep calls, is the sole writer of landedUtc, landingCheck and
+  // landingSource on a SavedFlight -- touchSavedFlight deliberately PRESERVES
+  // all three across an ordinary /flight refresh rather than reading them from
+  // the response, because that response is AeroDataBox's and has never heard of
+  // FR24. Delete this and effectiveStatus, landedInstant and aeroDataBoxMayLand
+  // all lose their only source at once.
   //
   // THE OUTCOME IS WRITTEN EVERY TIME, INCLUDING THE FAILURES. 'error' is not a
   // non-event: it is what stops AeroDataBox declaring a landing while FR24 is
@@ -1749,10 +1633,13 @@ export function SavedProvider({ children }: { children: ReactNode }) {
         tick();
         // Cheap, and the only chance to correct a schedule that drifted while
         // the app was not running. Fire and forget: nothing on screen waits.
+        //
+        // AND IT IS THE ONLY THING RESUMING DOES BESIDES THE SWEEP. A second
+        // branch here used to start a background refresh past a two-hour
+        // cooldown; both it and the refresher are gone. Nothing on resume spends
+        // an AeroDataBox unit now -- the server has been polling the whole time
+        // the app was closed, which is the half a device could never do.
         getSavedFlights(email).then(l => { if (!cancelled) reconcile(l, undoKeepIds()); });
-        if (Date.now() - lastAutoRefreshRef.current > AUTO_REFRESH_RESUME_COOLDOWN_MS) {
-          getSavedFlights(email).then(l => { if (!cancelled) autoRefresh(l, () => cancelled); });
-        }
       }
     });
     return () => {
@@ -2348,10 +2235,28 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   // A PASS IS STILL BOUNDED. retryBatch caps how many legs one sweep looks up,
   // so a list of fifty legs that all come due at once cannot spend the day's
   // provider budget in one minute; the rest are picked up on the next tick.
+  //
+  // ── AND THE PASS SAYS WHICH OF THE TWO WOKE IT ────────────────────────────
+  //
+  // 'mount' WAS IN THE UNION AND WAS PASSED NOWHERE. This effect calls maybe()
+  // once immediately and again on every tick, and BOTH reported 'daily' -- a
+  // word pendingRules defines as "only the far tier's once-a-day sweep". So an
+  // event recorded because somebody opened the app was indistinguishable from
+  // one recorded because a day had elapsed, which is exactly the distinction
+  // the four names exist to draw.
+  //
+  // HARMLESS AND WORTH FIXING ANYWAY: nothing branches on the value, so no
+  // behaviour changes -- retryPending stamps the day for 'mount' and 'daily'
+  // alike. What changes is that the resolved-event log stops misreporting its
+  // own cause to whoever reads it back.
+  //
+  // 'due' STILL WINS OVER BOTH, on either path. It names the reason a leg was
+  // asked about -- its own interval elapsed -- which is a stronger statement
+  // than when the tick happened to fire.
   useEffect(() => {
     if (!authHydrated) return;
     let cancelled = false;
-    const maybe = async () => {
+    const maybe = async (woke: 'mount' | 'tick') => {
       const list = await getPending(email);
       if (list.length === 0 || cancelled) return;
       const now = Date.now();
@@ -2361,10 +2266,10 @@ export function SavedProvider({ children }: { children: ReactNode }) {
       // is urgent, and the whole list is on the far tier.
       const urgent = list.some(p => retryInterval(p, now) < RETRY_INTERVALS_MS.far && legDue(p, now));
       if (!urgent && !dueToday(await getRetryDay(email), localDayKey(now))) return;
-      if (!cancelled) await retryPending(urgent ? 'due' : 'daily');
+      if (!cancelled) await retryPending(urgent ? 'due' : woke === 'mount' ? 'mount' : 'daily');
     };
-    void maybe();
-    const id = setInterval(() => { void maybe(); }, 60000);
+    void maybe('mount');
+    const id = setInterval(() => { void maybe('tick'); }, 60000);
     return () => { cancelled = true; clearInterval(id); };
   }, [authHydrated, email, retryPending]);
 
