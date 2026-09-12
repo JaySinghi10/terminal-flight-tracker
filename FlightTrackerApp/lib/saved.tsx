@@ -1217,7 +1217,6 @@ type SavedContextValue = {
   refreshAll: (openCardId: string | null, onStarted?: () => void) => Promise<RefreshReport>;
   handleRemind: (f: SavedFlight, on: boolean) => Promise<string>;
   setArchived: (f: SavedFlight, on: boolean) => Promise<void>;
-  setTrip: (f: SavedFlight, tripId: string | null) => Promise<void>;
   ownFlight: (
     record: SavedFlight,
     tripId?: string,
@@ -1781,6 +1780,13 @@ export function SavedProvider({ children }: { children: ReactNode }) {
 
   // Sets or clears tripId. setArchived's shape exactly, on the same [email], and
   // for the same reason: one device-owned field, one store call, one setState.
+  //
+  // A LOCAL, NOT A CONTEXT MEMBER. It was exposed and no screen ever called it:
+  // owning goes through ownFlight, which runs trip detection, and disowning
+  // goes through disownFlight just below, which is this with null. An exported
+  // member nothing imports is a promise to keep something working that nothing
+  // exercises. When an unlink screen wants it, it can be exposed then -- with a
+  // reader to justify it, which is the test joinTrip is already held to.
   const setTrip = useCallback(async (f: SavedFlight, tripId: string | null): Promise<void> => {
     setSavedFlights(await setFlightTrip(email, f.id, tripId));
     // OWNERSHIP IS PART OF THE WATCH. Joining a trip means the person is on
@@ -1791,10 +1797,9 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   }, [email]);
 
   // THE MERGE'S WRITE, AND IT IS NOT ON THE CONTEXT. One caller -- ownFlight --
-  // so it stays a local. setTrip is already exposed and has no caller outside
-  // this file; adding a second unreachable member beside it would be the same
-  // fault twice. When an unlink screen needs this it can be exposed then, with a
-  // reader to justify it.
+  // so it stays a local, on the same rule setTrip above now follows: a context
+  // member nothing imports is a promise nothing exercises. When an unlink screen
+  // needs this it can be exposed then, with a reader to justify it.
   const joinTrip = useCallback(async (ids: string[], tripId: string): Promise<void> => {
     setSavedFlights(await setFlightsTrip(email, ids, tripId));
   }, [email]);
@@ -2308,7 +2313,6 @@ export function SavedProvider({ children }: { children: ReactNode }) {
     refreshAll,
     handleRemind,
     setArchived,
-    setTrip,
     ownFlight,
     disownFlight,
     pending,
@@ -2318,7 +2322,7 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   }), [
     savedFlights, hydrated, email, setEmail, refreshing,
     saveRecord, handleUnsave, undoUnsave, refreshOne, refreshAll,
-    handleRemind, setArchived, setTrip, ownFlight, disownFlight,
+    handleRemind, setArchived, ownFlight, disownFlight,
     pending, addPendingLeg, removePendingLeg, retryPending,
   ]);
 

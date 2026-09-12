@@ -141,9 +141,29 @@ export async function recordResolved(
   }));
 }
 
-// FOR THE SENDER THAT DOES NOT EXIST YET. Whatever delivers notifications
-// reads these, sends, and marks them delivered; until then they accumulate,
-// bounded, and nothing reads them.
+// ── FOR A SENDER THAT STILL DOES NOT EXIST, AND THE SERVER IS NOT IT ────────
+//
+// THE COMMENT HERE USED TO SAY "the sender that does not exist yet", written
+// before dispatch.py did. It does now, and it is NOT this sender -- which is
+// worth stating plainly, because the obvious reading is that these two became
+// redundant the day it shipped.
+//
+// THE SERVER CANNOT PRODUCE THIS EVENT. dispatch.py drains an outbox that
+// notify.py fills, and every kind notify can emit is a provider-driven fact
+// about a WATCHED flight: gate, terminal, delay, departed, landed, belt,
+// cancelled, diverted, next flight. A pending leg is none of those. It is a
+// flight the provider does not carry yet, it exists only on this device, and
+// the server has never heard of it -- there is nothing to watch, so nothing
+// polls it and nothing can notice it resolving.
+//
+// THE MOMENT IT RESOLVES IS THE MOMENT THE SERVER FIRST LEARNS OF IT, and by
+// then the interesting thing has already happened: a flight somebody booked
+// months ago has become trackable. That event is recorded here, by the device,
+// because the device is the only thing in a position to see it.
+//
+// SO THESE STAY. Whatever eventually delivers a local notification reads the
+// undelivered ones, sends, and marks them; until then they accumulate, bounded
+// by MAX_RESOLVED_EVENTS, and nothing reads them.
 export async function undeliveredResolved(email: string | null): Promise<PendingResolvedEvent[]> {
   return (await getResolved(email)).filter(e => !e.delivered);
 }

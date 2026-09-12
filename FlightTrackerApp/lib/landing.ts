@@ -28,6 +28,39 @@ export type LandingOutcome = 'landed' | 'pending' | 'unknown' | 'error';
 export type LandingResult = {
   outcome: LandingOutcome;
   landedUtc: string | null;
+  // ── READ FROM THE WIRE, CARRIED NO FURTHER, AND KEPT ON PURPOSE ───────────
+  //
+  // NOTHING CONSUMES THIS TODAY. The sweep in lib/saved.tsx hands
+  // setFlightLanding three fields and this is not one of them, so a diversion
+  // FR24 reported is parsed here and then dropped.
+  //
+  // IT IS NOT JUNK, AND DELETING IT WOULD COST MORE THAN IT SAVES. FR24 does
+  // report diversions -- fr24.py fills diverted_to with the ICAO the aircraft
+  // ACTUALLY reached whenever that differs from the one it was going to -- and
+  // that is a fact no other source in this app has. The flight card says so
+  // outright: search components/FlightCard.tsx for "NO DIVERSION AIRPORT, AND
+  // THAT IS NOT AN OMISSION", which argues that a diverted flight must show its
+  // origin alone because the DTO carries nowhere to show instead. This field is
+  // the thing that would make that argument false.
+  //
+  // WHAT SURFACING IT WOULD ACTUALLY TAKE, measured rather than guessed:
+  //
+  //   * a field on SavedFlight, a default in the blank record, and a schema
+  //     migration branch -- the last was version < 12
+  //   * a fourth parameter on setFlightLanding
+  //   * a preservation line in touchSavedFlight, without which an ordinary
+  //     /flight refresh nulls it once a minute. That block exists because
+  //     exactly this already happened to the other landing fields.
+  //   * SOMETHING THAT CAN NAME AN ICAO. This is "VOMM", and every surface in
+  //     this app speaks IATA or a city name. lib/adsb.ts's ICAO_PREFIX maps
+  //     AIRLINES, not airports; there is no airport ICAO map on the device at
+  //     all. So this needs a map shipped to the client or a translation added
+  //     to the server's /landing response.
+  //   * and then the card block above has to be re-argued and rewritten.
+  //
+  // THAT IS A FEATURE ACROSS FIVE FILES, NOT A LOOSE END. It is parked here,
+  // parsed and typed, so the day it is wanted the wire-reading half is already
+  // done and correct -- rather than deleted and rediscovered.
   divertedTo: string | null;
 };
 
