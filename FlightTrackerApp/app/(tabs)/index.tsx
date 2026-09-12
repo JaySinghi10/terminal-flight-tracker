@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, memo
 // A TAPPED NOTIFICATION CAN NAME A CARD TO OPEN HERE. See the push block above
 // this screen's render.
 import { useLocalSearchParams } from "expo-router";
-import Svg, { Path, Rect, G } from 'react-native-svg';
+import Svg, { Path, G } from 'react-native-svg';
 // The Reanimated one, deliberately. The root export's Swipeable is marked
 // "@deprecated use Reanimated version of Swipeable instead" in the installed
 // package's own types; this is the current API in 2.28.
@@ -18,6 +18,13 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// THE THREE THE PROFILE SHEET ADDED. Notifications reads the permission the
+// sheet reports on, WebBrowser opens the two legal pages in the system browser
+// rather than navigating away from the app, and Constants carries the version
+// and build the footer prints. All three were already dependencies.
+import * as Notifications from 'expo-notifications';
+import * as WebBrowser from 'expo-web-browser';
+import Constants from 'expo-constants';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
 import { ScrollViewMarker } from 'react-native-screens/experimental';
@@ -40,6 +47,11 @@ import {
   Modal,
   Pressable,
   Dimensions,
+  // FOR THE NOTIFICATIONS ROW. AppState re-reads the permission when the app
+  // comes back from Settings, which is the only way it can change while the
+  // sheet is open; Linking is what opens Settings in the first place.
+  AppState,
+  Linking,
   type LayoutChangeEvent,
   // FOR ONE CAST, AND ONE ONLY. See childrenContainerStyle below.
   type StyleProp,
@@ -144,7 +156,17 @@ import { useAccount } from '../../lib/account';
 // A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
 import { pendingFromLeg, MAX_PENDING, type PendingLeg } from '../../lib/pendingRules';
 // The registration's own failure channel. See the effect that consumes it.
-import { onWatchFailure } from '../../lib/watch';
+//
+// AND THE BACKFILL, which the profile sheet now triggers. See the note at the
+// "Turn on" button: granting permission for the first time is the one moment
+// every flight already on the device can be given the token it was saved
+// without, and backfillWatches is idempotent per token so calling it here
+// cannot double anything the launch effect already did.
+import { onWatchFailure, backfillWatches } from '../../lib/watch';
+// THE PERMISSION REQUEST, FROM reminders RATHER THAN watch. ensurePushToken is
+// guarded by a once-per-install flag and would return without a dialog; this
+// has no such guard. See the button itself.
+import { ensurePermission } from '../../lib/reminders';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -1200,6 +1222,54 @@ const sf = StyleSheet.create({
   swipeGroup: { flexDirection: 'row', alignItems: 'center', marginBottom: CARD_GAP },
 });
 
+// ── WHAT THE SHEET SAYS ABOUT NOTIFICATIONS ────────────────────────────────
+//
+// THREE STATES, AND THE MIDDLE ONE IS THE REASON THIS EXISTS. Granted is
+// self-explanatory. NOT ASKED is a person who has saved flights and has never
+// seen the prompt -- until now there was no way to reach them, because the one
+// prompt an install gets belongs to a save and is spent silently. DENIED is a
+// person the app can never ask again: iOS resolves a second request with no
+// dialog at all, so the only honest offer is the Settings app.
+type PushState = 'granted' | 'denied' | 'unasked';
+
+async function readPushState(): Promise<PushState> {
+  try {
+    const p = await Notifications.getPermissionsAsync();
+    if (p.granted) return 'granted';
+    // canAskAgain FALSE IS A REFUSAL THE SYSTEM IS ENFORCING. Undetermined --
+    // never asked -- is the only case where a button can still put a dialog up.
+    return p.canAskAgain ? 'unasked' : 'denied';
+  } catch {
+    // A permission that cannot be read is reported as denied, which offers
+    // Settings: the one action that works whatever the real state turns out
+    // to be. Claiming 'unasked' would offer a button that silently does
+    // nothing.
+    return 'denied';
+  }
+}
+
+// THE PAGES THE PRIVACY POLICY AND TERMS ACTUALLY LIVE AT. The site is a Vercel
+// project with no custom domain -- `vercel domains ls` reports none -- and of
+// its two aliases only this one is public; the other sits behind a Vercel login
+// wall. Verified serving the current text rather than assumed.
+const PRIVACY_URL = 'https://terminal-website-topaz.vercel.app/privacy';
+const TERMS_URL = 'https://terminal-website-topaz.vercel.app/terms';
+
+// ── THE VERSION LINE ────────────────────────────────────────────────────────
+//
+// THE BUILD NUMBER IS NOT SET IN app.json. There is no ios.buildNumber and no
+// android.versionCode, so nativeBuildVersion is undefined in a build made from
+// this manifest and this reads "build dev". That is the honest answer rather
+// than a number invented here: when a build number is added to app.json this
+// line starts printing it with no change to this file.
+//
+// nativeApplicationVersion FIRST, because in a real build it is what the store
+// shows; expoConfig.version is the manifest's own value and is what a
+// development client has instead.
+const APP_VERSION =
+  Constants.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '1.0.0';
+const APP_BUILD = Constants.nativeBuildVersion ?? 'dev';
+
 function ProfileModal({
   visible, onClose, onGoogleSignIn, onLogout, username,
   email, effectiveName, askName, onSaveName, onSkipName,
@@ -1210,6 +1280,28 @@ function ProfileModal({
 }) {
   const [nameDraft, setNameDraft] = useState(effectiveName ?? '');
   const [editing, setEditing] = useState(false);
+  // ── THE PERMISSION, RE-READ RATHER THAN REMEMBERED ────────────────────────
+  //
+  // IT CHANGES OUTSIDE THIS APP. Somebody sent to Settings turns notifications
+  // on there and comes back, and a value read once when the sheet mounted would
+  // still say "off". So it is read when the sheet OPENS and again whenever the
+  // app returns to the foreground -- which is exactly the round trip the Open
+  // Settings button starts.
+  const [push, setPush] = useState<PushState | null>(null);
+  // THE SAVED LIST, FOR THE BACKFILL. Read through the store rather than passed
+  // in: this component is rendered inside SavedProvider, and threading a prop
+  // through the call site for one button would make the caller responsible for
+  // something only this sheet needs.
+  const { savedFlights } = useSaved();
+
+  useEffect(() => {
+    if (!visible) return;
+    let gone = false;
+    const read = () => { void readPushState().then(s => { if (!gone) setPush(s); }); };
+    read();
+    const sub = AppState.addEventListener('change', st => { if (st === 'active') read(); });
+    return () => { gone = true; sub.remove(); };
+  }, [visible]);
 
   // Re-seed each time the sheet opens so a discarded edit does not linger.
   useEffect(() => {
@@ -1302,18 +1394,57 @@ function ProfileModal({
                     <Text style={pm.authBtnTxt}> Sign in with Google </Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={pm.authBtn} activeOpacity={0.75}>
-                  <View style={pm.authBtnInner}>
-                    <Svg width="20" height="20" viewBox="0 0 21 21">
-                      <Rect x="1" y="1" width="9" height="9" fill="#F25022" />
-                      <Rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-                      <Rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-                      <Rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-                    </Svg>
-                    <Text style={pm.authBtnTxt}> Sign in with Microsoft </Text>
-                  </View>
-                </TouchableOpacity>
+                {/* THE MICROSOFT BUTTON IS GONE. It had no onPress at all --
+                    a control that looked like the one beside it and did
+                    nothing when pressed, which is worse than an absence. */}
               </>
+            )}
+
+            {/* ── NOTIFICATIONS ──────────────────────────────────────────
+                WHAT THE PERMISSION IS, AND THE ONE ACTION THAT CAN CHANGE IT.
+                Three states, three offers: granted says so and offers nothing,
+                undetermined offers a prompt, denied offers Settings because a
+                prompt would be refused by the system without appearing. Null
+                is the read still in flight and renders nothing rather than
+                flashing "off" at somebody who has it on. */}
+            {push !== null && (
+              <View style={pm.row}>
+                <Text style={pm.rowLabel}>
+                  {push === 'granted' ? 'Notifications on'
+                    : push === 'denied' ? 'Notifications off'
+                    : 'Not asked yet'}
+                </Text>
+                {push === 'denied' && (
+                  <TouchableOpacity
+                    style={pm.rowBtn}
+                    activeOpacity={0.75}
+                    onPress={() => { void Linking.openSettings(); }}
+                  >
+                    <Text style={pm.rowBtnTxt}>{'Open Settings'}</Text>
+                  </TouchableOpacity>
+                )}
+                {push === 'unasked' && (
+                  <TouchableOpacity
+                    style={pm.rowBtn}
+                    activeOpacity={0.75}
+                    onPress={async () => {
+                      // ensurePermission, NOT ensurePushToken. The latter is
+                      // guarded by a once-per-install flag -- see watch.ts --
+                      // and would return without ever showing a dialog.
+                      const ok = await ensurePermission();
+                      setPush(await readPushState());
+                      // AND EVERY FLIGHT ALREADY ON THE DEVICE GETS THE TOKEN.
+                      // A flight saved before this moment was registered with a
+                      // null token and nothing revisits a row; this is the one
+                      // moment that can be put right. Idempotent per token, so
+                      // the launch effect doing the same thing costs nothing.
+                      if (ok) void backfillWatches(API_BASE, savedFlights);
+                    }}
+                  >
+                    <Text style={pm.rowBtnTxt}>{'Turn on'}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
 
             {username && (
@@ -1325,6 +1456,35 @@ function ProfileModal({
                 <Text style={{ fontFamily: SANS, fontSize: 13, color: 'rgba(248,113,113,0.7)' }}> Log out </Text>
               </TouchableOpacity>
             )}
+
+            {/* ── THE TWO PAGES THE APP IS OBLIGED TO LINK TO ─────────────
+                IN THE SYSTEM BROWSER, NOT A WEBVIEW. openBrowserAsync presents
+                Safari over the app and returns to it on dismiss, so reading the
+                policy does not lose the sheet or the screen behind it.
+
+                TEXT, NOT BUTTONS, and at pm.sub's own size and tone: they are
+                references rather than actions, and giving them a button's
+                weight would put them level with Log out. */}
+            <View style={pm.legalRow}>
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => { void WebBrowser.openBrowserAsync(PRIVACY_URL); }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={pm.legalTxt}>{'Privacy'}</Text>
+              </TouchableOpacity>
+              <Text style={pm.legalTxt}>{'\u00b7'}</Text>
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => { void WebBrowser.openBrowserAsync(TERMS_URL); }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={pm.legalTxt}>{'Terms'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* THE BUILD IS "dev" UNTIL app.json CARRIES ONE. See APP_BUILD. */}
+            <Text style={pm.version}>{`Terminal ${APP_VERSION} (build ${APP_BUILD})`}</Text>
 
           </View>
         </KeyboardAvoidingView>
@@ -3026,4 +3186,43 @@ const pm = StyleSheet.create({
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   pencil: { fontFamily: SANS, fontSize: 13, color: 'rgba(226,226,226,0.4)' },
   authBtnTxt: { color: '#ffffff', fontSize: 15, fontFamily: MONO },
+  // ── THE NOTIFICATIONS ROW ─────────────────────────────────────────────────
+  //
+  // THE LABEL TAKES pm.sub's FACE AND TONE, because it is the same kind of
+  // statement about the account: a fact, quietly. The button is nameBtn's shape
+  // exactly -- the same border, radius and padding as `save` -- so the sheet has
+  // one secondary button rather than two that nearly match.
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 12,
+  },
+  rowLabel: { fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.4)' },
+  rowBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  rowBtnTxt: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
+  // ── THE FOOTER ────────────────────────────────────────────────────────────
+  //
+  // 20 ABOVE, matching the gap Log out takes from the block above it, so the
+  // two sit as one closing group rather than as a control and an afterthought.
+  legalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20 },
+  // SANS AT 11, which is nameLabel's size and the smallest type this sheet
+  // uses. The tone is pm.sub's, unchanged: these recede.
+  legalTxt: { fontFamily: SANS, fontSize: 11, color: 'rgba(226,226,226,0.4)' },
+  // MONO, because it is a version string and every other number in this app is
+  // set in it. A step quieter than the links above: they can be acted on and
+  // this cannot.
+  version: {
+    fontFamily: MONO,
+    fontSize: 11,
+    color: 'rgba(226,226,226,0.3)',
+    marginTop: 10,
+  },
 });
