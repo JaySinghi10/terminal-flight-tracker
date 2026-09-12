@@ -1,18 +1,24 @@
-// ── THE PROFILE, AS A PAGE SHEET THE SYSTEM DRAWS ───────────────────────────
+// ── THE PROFILE, AS A SHEET THE SYSTEM DRAWS ────────────────────────────────
 //
 // A ROUTE, NOT A MODAL COMPONENT. The root Stack presents this over the tabs
-// with presentation 'modal', which on an iPhone is UIKit's page sheet: the
-// slide, the corner radius, the parent dimming and shrinking behind it, the
-// swipe down to dismiss and the header are all UIKit's, and none of them is
-// drawn here. The header is the native one -- a title, and a Done item on the
-// right -- declared through Stack.Toolbar at the top of the render.
+// as a form sheet stopped at a single detent: it comes up to 0.92 of the screen
+// and leaves the tabs visible above it, which is where Apple's account sheets
+// stop. The slide, the corner radius, the dimming, the swipe down to dismiss
+// and the header are all UIKit's, and none of them is drawn here. See
+// PROFILE_DETENT in app/_layout.tsx.
+//
+// THE HEADER IS THE NATIVE ONE: the title on the left, declared with the
+// presentation because iOS will not move a centred title; and a circular close
+// button on the right, declared here through Stack.Toolbar because only the
+// route can dismiss itself.
 //
 // THE LIST IS SWIFTUI. @expo/ui's Form is a real inset-grouped list with real
 // cells: the switch is a UISwitch, the rows press the way Settings rows press,
 // and the type is the system's, Dynamic Type included. The shape is Settings
-// > Apple Account's -- a header card, grouped sections, a lone red row last.
-// The icon tiles are Settings' too: a 29pt square with continuous corners and
-// a white glyph, in this app's green.
+// > Apple Account's -- a header card, grouped sections of PLAIN TEXT ROWS, and
+// a lone red row last. NO ICON TILES: a coloured square beside every line is a
+// thing this app invented rather than inherited. The only symbols on the sheet
+// are the avatar and the disclosure chevron on the two rows that leave it.
 //
 // WHAT THIS SHEET OWNS. The name, the notification permission, the Gmail
 // state, the two legal pages, the version line and sign-out. Sign-in is
@@ -32,10 +38,10 @@ import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 import {
   Host, Form, Section, Toggle, Button, Text, LabeledContent, Image,
-  HStack, VStack, Spacer, type ImageProps,
+  HStack, Spacer,
 } from '@expo/ui/swift-ui';
 import {
-  tint, frame, background, foregroundStyle, font, padding, disabled, shapes,
+  tint, foregroundStyle, foregroundColor, font, padding, disabled, buttonStyle,
 } from '@expo/ui/swift-ui/modifiers';
 import { useAccount } from '../lib/account';
 import { useSaved, API_BASE } from '../lib/saved';
@@ -101,74 +107,67 @@ const APP_VERSION =
   Constants.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '1.0.0';
 const APP_BUILD = Constants.nativeBuildVersion ?? 'dev';
 
+// ── THE ONLY COLOUR THIS SHEET SPELLS OUT ───────────────────────────────────
+//
+// EVERYTHING ELSE IS THE SYSTEM'S. Section titles, footers, the value beside a
+// label and the avatar are all SwiftUI's own label colours, which is most of
+// what makes a list look native; this is the label colour a Button would
+// otherwise override with the accent. GREEN is imported rather than repeated
+// and reaches three places in the whole file: the switch's tint, and the text
+// of the two legal links.
+const WHITE = '#ffffff';
+// THE CLOSE BUTTON'S FILL, which is UIKit's own systemFill rather than a grey
+// picked by eye: the translucent grey Apple fills a close button with, dark
+// enough to read on this sheet and light enough for a white glyph.
+const CLOSE_FILL = 'rgba(118,118,128,0.32)';
+
 // Display-only handle. Saved flights are keyed on email, never on this.
 function sanitiseDisplayName(raw: string) {
   return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 14);
 }
 
-// ── THE ICON TILE ───────────────────────────────────────────────────────────
+// ── WHY NO ROW IS A COMPONENT ───────────────────────────────────────────────
 //
-// SETTINGS' OWN: a 29pt square, continuous corners at 6.5, a white .fill glyph
-// at 16 medium, on a solid colour. Modifiers apply in order, as SwiftUI's do:
-// the font sizes the glyph, the frame is the tile, the background fills it.
-type Symbol = NonNullable<ImageProps['systemName']>;
-const TILE = shapes.roundedRectangle({ cornerRadius: 6.5, roundedCornerStyle: 'continuous' });
+// THERE IS ALMOST NOTHING LEFT TO FACTOR OUT. A row was a tile, a label, a
+// spacer and a chevron, which earned a component; without the tiles most rows
+// are one Text, and a component that wraps one Text hides the one thing each
+// row actually says. The two rows that NAVIGATE keep their chevron, and the
+// disclosure indicator alone is the one piece still worth a name.
+//
+// EVERY LABEL NAMES ITS OWN COLOUR, and that is not decoration. A SwiftUI
+// Button renders its label in the accent colour, and every row here is a
+// Button -- so a label that says nothing renders green, which is what made the
+// whole list green. buttonStyle('plain') stops the press from tinting it too.
 
-function Tile({ symbol }: { symbol: Symbol }) {
+// UIKit'S DISCLOSURE INDICATOR, on the rows that leave the sheet and on no
+// others. A chevron is a promise that pressing goes somewhere, so the switch,
+// the name and Log out -- which all act in place -- get none. The size, the
+// weight and the tertiary tone are the system's own.
+function Chevron() {
   return (
     <Image
-      systemName={symbol}
-      color="#ffffff"
+      systemName="chevron.right"
       modifiers={[
-        font({ size: 16, weight: 'medium' }),
-        frame({ width: 29, height: 29 }),
-        background(GREEN, TILE),
+        font({ size: 14, weight: 'semibold' }),
+        foregroundStyle({ type: 'hierarchical', style: 'tertiary' }),
       ]}
     />
   );
 }
 
-// A ROW: the tile, the label in the primary label colour -- set outright,
-// because inside a Button the default would be the tint -- and, on a row that
-// goes somewhere, the space and the chevron. The chevron is UIKit's disclosure
-// indicator by size, weight and tone; a row that acts in place gets none.
-function Row({ symbol, label, chevron }: { symbol: Symbol; label: string; chevron?: boolean }) {
-  return (
-    <HStack spacing={12}>
-      <Tile symbol={symbol} />
-      <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'primary' })]}>{label}</Text>
-      {chevron && <Spacer />}
-      {chevron && (
-        <Image
-          systemName="chevron.right"
-          modifiers={[
-            font({ size: 14, weight: 'semibold' }),
-            foregroundStyle({ type: 'hierarchical', style: 'tertiary' }),
-          ]}
-        />
-      )}
-    </HStack>
-  );
-}
-
 // THE HEADER CARD. Settings > Apple Account's: the placeholder avatar on the
-// left, the name at title2, the second line in the secondary colour at
-// footnote. The Spacer makes the row the tap target when a Button wraps it.
-function Card({ name, line }: { name: string; line: string }) {
+// left and the name beside it, and nothing else -- the email was under it and
+// is gone, because the card is who you are and the address is a detail the
+// Gmail section already states. The Spacer makes the whole row the tap target
+// when a Button wraps it.
+function Card({ name }: { name: string }) {
   return (
     <HStack spacing={14} modifiers={[padding({ vertical: 6 })]}>
       <Image
         systemName="person.crop.circle.fill"
         modifiers={[font({ size: 58 }), foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}
       />
-      <VStack alignment="leading" spacing={2}>
-        <Text modifiers={[font({ textStyle: 'title2' }), foregroundStyle({ type: 'hierarchical', style: 'primary' })]}>
-          {name}
-        </Text>
-        <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>
-          {line}
-        </Text>
-      </VStack>
+      <Text modifiers={[font({ textStyle: 'title2' }), foregroundColor(WHITE)]}>{name}</Text>
       <Spacer />
     </HStack>
   );
@@ -337,32 +336,55 @@ export default function Profile() {
 
   return (
     <>
-      {/* THE DONE ITEM. A UIBarButtonItem in the sheet's own header, in the
-          prominent style iOS 26 gives a sheet's confirming action. The
-          header itself, the title and the tint are declared where the sheet
-          is: app/_layout.tsx. */}
+      {/* ── THE CLOSE BUTTON ──────────────────────────────────────────
+          A CIRCLE WITH AN X, NOT A WORD. It is what Apple's account sheets
+          put in this corner, and it says "close" without claiming anything
+          was confirmed -- which "Done" did, over a sheet where every control
+          has already taken effect by the time it is pressed.
+
+          variant 'prominent' IS WHAT MAKES IT ROUND. From iOS 26 a prominent
+          bar button item draws a filled background behind its glyph, which
+          for an icon with no label is a circle; tintColor is that fill, and
+          UIKit picks the contrasting glyph. An icon-only item is converted
+          with an empty label and is never dropped, so accessibilityLabel is
+          what actually names it.
+
+          The header, the title and their colours are declared where the
+          sheet is: app/_layout.tsx. */}
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button variant="done" onPress={() => router.back()}>Done</Stack.Toolbar.Button>
+        <Stack.Toolbar.Button
+          variant="prominent"
+          icon="xmark"
+          tintColor={CLOSE_FILL}
+          accessibilityLabel="Close"
+          onPress={() => router.back()}
+        />
       </Stack.Toolbar>
 
-      {/* THE HOST fills the screen and proposes the viewport to SwiftUI, which
-          is what a Form needs to scroll rather than size to its content. The
-          seed colour is the environment tint every control below inherits;
-          the switch names it again because the spec names it there. */}
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement seedColor={GREEN}>
+      {/* THE HOST fills the sheet and proposes the viewport to SwiftUI, which
+          is what a Form needs to scroll rather than size to its content.
+
+          NO seedColor. It set the environment tint for everything below, so
+          every Button's label came out green; the two things that are meant
+          to be green name it themselves. */}
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         <Form>
           {/* ── ACCOUNT ── The card is the name row: tapping it edits the name
               through the system alert. Signed out, it is a plain card with a
               sign-in row under it. */}
           <Section>
             {username !== null ? (
-              <Button onPress={editName}>
-                <Card name={effectiveName ?? 'Guest User'} line={email ?? 'Signed in'} />
+              <Button onPress={editName} modifiers={[buttonStyle('plain')]}>
+                <Card name={effectiveName ?? 'Guest User'} />
               </Button>
             ) : (
-              <Card name="Guest User" line="Sign in to sync your flights" />
+              <Card name="Guest User" />
             )}
-            {username === null && <Button label="Sign in with Google" onPress={signIn} />}
+            {username === null && (
+              <Button onPress={signIn} modifiers={[buttonStyle('plain')]}>
+                <Text modifiers={[foregroundColor(WHITE)]}>Sign in with Google</Text>
+              </Button>
+            )}
           </Section>
 
           {/* ── NOTIFICATIONS ── One switch, controlled: on when the permission
@@ -375,7 +397,7 @@ export default function Profile() {
               onIsOnChange={onToggle}
               modifiers={[tint(GREEN), disabled(push === null)]}
             >
-              <Row symbol="bell.fill" label="Notifications" />
+              <Text modifiers={[foregroundColor(WHITE)]}>Notifications</Text>
             </Toggle>
           </Section>
 
@@ -389,13 +411,16 @@ export default function Profile() {
                 ? (email !== null ? `Connected as ${email}.` : 'Connected.')
                 : 'Sign in again to pull your bookings.'}</Text>}
             >
+              {/* A LABEL AND A VALUE, which is the one row here that is not a
+                  Button -- so both take the system's own colours, primary
+                  and secondary, with nothing named. */}
               {session !== null ? (
-                <LabeledContent label={<Row symbol="envelope.fill" label="Gmail" />}>
+                <LabeledContent label="Gmail">
                   <Text>Connected</Text>
                 </LabeledContent>
               ) : (
-                <Button onPress={signIn}>
-                  <Row symbol="envelope.fill" label="Reconnect Gmail" chevron />
+                <Button onPress={signIn} modifiers={[buttonStyle('plain')]}>
+                  <Text modifiers={[foregroundColor(WHITE)]}>Reconnect Gmail</Text>
                 </Button>
               )}
             </Section>
@@ -406,16 +431,30 @@ export default function Profile() {
               and returns to it on dismiss. The version line is the group's
               footer, where Settings prints the facts a row is too much for. */}
           <Section title="About" footer={<Text>{`Terminal ${APP_VERSION} (build ${APP_BUILD})`}</Text>}>
-            <Button onPress={() => { void WebBrowser.openBrowserAsync(PRIVACY_URL); }}>
-              <Row symbol="hand.raised.fill" label="Privacy Policy" chevron />
+            {/* THE TWO GREEN THINGS THAT ARE NOT THE SWITCH, and the only two
+                rows with a chevron. Both read as links because they leave the
+                app -- the accent says so, and the disclosure indicator says
+                where. */}
+            <Button onPress={() => { void WebBrowser.openBrowserAsync(PRIVACY_URL); }} modifiers={[buttonStyle('plain')]}>
+              <HStack>
+                <Text modifiers={[foregroundColor(GREEN)]}>Privacy Policy</Text>
+                <Spacer />
+                <Chevron />
+              </HStack>
             </Button>
-            <Button onPress={() => { void WebBrowser.openBrowserAsync(TERMS_URL); }}>
-              <Row symbol="doc.text.fill" label="Terms of Use" chevron />
+            <Button onPress={() => { void WebBrowser.openBrowserAsync(TERMS_URL); }} modifiers={[buttonStyle('plain')]}>
+              <HStack>
+                <Text modifiers={[foregroundColor(GREEN)]}>Terms of Use</Text>
+                <Spacer />
+                <Chevron />
+              </HStack>
             </Button>
           </Section>
 
-          {/* ── LOG OUT ── A lone row in a group of its own, centred, red by
-              role; no tile, no chevron. The system's action sheet confirms. */}
+          {/* ── LOG OUT ── A lone row in a group of its own, centred and red.
+              THE ROLE COLOURS IT, which is why this is the one Button with no
+              colour named and no plain style: both would take the red off.
+              The system's action sheet confirms. */}
           {username !== null && (
             <Section>
               <Button role="destructive" onPress={confirmLogout}>

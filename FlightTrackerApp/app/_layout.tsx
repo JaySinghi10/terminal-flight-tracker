@@ -19,7 +19,11 @@ import { Stack, useRouter, useNavigationContainerRef, ThemeProvider, DarkTheme }
 // accident. This one is authoritative. Home's stays until Stage 11 removes it,
 // so there is never a moment with no status bar configuration.
 import { StatusBar } from "expo-status-bar";
-import { Platform } from "react-native";
+// Text, FOR THE SHEET'S TITLE. iOS refuses to move a native header title off
+// centre -- headerTitleAlign is documented "Not supported on iOS. It's always
+// center and cannot be changed" -- so the title is a headerLeft view instead
+// and the native title is left empty. See the profile screen below.
+import { Platform, Text } from "react-native";
 import * as Notifications from "expo-notifications";
 // THE STORE, MOUNTED ONCE FOR THE WHOLE APP. Inside GestureHandlerRootView
 // because that has to stay the outermost thing in the tree, and wrapping the
@@ -64,7 +68,7 @@ import { ChromeProvider } from "../lib/chrome";
 // navigator's scene background: the colour every screen is drawn onto, and the
 // colour a native container paints before a screen has rendered. A page colour
 // spelled twice is a page colour that can be changed once.
-import { PAGE_BG, GREEN } from "../lib/cards";
+import { PAGE_BG } from "../lib/cards";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -288,6 +292,22 @@ function PendingTapSender({ pending, onSent }: { pending: PendingLink | null; on
 // up in the system's default, which on a light-mode device is white against a
 // #0a0a0a app. app.json says "dark" now too; the two are belt and braces, and
 // this is the one that carries the exact colour.
+// ── HOW FAR UP THE PROFILE SHEET COMES ──────────────────────────────────────
+//
+// NOT ALL THE WAY, WHICH IS THE POINT. Apple's account sheets stop short of the
+// top and leave the screen behind them visible above the corners; a sheet that
+// reaches the top reads as a new screen rather than as something laid over the
+// one you were on.
+//
+// ONE DETENT, NOT TWO. The sheet is not meant to be draggable between sizes --
+// it has one height and a close button -- so the array holds a single value and
+// sheetExpandsWhenScrolledToEdge is off, which would otherwise grow it to full
+// height the moment the list scrolled to its end.
+//
+// 0.92 OF THE STACK'S HEIGHT. Detents are measured against the full height on
+// iOS, so this leaves roughly the status bar and a little under it showing.
+const PROFILE_DETENT = 0.92;
+
 const TERMINAL_THEME = {
   ...DarkTheme,
   colors: { ...DarkTheme.colors, background: PAGE_BG, card: PAGE_BG },
@@ -413,12 +433,14 @@ export default function Layout() {
   // ChromeProvider carries no ordering meaning. See each import's note above.
   //
   // THE STACK HAS NO HEADER BY DEFAULT AND PAINTS THE PAGE. The tab group is
-  // its first screen and the profile sheet its second, presented over the
-  // tabs as UIKit's page sheet with the native header the tabs do without.
-  // The presentation, the header, its title and its tint are declared here
-  // because a sheet's chrome is the presenter's to declare and must be known
-  // before the route mounts; the Done item is the route's own, through
-  // Stack.Toolbar. See app/profile.tsx.
+  // its first screen and the profile sheet its second, presented over the tabs
+  // as a UIKit form sheet stopped at one detent -- see PROFILE_DETENT -- with
+  // the native header the tabs do without.
+  //
+  // THE PRESENTATION AND THE HEADER ARE DECLARED HERE because a sheet's chrome
+  // is the presenter's to declare and must be known before the route mounts.
+  // The close button is the route's own, through Stack.Toolbar, because only
+  // the route can dismiss itself. See app/profile.tsx.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={TERMINAL_THEME}>
@@ -433,10 +455,26 @@ export default function Layout() {
                     <Stack.Screen
                       name="profile"
                       options={{
-                        presentation: 'modal',
+                        presentation: 'formSheet',
+                        sheetAllowedDetents: [PROFILE_DETENT],
+                        sheetExpandsWhenScrolledToEdge: false,
+                        // NO GRABBER. There is one height and a close button;
+                        // a grabber advertises a drag that changes nothing.
+                        sheetGrabberVisible: false,
                         headerShown: true,
-                        title: 'Profile',
-                        headerTintColor: GREEN,
+                        // EMPTY, AND THE TITLE IS THE LEFT ITEM BELOW. iOS
+                        // centres a native title and will not be told
+                        // otherwise; the reference puts it on the left.
+                        headerTitle: '',
+                        headerLeft: () => (
+                          <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '600' }}>
+                            Profile
+                          </Text>
+                        ),
+                        // WHITE, NOT THE APP'S GREEN. This is the colour bar
+                        // items inherit, and the sheet's own accent is set on
+                        // the two controls that actually want it.
+                        headerTintColor: '#ffffff',
                       }}
                     />
                   </Stack>
