@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fr24                                          # noqa: E402
+import pollstate                                     # noqa: E402
 from airport_icao import icao_for, iata_for          # noqa: E402
 
 FAILURES = []
@@ -264,11 +265,51 @@ fr24._note_success()
 
 print()
 print("-- the cache --")
+
+# ── THE DATE HERE IS RELATIVE TO NOW, AND THAT IS NOT TIDINESS ──
+#
+# THE SHARED HALF KEEPS A LANDING ONLY WHILE ITS DATE IS INSIDE
+# pollstate.KEEP_PAST_DAYS, AND write_runtime APPLIES THAT PRUNE IN THE SAME
+# WRITE THAT ADDS THE ENTRY. So a fixture pinned to a fixed past date does not
+# merely age: once the clock passes the window the landing is written and
+# dropped by that one write, the cold-start read below finds nothing, and the
+# test pays for a second fetch.
+#
+# THAT IS PRECISELY HOW THIS TEST FAILED. It was written against 2026-09-06 and
+# passed until the wall clock reached 2026-09-09, three days later, at which
+# point it began failing with nothing in fr24.py having changed. A test that
+# stops being true on a particular calendar day is not pinning the behaviour it
+# names, so the date moves with the clock instead.
+#
+# YESTERDAY, for two reasons: it is inside the window for any KEEP_PAST_DAYS of
+# a day or more, and a landing yesterday is unambiguously in the past, which the
+# future-touchdown guard requires as well.
+RECENT = datetime.now(timezone.utc) - timedelta(days=1)
+RECENT_DAY = RECENT.strftime("%Y-%m-%d")
+assert pollstate.KEEP_PAST_DAYS >= 1, pollstate.KEEP_PAST_DAYS
+
+
+def recent_leg(**over):
+    """The same leg, dated inside the retention window.
+
+    THE DEFAULTS ARE BUILT FIRST AND OVERRIDDEN SECOND rather than splatted in
+    beside the keywords they replace: the pending case below passes landed=None,
+    and a keyword given twice is a TypeError, not an override.
+    """
+    fields = {"takeoff": RECENT_DAY + "T09:15:00", "landed": RECENT_DAY + "T11:43:00"}
+    fields.update(over)
+    return leg(**fields)
+
+
+def ask():
+    return fr24.landing_for("6E5071", date=RECENT_DAY, destination_iata="BLR")
+
+
 calls = []
 fr24.forget_cached()
-fr24._fetch = lambda p: (calls.append(1), ([leg()], None))[1]
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+fr24._fetch = lambda p: (calls.append(1), ([recent_leg()], None))[1]
+ask()
+ask()
 check("a known landing is not paid for twice", len(calls) == 1, len(calls))
 
 # ── THE HALF THAT SURVIVES A COLD START ──
@@ -278,26 +319,33 @@ check("a known landing is not paid for twice", len(calls) == 1, len(calls))
 # _CACHE alone is what a cold start looks like from in here; the landing must
 # still be there, and must still cost nothing.
 fr24._CACHE.clear()
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+r = ask()
 check("and survives the process dying, which is the point", len(calls) == 1, len(calls))
+# AND IT CAME FROM THE SHARED HALF, not merely from nobody having called out.
+# Counting fetches alone cannot tell a shared hit from a landing that was never
+# stored, which is exactly the confusion that let this test rot unnoticed.
+check("and the answer says which half answered", r.get("cached") == "shared", r)
 
 # A PENDING ANSWER MUST NOT BE SHARED. It is a fact about one minute. If it were
 # promoted, a flight seen mid-air once would read as mid-air for twelve hours.
 fr24.forget_cached()
 calls = []
-fr24._fetch = lambda p: (calls.append(1), ([leg(landed=None, ended=False)], None))[1]
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+fr24._fetch = lambda p: (calls.append(1), ([recent_leg(landed=None, ended=False)], None))[1]
+ask()
 fr24._CACHE.clear()
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+ask()
 check("a pending answer is NOT kept across a cold start", len(calls) == 2, len(calls))
 
+# AND FORGETTING CLEARS THE SHARED HALF TOO. With the stale date this passed
+# without ever proving anything: there was no shared entry to clear, so the
+# refetch it checks for would have happened regardless.
 fr24.forget_cached()
 calls = []
-fr24._fetch = lambda p: (calls.append(1), ([leg()], None))[1]
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+fr24._fetch = lambda p: (calls.append(1), ([recent_leg()], None))[1]
+ask()
 fr24._CACHE.clear()
 fr24.forget_cached("6E5071")
-fr24.landing_for("6E5071", date="2026-09-06", destination_iata="BLR")
+ask()
 check("forgetting one flight clears both halves", len(calls) == 2, len(calls))
 
 print()
