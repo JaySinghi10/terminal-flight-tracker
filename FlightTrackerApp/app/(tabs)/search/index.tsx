@@ -61,7 +61,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { savedFlightFromApi } from '../../../lib/storage';
-import { airlineFromFlightNumber } from '../../../lib/airlines';
+// isFlightNumber IS THE APP'S ONE TEST FOR A FLIGHT NUMBER. See the note there:
+// this screen used to keep a narrower copy that refused a carrier code with a
+// digit in it, which is most of the flights on this app's core routes.
+import { airlineFromFlightNumber, isFlightNumber } from '../../../lib/airlines';
 import { clock24 } from '../../../lib/time';
 import {
   useSaved,
@@ -234,10 +237,9 @@ const SANS = 'Inter_400Regular';
 // city name uses it on this screen: it is the one heading the map owns.
 const SANS_SEMI = 'Inter_600SemiBold';
 
-const FLIGHT_REGEX = /^[A-Z]{2}\d{2,4}$/;
 // Three letters, an optional single separator, three letters. "BLR DEL",
 // "BLR>DEL", "BLR-DEL", "BLR\u2192DEL" and "BLRDEL" all match. Tested after
-// FLIGHT_REGEX, which needs digits, so the two can never both match.
+// isFlightNumber, which needs digits, so the two can never both match.
 const ROUTE_REGEX = /^([A-Z]{3})[\s>\-\u2192]?([A-Z]{3})$/;
 
 // ── PLAIN ENGLISH ────────────────────────────────────────────────────────────
@@ -1227,7 +1229,12 @@ export default function Search() {
       Animated.spring(btnScale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }),
     ]).start();
 
-    if (FLIGHT_REGEX.test(cleaned)) {
+    // A FLIGHT NUMBER IS ANSWERED FROM THE FLIGHT ENDPOINT AND NOTHING ELSE.
+    // isFlightNumber is lib/airlines' own rule -- a carrier code of two
+    // characters with at least one letter, then one to four digits -- so a
+    // number this screen accepts is a number the rest of the app can read the
+    // airline off. 6E5071 and QP1133 used to fall past here into the model.
+    if (isFlightNumber(cleaned)) {
       await runFlightLookup(cleaned);
       return;
     }

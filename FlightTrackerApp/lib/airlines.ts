@@ -70,6 +70,29 @@ const AIRLINE_NAMES: Record<string, string> = {
 // The remainder is the numeric part of the flight number.
 const FLIGHT_NUMBER_RE = /^([A-Z]{2}|[A-Z]\d|\d[A-Z])(\d{1,4})$/;
 
+// ── THE ONE ANSWER TO "IS THAT A FLIGHT NUMBER" ─────────────────────────────
+//
+// THE RULE WAS ALREADY HERE AND THE SEARCH FIELD HAD ITS OWN, NARROWER COPY:
+// two LETTERS and two to four digits. So 6E5071 and QP1133 -- IndiGo and Akasa,
+// the two largest carriers on this app's core routes -- could not be typed into
+// the one field that exists to look a flight up. They were treated as prose and
+// sent to the model, which cost a unit to be told nothing.
+//
+// THE REST OF THE APP NEVER HAD THE PROBLEM. This file, the route list's
+// airline grouping, the ADS-B callsign builder, the server's watch store, the
+// poller's state keys, FR24 and the Gmail import all accept a digit in the
+// carrier code already. The field was the only gate that did not, which is why
+// this is one exported predicate rather than a sixth pattern: the next caller
+// asks instead of writing its own.
+//
+// WHAT IS STILL REFUSED: a code of two digits ("12345"), a bare code with no
+// number ("B6"), more than four digits, a trailing letter, anything with a
+// space or a symbol left in it, and every route-shaped string the field also
+// has to read -- "BLRDEL" and "MUMBAI" match nothing here.
+export function isFlightNumber(value: string | null | undefined): boolean {
+  return FLIGHT_NUMBER_RE.test(String(value ?? '').replace(/\s+/g, '').toUpperCase());
+}
+
 // The airline for a flight number, or null when the code is not mapped.
 // Never guesses and never falls back to the raw code: a two-letter prefix on its
 // own tells the reader nothing they cannot already see in the flight number.
