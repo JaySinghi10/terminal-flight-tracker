@@ -16,17 +16,24 @@
 // app/(tabs)/_layout.tsx (S-13).
 import { Stack } from "expo-router";
 import { PAGE_BG } from "../../../lib/cards";
+// THE RESULTS, ABOVE THE SCREEN AND ITS SHEET. The map screen writes the board
+// and mounts the sheet; the sheet reads the list. The provider sits here,
+// above the Stack, which is also where the tab's safe-area insets are what
+// the sheet's heights are measured from. See lib/routeResults.
+import { RouteResultsProvider } from "../../../lib/routeResults";
 
 export default function SearchLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: true,
-        headerTransparent: true,
-        headerTitle: '',
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: PAGE_BG },
-      }}
-    />
+    <RouteResultsProvider>
+      <Stack
+        screenOptions={{
+          headerShown: true,
+          headerTransparent: true,
+          headerTitle: '',
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: PAGE_BG },
+        }}
+      />
+    </RouteResultsProvider>
   );
 }

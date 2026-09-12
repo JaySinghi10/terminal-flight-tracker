@@ -430,6 +430,14 @@ const CITY_HIT_R = 24;
 // twice a circle's.
 const ARC_HIT_W = 44;
 
+// ── THE ONE ARC THAT IS NOT A SAVED ROUTE ───────────────────────────────────
+//
+// IT LIVES HERE BECAUSE BOTH SIDES NEED IT. The screen puts an arc in the list
+// under this id and the page recognises it to anchor the bubble; a literal
+// written twice either side of a bridge is a bug waiting for somebody to change
+// one of them. Exported for the screen, interpolated into the page below.
+export const SEARCH_ARC_ID = 'route:searched';
+
 // ── HOW AN ARC THINS TOWARD ITS ENDS ─────────────────────────────────────────
 //
 // 0.35 AT BOTH ENDS, 1.0 AT THE MIDPOINT, on a half sine. An aircraft is low at
@@ -787,6 +795,53 @@ const STYLE = {
     // than crossing it. Above the labels, because the flight overlay is one
     // block of foreground and splitting it around the place names would read as
     // two unrelated things.
+    // ── THE LIGHT AROUND AN ARC ────────────────────────────────────────────
+    //
+    // THE SAME LINE, DRAWN WIDE AND FAINT UNDERNEATH. A line layer has no blur
+    // -- there is no shadow, no glow and no filter in the style spec -- so the
+    // only way a stroke can be lit on this map is a second stroke beneath it,
+    // several times the width and a fraction of the opacity. The eye reads the
+    // pair as one lit line.
+    //
+    // THE SAME SOURCE AND THE SAME COLOUR EXPRESSION, so it cannot come apart
+    // from the arc it lights: a past arc's glow is the past ink, a live one's is
+    // the live ink, and neither is a colour this map did not already paint.
+    //
+    // IT IS NOT A THIRD STATE. Nothing new is expressed -- no arc becomes
+    // distinguishable from another because of it -- and the taper rides on it
+    // exactly as it rides on the arc, so the light narrows where the line does.
+    //
+    // EVERY ARC, NOT ONLY THE SEARCHED ONE. The saved routes are the same kind
+    // of object drawn from the same source, and lighting one of them and not the
+    // others would be inventing a distinction the map does not hold.
+    //
+    // UNDER THE ARC AND OVER THE LABELS, which is where the arc itself sits: it
+    // is listed first, and layer order on this style is source order.
+    {
+      id: 'arc-glow',
+      type: 'line',
+      source: 'arcs',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['case', ['==', ['get', 'past'], 1], ARC_PAST, ARC_LIVE],
+        // ROUGHLY THREE TIMES THE ARC, at both ends of the zoom ramp and in
+        // every state, so the light is proportional to the line it belongs to
+        // rather than a fixed halo that swamps a thin arc and vanishes on a
+        // thick one. Same nesting rule as the arc's own width -- the interpolate
+        // is outermost, because a zoom expression may not be an operand.
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          1, ['*', ['case', ['==', ['get', 'sel'], 1], 6.6,
+                    ['case', ['==', ['get', 'past'], 1], 1.8, 3.0]],
+              ['get', 'w']],
+          6, ['*', ['case', ['==', ['get', 'sel'], 1], 10.8,
+                    ['case', ['==', ['get', 'past'], 1], 3.0, 5.4]],
+              ['get', 'w']]],
+        // LOW ENOUGH TO BE LIGHT RATHER THAN A SECOND LINE. A past arc's is
+        // lower again: grey light on a dark map is haze, and there is less to
+        // say about a flight that is over.
+        'line-opacity': ['case', ['==', ['get', 'past'], 1], 0.08, 0.16],
+      },
+    },
     {
       id: 'arcs',
       type: 'line',
@@ -1452,6 +1507,10 @@ function start() {
   // not "hide the tab bar"; what to do about it is decided three layers away.
   map.on('dragstart', function () { post({ type: 'drag', on: true }); });
   map.on('dragend', function () { post({ type: 'drag', on: false }); });
+  // EVERY CAMERA CHANGE, NOT ONLY A DRAG. 'move' covers the pan, the pinch, the
+  // fly and the fit alike -- anything that moves the camera moves where the arc
+  // is on the screen, and the bubble has to follow all of them.
+  map.on('move', scheduleAnchor);
   var el = map.getCanvasContainer();
   el.addEventListener('touchstart', onGrab, { capture: true, passive: true });
   el.addEventListener('mousedown', onGrab, { capture: true, passive: true });
@@ -1530,7 +1589,20 @@ function start() {
   // wrong way round the world -- and fitBounds would dutifully frame the Atlantic.
   // Shifting one end by a turn makes the box the short way, and maplibre accepts
   // longitudes outside the usual range and wraps them.
-  function frameRoute(ax, ay, bx, by) {
+  //
+  // ── THE PADDING IS THE CALLER'S NOW, AND ONLY THE CALLER'S ────────────────
+  //
+  // IT WAS BAKED IN, and it was right for the one caller there was: a tap on an
+  // arc, with nothing over the map but a small panel. It is wrong for a screen
+  // that puts a drawer across the bottom third, because the frame would solve
+  // for a viewport that is not the visible one and put half the route under the
+  // furniture.
+  //
+  // A DEFAULT RATHER THAN A REQUIRED ARGUMENT. The tap caller below passes
+  // nothing and keeps exactly the frame it had; only a caller that knows
+  // something this function cannot -- what is covering the map right now --
+  // needs to say so.
+  function frameRoute(ax, ay, bx, by, pad) {
     cancelCamera();
     var lo = ax, hi = bx;
     if (hi - lo > 180) hi -= 360;
@@ -1543,7 +1615,7 @@ function start() {
     map.fitBounds(
       [[Math.min(lo, hi), Math.min(ay, by)], [Math.max(lo, hi), Math.max(ay, by)]],
       {
-        padding: ${JSON.stringify(ROUTE_FRAME_PAD)},
+        padding: pad || ${JSON.stringify(ROUTE_FRAME_PAD)},
         maxZoom: ${ROUTE_FRAME_MAX_ZOOM},
         duration: dur,
         linear: true
@@ -2179,6 +2251,46 @@ function start() {
     map.getSource('ends').setData(fc(ends));
     map.getSource('night').setData(fc(nightBands(NOW)));
     post({ type: 'overlay', arcs: FLIGHTS.length, planes: planes.length });
+    // THE GEOMETRY JUST CHANGED, SO THE ANCHOR HAS. A rebuild is the only thing
+    // that can add, remove or move the searched arc.
+    scheduleAnchor();
+  }
+
+  // ── WHERE THE SEARCHED ARC IS ON THE SCREEN ────────────────────────────────
+  //
+  // THE BUBBLE IS ABOUT ONE FLIGHT AND FLOATED IN A CORNER OF ITS OWN, which
+  // left the reader to work out which line on the map it was describing. This is
+  // the only thing that can answer that: the projection lives here, changes on
+  // every frame of a pan, and is not a fact React Native can derive.
+  //
+  // THE MIDPOINT OF THE SAMPLES, not the average of the endpoints. The arc is a
+  // great circle and its middle is a point ON it -- the mean of two coordinates
+  // is somewhere off the line, and on a long leg it is nowhere near.
+  //
+  // ONLY THE SEARCHED ARC. Every other arc on this map is a saved route with a
+  // card of its own; none of them has a bubble to anchor.
+  //
+  // ONE POST PER FRAME AT MOST. A move fires many times a second and project is
+  // cheap but a bridge message is not, so the work is coalesced onto the next
+  // animation frame -- which is also the soonest the other side could act on it.
+  var ANCHOR_RAF = 0;
+  function postAnchor() {
+    ANCHOR_RAF = 0;
+    var f = null;
+    for (var i = 0; i < FLIGHTS.length; i++) {
+      if (FLIGHTS[i].id === ${JSON.stringify(SEARCH_ARC_ID)}) { f = FLIGHTS[i]; break; }
+    }
+    if (f === null || !f.pts || f.pts.length === 0) {
+      post({ type: 'arcAnchor', x: null, y: null });
+      return;
+    }
+    var mid = f.pts[Math.floor(f.pts.length / 2)];
+    var p = map.project(mid);
+    post({ type: 'arcAnchor', x: Math.round(p.x), y: Math.round(p.y) });
+  }
+  function scheduleAnchor() {
+    if (ANCHOR_RAF) return;
+    ANCHOR_RAF = requestAnimationFrame(postAnchor);
   }
 
   function setFlights(list) {
@@ -2233,19 +2345,28 @@ function start() {
   // MapLibre treats a null filter as "no filtering at all" and skips the
   // per-feature evaluation entirely.
   function setShowPast(on) {
-    // BOTH LAYERS, OR THE TARGET OUTLIVES THE LINE. The visible arc and its hit
-    // target are two layers over one source; filtering only the first would
-    // leave an invisible 24pt strip that still opens a panel for a flight the
-    // user has just asked not to see.
+    // EVERY LAYER, OR SOMETHING OUTLIVES THE LINE. The visible arc, its glow and
+    // its hit target are three layers over one source; filtering only the first
+    // would leave an invisible 24pt strip that still opens a panel for a flight
+    // the user has just asked not to see, and a light with nothing under it.
     var f = on ? null : ['!=', ['get', 'past'], 1];
     map.setFilter('arcs', f);
     map.setFilter('arc-hit', f);
+    // AND THE GLOW, OR THE LIGHT OUTLIVES THE LINE. Three layers over one
+    // source now; a filter that missed this one would leave a faint past arc
+    // lit on a map the user has just asked to hide past arcs from.
+    map.setFilter('arc-glow', f);
     post({ type: 'showPast', on: !!on });
   }
 
   window.__cam = {
     airport: flyAirport,
     route: flyRoute,
+    // BOTH ENDS ON SCREEN AT ONCE, WHICH route DOES NOT DO. route travels the
+    // great circle and lands on the destination, so the origin finishes behind
+    // the viewer; this solves for the camera that contains the pair. It is the
+    // same function the arc tap has always used, handed the caller's padding.
+    fit: frameRoute,
     setHome: function (h) { applyHome(h, false); },
     home: function () { goHome(true); },
     homeNow: function () { goHome(false); },
@@ -2368,6 +2489,23 @@ export type MapFlight = {
 export type GlobeMapHandle = {
   flyToAirport: (iata: string) => void;
   flyRoute: (from: string, to: string) => void;
+  // ── BOTH ENDPOINTS ON SCREEN, WHICH flyRoute CANNOT DO ────────────────────
+  //
+  // flyRoute IS A JOURNEY AND THIS IS A VIEW. That one travels the great circle
+  // and comes to rest on the destination at a fixed zoom, with the origin behind
+  // the viewer -- which is the right motion for "take me there" and the wrong one
+  // for "show me this route". This solves for the camera that contains the pair,
+  // through the same fitBounds the arc tap has always used.
+  //
+  // THE PADDING IS THE CALLER'S BECAUSE ONLY THE CALLER KNOWS. The map cannot see
+  // what is drawn over it; a screen with a drawer across the bottom third has to
+  // say so, or the frame solves for a viewport that is not the visible one.
+  // Omitted, the page keeps the padding the tap has always used.
+  fitRoute: (
+    from: string,
+    to: string,
+    pad?: { top: number; right: number; bottom: number; left: number },
+  ) => void;
   // Set once, when the screen has resolved where home is. Jumps rather than
   // flies: this is the opening view, not a journey to it.
   setHome: (h: HomeView) => void;
@@ -2436,10 +2574,16 @@ type GlobeMapProps = {
   // than inferred from its absence, because "nothing was hit" is the event that
   // dismisses the panel and it has to be observable.
   onMapTap?: () => void;
+  // WHERE THE SEARCHED ARC'S MIDDLE IS, IN SCREEN PIXELS, or null when there is
+  // no such arc. Posted on every rebuild and every camera move, at most once a
+  // frame. See postAnchor.
+  onArcAnchor?: (p: { x: number; y: number } | null) => void;
 };
 
 const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
-  function GlobeMap({ onReady, onAirport, onCity, onFlight, onDrag, onMapTap }, ref) {
+  function GlobeMap(
+    { onReady, onAirport, onCity, onFlight, onDrag, onMapTap, onArcAnchor }, ref,
+  ) {
     const webRef = useRef<WebView>(null);
 
     // injectJavaScript RETURNS THE LAST EXPRESSION and warns when that is not a
@@ -2464,6 +2608,16 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
         const b = airportByCode(to);
         if (a === null || b === null) return;
         call(`window.__cam&&window.__cam.route(${a.lon},${a.lat},${b.lon},${b.lat})`);
+      },
+      fitRoute(from, to, pad) {
+        const a = airportByCode(from);
+        const b = airportByCode(to);
+        if (a === null || b === null) return;
+        // THE ARGUMENT IS OMITTED RATHER THAN PASSED AS undefined, because the
+        // page tests `pad ||` and a literal `undefined` in the call string would
+        // be an identifier the page has to evaluate. One less thing to be wrong.
+        const p = pad === undefined ? '' : `,${JSON.stringify(pad)}`;
+        call(`window.__cam&&window.__cam.fit(${a.lon},${a.lat},${b.lon},${b.lat}${p})`);
       },
       setHome(h: HomeView) {
         console.log(`[HOME] 4. injecting setHome (${h.kind}), webview=${webRef.current !== null}`);
@@ -2596,6 +2750,11 @@ const GlobeMap = forwardRef<GlobeMapHandle, GlobeMapProps>(
           }
           if (m.type === 'frameRoute') {
             console.log(`[MAP] frame route: ${m.km}km to the midpoint, ${m.ms}ms`);
+          }
+          if (m.type === 'arcAnchor') {
+            onArcAnchor?.(
+              m.x === null || m.y === null ? null : { x: Number(m.x), y: Number(m.y) },
+            );
           }
           if (m.type === 'drag') onDrag?.(!!m.on);
           if (m.type === 'mapTap') onMapTap?.();

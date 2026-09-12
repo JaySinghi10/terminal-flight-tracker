@@ -1,0 +1,16 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreen.mm b/node_modules/react-native-screens/ios/RNSScreen.mm
+index 9b66012..f36e80c 100644
+--- a/node_modules/react-native-screens/ios/RNSScreen.mm
++++ b/node_modules/react-native-screens/ios/RNSScreen.mm
+@@ -993,6 +993,11 @@ RNS_IGNORE_SUPER_CALL_END
+   sheet.prefersScrollingExpandsWhenScrolledToEdge = _sheetExpandsWhenScrolledToEdge;
+   [self setGrabberVisibleForSheet:sheet to:_sheetGrabberVisible animate:YES];
+   [self setCornerRadiusForSheet:sheet to:_sheetCornerRadius animate:YES];
++  // Full-width, edge-attached. Without these UIKit floats a form sheet in from
++  // the sides with a gap below it; with them it runs to the screen's edges and
++  // is as wide as the screen at every detent.
++  sheet.prefersEdgeAttachedInCompactHeight = YES;
++  sheet.widthFollowsPreferredContentSizeWhenEdgeAttached = YES;
+ 
+   // lud - largest undimmed detent
+   // First we try to take value from the prop or default.
