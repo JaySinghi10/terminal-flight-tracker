@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, memo } from "react";
 // A TAPPED NOTIFICATION CAN NAME A CARD TO OPEN HERE. See the push block above
-// this screen's render.
-import { useLocalSearchParams } from "expo-router";
-import Svg, { Path, G } from 'react-native-svg';
+// this screen's render. useRouter opens the profile sheet, which is a route
+// now, and usePathname is how the first-run ask knows it is already open.
+import { useLocalSearchParams, useRouter, usePathname } from "expo-router";
+import Svg, { Path } from 'react-native-svg';
 // The Reanimated one, deliberately. The root export's Swipeable is marked
 // "@deprecated use Reanimated version of Swipeable instead" in the installed
 // package's own types; this is the current API in 2.28.
@@ -16,25 +17,14 @@ import Reanimated, {
   runOnJS, type SharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// THE THREE THE PROFILE SHEET ADDED. Notifications reads the permission the
-// sheet reports on, WebBrowser opens the two legal pages in the system browser
-// rather than navigating away from the app, and Constants carries the version
-// and build the footer prints. All three were already dependencies.
-import * as Notifications from 'expo-notifications';
-import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
 import { ScrollViewMarker } from 'react-native-screens/experimental';
-import * as Google from 'expo-auth-session/providers/google';
-import { ResponseType } from 'expo-auth-session';
 import {
   Alert,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -47,11 +37,6 @@ import {
   Modal,
   Pressable,
   Dimensions,
-  // FOR THE NOTIFICATIONS ROW. AppState re-reads the permission when the app
-  // comes back from Settings, which is the only way it can change while the
-  // sheet is open; Linking is what opens Settings in the first place.
-  AppState,
-  Linking,
   type LayoutChangeEvent,
   // FOR ONE CAST, AND ONE ONLY. See childrenContainerStyle below.
   type StyleProp,
@@ -79,6 +64,9 @@ import { clock24 } from '../../lib/time';
 // another module imports from. One copy each.
 import {
   useSaved,
+  // THE ACCOUNT-CHANGE SIGNAL. Sign-in and logout left this screen, and this
+  // is how it still resets what they used to reset in line. See its call.
+  useAccountChange,
   API_BASE,
   arrivalTs,
   hasFlown,
@@ -128,7 +116,7 @@ import {
 // render the same glass without importing a screen. The comments that specify
 // all of it went with them; read them there.
 import {
-  SHEET_BLUR, SHEET_FILL, SHEET_RADIUS, SHEET_EDGE, SHEET_SCRIM,
+  SHEET_BLUR, SHEET_FILL,
   GlassLayers,
   // THE SHEET CHROME AND THE OVERLAY MOTION, moved to sit beside the material
   // they are the chrome and the motion FOR. `g` is that file's stylesheet: the
@@ -149,24 +137,19 @@ import {
 // screen. See the notes at the top of each.
 import { useToast } from '../../lib/toast';
 import { useFlightCardHost, FlightError } from '../../lib/flightcard';
-// THE GMAIL TOKEN, and it is the only thing in there. Sign-in and logout are on
-// this screen and the /chat request that sends it is on the search screen, so it
-// is the one piece of the account that had to stop being one screen's.
+// THE SESSION AND THE NAMES. Logout lives on the profile sheet now and sign-in
+// in lib/googleAuth.tsx; this screen reads the names for the greeting and the
+// session for the Gmail pull, and writes none of them.
 import { useAccount } from '../../lib/account';
+// SIGN IN WITH GOOGLE, started from two places on this screen -- the inline
+// button and the Gmail pull row -- and from the profile sheet. See the hook.
+import { useGoogleSignIn } from '../../lib/googleAuth';
 // A LEG THE PROVIDER DOES NOT CARRY YET. See lib/pendingRules.ts.
 import { pendingFromLeg, MAX_PENDING, type PendingLeg } from '../../lib/pendingRules';
 // The registration's own failure channel. See the effect that consumes it.
-//
-// AND THE BACKFILL, which the profile sheet now triggers. See the note at the
-// "Turn on" button: granting permission for the first time is the one moment
-// every flight already on the device can be given the token it was saved
-// without, and backfillWatches is idempotent per token so calling it here
-// cannot double anything the launch effect already did.
-import { onWatchFailure, backfillWatches } from '../../lib/watch';
-// THE PERMISSION REQUEST, FROM reminders RATHER THAN watch. ensurePushToken is
-// guarded by a once-per-install flag and would return without a dialog; this
-// has no such guard. See the button itself.
-import { ensurePermission } from '../../lib/reminders';
+// The backfill the profile sheet triggers went to app/profile.tsx with the
+// sheet, and the permission request with it.
+import { onWatchFailure } from '../../lib/watch';
 // THE CARD, AND THE SHEET IT OPENS. The card is not this screen's — the search
 // screen renders the same object from the same record — so all of it moved to
 // components/FlightCard.tsx unchanged: the swipe, the sheet, the tiles, the
@@ -202,11 +185,6 @@ const MONO_BOLD = 'JetBrainsMono_700Bold';
 const SANS = 'Inter_400Regular';
 const SANS_SEMI = 'Inter_600SemiBold';
 
-// STILL DECLARED HERE, unlike the rest of the material: the profile modal's own
-// sheet tint is the only thing that uses it, and the modal has not moved out.
-// The value is recovered from the commit that deleted it rather than picked
-// again by eye.
-const PROFILE_FILL = 'rgba(0,0,0,0.45)';
 // The same grey the bookmark outline uses on the flight card.
 const ARCHIVE_ICON = 'rgba(226,226,226,0.5)';
 
@@ -324,11 +302,6 @@ function greetingPrefix(ts: number, index: number): string {
   const prefix = pool[((index % pool.length) + pool.length) % pool.length];
   // No-op for every entry without the token.
   return prefix.replace('{day}', WEEKDAYS_LONG[day]);
-}
-
-// Display-only handle. Saved flights are keyed on email, never on this.
-function sanitiseDisplayName(raw: string) {
-  return raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 14);
 }
 
 function InfoRow({ label, value, sans }: { label: string; value: string; sans?: boolean }) {
@@ -1222,277 +1195,6 @@ const sf = StyleSheet.create({
   swipeGroup: { flexDirection: 'row', alignItems: 'center', marginBottom: CARD_GAP },
 });
 
-// ── WHAT THE SHEET SAYS ABOUT NOTIFICATIONS ────────────────────────────────
-//
-// THREE STATES, AND THE MIDDLE ONE IS THE REASON THIS EXISTS. Granted is
-// self-explanatory. NOT ASKED is a person who has saved flights and has never
-// seen the prompt -- until now there was no way to reach them, because the one
-// prompt an install gets belongs to a save and is spent silently. DENIED is a
-// person the app can never ask again: iOS resolves a second request with no
-// dialog at all, so the only honest offer is the Settings app.
-type PushState = 'granted' | 'denied' | 'unasked';
-
-async function readPushState(): Promise<PushState> {
-  try {
-    const p = await Notifications.getPermissionsAsync();
-    if (p.granted) return 'granted';
-    // canAskAgain FALSE IS A REFUSAL THE SYSTEM IS ENFORCING. Undetermined --
-    // never asked -- is the only case where a button can still put a dialog up.
-    return p.canAskAgain ? 'unasked' : 'denied';
-  } catch {
-    // A permission that cannot be read is reported as denied, which offers
-    // Settings: the one action that works whatever the real state turns out
-    // to be. Claiming 'unasked' would offer a button that silently does
-    // nothing.
-    return 'denied';
-  }
-}
-
-// THE PAGES THE PRIVACY POLICY AND TERMS ACTUALLY LIVE AT. The site is a Vercel
-// project with no custom domain -- `vercel domains ls` reports none -- and of
-// its two aliases only this one is public; the other sits behind a Vercel login
-// wall. Verified serving the current text rather than assumed.
-const PRIVACY_URL = 'https://terminal-website-topaz.vercel.app/privacy';
-const TERMS_URL = 'https://terminal-website-topaz.vercel.app/terms';
-
-// ── THE VERSION LINE ────────────────────────────────────────────────────────
-//
-// THE BUILD NUMBER IS NOT SET IN app.json. There is no ios.buildNumber and no
-// android.versionCode, so nativeBuildVersion is undefined in a build made from
-// this manifest and this reads "build dev". That is the honest answer rather
-// than a number invented here: when a build number is added to app.json this
-// line starts printing it with no change to this file.
-//
-// nativeApplicationVersion FIRST, because in a real build it is what the store
-// shows; expoConfig.version is the manifest's own value and is what a
-// development client has instead.
-const APP_VERSION =
-  Constants.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '1.0.0';
-const APP_BUILD = Constants.nativeBuildVersion ?? 'dev';
-
-function ProfileModal({
-  visible, onClose, onGoogleSignIn, onLogout, username,
-  email, effectiveName, askName, onSaveName, onSkipName,
-}: {
-  visible: boolean; onClose: () => void; onGoogleSignIn: () => void; onLogout: () => void;
-  username: string | null; email: string | null; effectiveName: string | null; askName: boolean;
-  onSaveName: (name: string) => void; onSkipName: () => void;
-}) {
-  const [nameDraft, setNameDraft] = useState(effectiveName ?? '');
-  const [editing, setEditing] = useState(false);
-  // ── THE PERMISSION, RE-READ RATHER THAN REMEMBERED ────────────────────────
-  //
-  // IT CHANGES OUTSIDE THIS APP. Somebody sent to Settings turns notifications
-  // on there and comes back, and a value read once when the sheet mounted would
-  // still say "off". So it is read when the sheet OPENS and again whenever the
-  // app returns to the foreground -- which is exactly the round trip the Open
-  // Settings button starts.
-  const [push, setPush] = useState<PushState | null>(null);
-  // THE SAVED LIST, FOR THE BACKFILL. Read through the store rather than passed
-  // in: this component is rendered inside SavedProvider, and threading a prop
-  // through the call site for one button would make the caller responsible for
-  // something only this sheet needs.
-  const { savedFlights } = useSaved();
-
-  useEffect(() => {
-    if (!visible) return;
-    let gone = false;
-    const read = () => { void readPushState().then(s => { if (!gone) setPush(s); }); };
-    read();
-    const sub = AppState.addEventListener('change', st => { if (st === 'active') read(); });
-    return () => { gone = true; sub.remove(); };
-  }, [visible]);
-
-  // Re-seed each time the sheet opens so a discarded edit does not linger.
-  useEffect(() => {
-    if (visible) {
-      setNameDraft(effectiveName ?? '');
-      setEditing(false);
-    }
-  }, [visible, effectiveName]);
-
-  // The first-run ask forces the input open; otherwise the pencil does.
-  const showInput = askName || editing;
-
-  const commitName = () => {
-    const cleaned = sanitiseDisplayName(nameDraft);
-    if (!cleaned) return;            // empty after sanitising: keep the old value and stay open
-    setEditing(false);
-    onSaveName(cleaned);
-  };
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={askName ? onSkipName : onClose}>
-      <View style={pm.backdrop}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={pm.sheet}>
-            <GlassLayers />
-            {/* On top of the shared pair, not instead of it. See PROFILE_FILL. */}
-            <View style={[StyleSheet.absoluteFill, pm.tint]} pointerEvents="none" />
-            <TouchableOpacity style={pm.closeBtn} onPress={askName ? onSkipName : onClose}>
-              <Text style={pm.closeTxt}>X</Text>
-            </TouchableOpacity>
-
-            <View style={pm.avatar}>
-              <Text style={pm.avatarTxt}>{'//'}</Text>
-            </View>
-            {username !== null && showInput && (
-              <>
-                <Text style={pm.nameLabel}>{askName ? 'pick a name' : 'username'}</Text>
-                <View style={pm.nameRow}>
-                  <TextInput
-                    style={pm.nameInput}
-                    value={nameDraft}
-                    onChangeText={setNameDraft}
-                    onSubmitEditing={commitName}
-                    placeholder="terminal"
-                    placeholderTextColor="rgba(226,226,226,0.25)"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    maxLength={14}
-                    selectionColor="#4ade80"
-                    returnKeyType="done"
-                  />
-                  <TouchableOpacity style={pm.nameBtn} activeOpacity={0.75} onPress={commitName}>
-                    <Text style={pm.nameBtnTxt}>{'save'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {username !== null && !showInput && (
-              <View style={pm.nameLine}>
-                <Text style={pm.name}>{effectiveName ?? 'Guest User'}</Text>
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setEditing(true)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Text style={pm.pencil}>{'\u270E'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {username === null && (
-              <Text style={[pm.name, { marginBottom: 8 }]}>{effectiveName ?? 'Guest User'}</Text>
-            )}
-
-            <Text style={pm.sub}>{username ? (email ? `signed in as ${email}` : 'signed in') : 'Sign in to sync your flights'}</Text>
-
-            {!username && (
-              <>
-                <TouchableOpacity style={pm.authBtn} activeOpacity={0.75} onPress={onGoogleSignIn}>
-                  <View style={pm.authBtnInner}>
-                    <Svg width="20" height="20" viewBox="0 0 24 24">
-                      <G>
-                        <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                        <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                        <Path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-                        <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                      </G>
-                    </Svg>
-                    <Text style={pm.authBtnTxt}> Sign in with Google </Text>
-                  </View>
-                </TouchableOpacity>
-                {/* THE MICROSOFT BUTTON IS GONE. It had no onPress at all --
-                    a control that looked like the one beside it and did
-                    nothing when pressed, which is worse than an absence. */}
-              </>
-            )}
-
-            {/* ── NOTIFICATIONS ──────────────────────────────────────────
-                WHAT THE PERMISSION IS, AND THE ONE ACTION THAT CAN CHANGE IT.
-                Three states, three offers: granted says so and offers nothing,
-                undetermined offers a prompt, denied offers Settings because a
-                prompt would be refused by the system without appearing. Null
-                is the read still in flight and renders nothing rather than
-                flashing "off" at somebody who has it on. */}
-            {push !== null && (
-              <View style={pm.row}>
-                <Text style={pm.rowLabel}>
-                  {push === 'granted' ? 'Notifications on'
-                    : push === 'denied' ? 'Notifications off'
-                    : 'Not asked yet'}
-                </Text>
-                {push === 'denied' && (
-                  <TouchableOpacity
-                    style={pm.rowBtn}
-                    activeOpacity={0.75}
-                    onPress={() => { void Linking.openSettings(); }}
-                  >
-                    <Text style={pm.rowBtnTxt}>{'Open Settings'}</Text>
-                  </TouchableOpacity>
-                )}
-                {push === 'unasked' && (
-                  <TouchableOpacity
-                    style={pm.rowBtn}
-                    activeOpacity={0.75}
-                    onPress={async () => {
-                      // ensurePermission, NOT ensurePushToken. The latter is
-                      // guarded by a once-per-install flag -- see watch.ts --
-                      // and would return without ever showing a dialog.
-                      const ok = await ensurePermission();
-                      setPush(await readPushState());
-                      // AND EVERY FLIGHT ALREADY ON THE DEVICE GETS THE TOKEN.
-                      // A flight saved before this moment was registered with a
-                      // null token and nothing revisits a row; this is the one
-                      // moment that can be put right. Idempotent per token, so
-                      // the launch effect doing the same thing costs nothing.
-                      if (ok) void backfillWatches(API_BASE, savedFlights);
-                    }}
-                  >
-                    <Text style={pm.rowBtnTxt}>{'Turn on'}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {username && (
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={onLogout}
-                style={{ alignSelf: 'center', marginTop: 20, paddingVertical: 8 }}
-              >
-                <Text style={{ fontFamily: SANS, fontSize: 13, color: 'rgba(248,113,113,0.7)' }}> Log out </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* ── THE TWO PAGES THE APP IS OBLIGED TO LINK TO ─────────────
-                IN THE SYSTEM BROWSER, NOT A WEBVIEW. openBrowserAsync presents
-                Safari over the app and returns to it on dismiss, so reading the
-                policy does not lose the sheet or the screen behind it.
-
-                TEXT, NOT BUTTONS, and at pm.sub's own size and tone: they are
-                references rather than actions, and giving them a button's
-                weight would put them level with Log out. */}
-            <View style={pm.legalRow}>
-              <TouchableOpacity
-                activeOpacity={0.6}
-                onPress={() => { void WebBrowser.openBrowserAsync(PRIVACY_URL); }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text style={pm.legalTxt}>{'Privacy'}</Text>
-              </TouchableOpacity>
-              <Text style={pm.legalTxt}>{'\u00b7'}</Text>
-              <TouchableOpacity
-                activeOpacity={0.6}
-                onPress={() => { void WebBrowser.openBrowserAsync(TERMS_URL); }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text style={pm.legalTxt}>{'Terms'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* THE BUILD IS "dev" UNTIL app.json CARRIES ONE. See APP_BUILD. */}
-            <Text style={pm.version}>{`Terminal ${APP_VERSION} (build ${APP_BUILD})`}</Text>
-
-          </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
-  );
-}
-
 export default function Index() {
   // THE STORE, AND WHAT IS LEFT HERE WITHOUT IT. Everything that REPORTS on the
   // saved list stayed on this screen — the toasts, the undo banner, the refresh
@@ -1503,7 +1205,7 @@ export default function Index() {
   // for the countdowns; the store runs a separate one for the day rollover and
   // the AppState resume. See the note at the top of lib/saved.tsx.
   const {
-    savedFlights, email, setEmail, refreshing,
+    savedFlights, refreshing,
     saveRecord, ownFlight, handleUnsave, undoUnsave, refreshOne, refreshAll,
     handleRemind, setArchived,
     pending, addPendingLeg, removePendingLeg, retryPending,
@@ -1574,11 +1276,11 @@ export default function Index() {
   // names were this screen's own state until Stage 9 of the native conversion
   // needed them on the search screen's prompt in the same render they reach
   // the greeting here; see the note at the head of lib/account.tsx. Every
-  // read below is what it was, and every write goes through a persist that
-  // stores and sets together, as this screen's own setters did.
-  const {
-    session, persistSession, username, displayName, persistUsername, persistDisplayName,
-  } = useAccount();
+  // read below is what it was. THE NAME WRITES LEFT with sign-in and logout --
+  // see lib/googleAuth.tsx and app/profile.tsx -- and persistSession did not:
+  // this screen still clears the session itself when the Gmail pull comes back
+  // expired, and the fixture long-press writes one. Both are below.
+  const { session, persistSession, username, displayName } = useAccount();
   // EVERYTHING THIS SCREEN NEEDS TO OWN A FLIGHT CARD, and the search screen owns
   // one too. The lookup, the save, the refresh, the entry animation, the error
   // channel and the minute tick moved to lib/flightcard.tsx so that a card opened
@@ -1602,7 +1304,12 @@ export default function Index() {
     // the email named -- neither of which a bare number can do.
     runFlightLookup,
   } = useFlightCardHost();
-  const [profileOpen, setProfileOpen] = useState(false);
+  // THE PROFILE IS A ROUTE: app/profile.tsx, presented by the root Stack as a
+  // page sheet. This screen opens it from the header button and, once, for a
+  // fresh sign-in to be asked for a name -- see the effect after hydration.
+  const router = useRouter();
+  const pathname = usePathname();
+  const { signIn } = useGoogleSignIn();
   // Persisted under 'savedCollapsed'. Starts true so an absent key means
   // collapsed; hydration only overrides it when the key exists.
   const [savedCollapsed, setSavedCollapsed] = useState(true);
@@ -1642,7 +1349,7 @@ export default function Index() {
         showToast('gmail pull needs the iphone app');
         return;
       }
-      promptAsync();
+      signIn();
       return;
     }
     setGmailPull({ status: 'loading', flights: [], message: '' });
@@ -1873,88 +1580,14 @@ export default function Index() {
     // never seen; the banner's own label carries the count instead.
   };
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: '970706733452-n7ki9no870k7ad1bpkb86eu7rec0an7d.apps.googleusercontent.com',
-    iosClientId: '970706733452-fmqtgg1doc0n14g8ibb8qsrsmcaot83e.apps.googleusercontent.com',
-    androidClientId: '970706733452-n7ki9no870k7ad1bpkb86eu7rec0an7d.apps.googleusercontent.com',
-    redirectUri: 'com.googleusercontent.apps.970706733452-fmqtgg1doc0n14g8ibb8qsrsmcaot83e:/oauth2redirect',
-    scopes: ['profile', 'email', 'https://www.googleapis.com/auth/gmail.readonly'],
-    // THE CODE FLOW, AND THE PHONE NEVER EXCHANGES THE CODE. It goes to our
-    // server with the PKCE verifier, the server exchanges it and keeps the
-    // refresh token (auth.py). shouldAutoExchangeCode is what stops this
-    // library doing the exchange itself the moment the code arrives.
-    // access_type=offline asks for a refresh token; prompt=consent makes
-    // Google issue one even to an account that consented before, which is
-    // exactly the account that signed in under the old flow.
-    responseType: ResponseType.Code,
-    shouldAutoExchangeCode: false,
-    usePKCE: true,
-    extraParams: { access_type: 'offline', prompt: 'consent' },
-  });
-
-  useEffect(() => {
-    console.log('[Auth] response:', JSON.stringify(response));
-    if (response?.type === 'success') {
-      const code = response.params?.code;
-      const verifier = request?.codeVerifier;
-      const redirectUri = request?.redirectUri;
-      if (!code || !verifier || !redirectUri) return;
-      (async () => {
-        try {
-          // THE EXCHANGE HAPPENS ON OUR SERVER. It answers with a session, the
-          // email and a first name -- read once from Google's id token and not
-          // stored there -- so this screen no longer calls Google's userinfo
-          // endpoint, and never sees a Google token at all.
-          const resp = await fetch(`${API_BASE}/auth/google`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: redirectUri }),
-          });
-          const data = await resp.json() as {
-            error?: string | null; code?: string | null; session?: string | null;
-            email?: string | null; name?: string | null; gmail?: boolean;
-          };
-          if (!resp.ok || data.error || !data.session) {
-            showToast(data.error || 'sign-in did not complete');
-            return;
-          }
-          const validEmail = typeof data.email === 'string' && data.email.trim() ? data.email : null;
-          const name = (typeof data.name === 'string' && data.name.trim())
-            ? data.name.trim()
-            : (validEmail ? (validEmail.split('@')[0].match(/^[a-zA-Z]+/)?.[0] ?? 'user') : 'user');
-          // THE STORE WRITES KEEP THEIR ORDER: username, session, email, and
-          // setEmail last, because setEmail is the account-change signal every
-          // other screen watches and the stores must be current before it
-          // fires. persistUsername writes and sets together, so the name state
-          // is set here rather than after the email write; nothing reads it in
-          // between.
-          await persistUsername(name);
-          // The session is lib/account.tsx's: the search screen sends it to
-          // /chat and cannot see this screen's state, and that module writes
-          // and sets together so a caller cannot do one without the other.
-          await persistSession(data.session);
-          if (validEmail) await SecureStore.setItemAsync('email', validEmail);
-          if (validEmail) setEmail(validEmail);
-          setGmailPull(IDLE_PULL);
-          clearResultView();
-          if (data.gmail === false) showToast('gmail access was not granted');
-          // Sheet stays open: displayName is null here, so the first-run ask
-          // effect takes over and it transitions in place.
-        } catch (err) {
-          console.log('[Auth] exchange error:', err);
-          showToast('sign-in did not complete');
-        }
-      })();
-    }
-  }, [response]);
-
   // 'username' AND 'displayName' ARE NOT READ HERE ANY MORE. lib/account.tsx
   // hydrates both, together, and this screen reads them off the hook. 'email'
   // left earlier for the same reason: lib/saved.tsx owns the account the list
-  // is keyed on. Sign-in and logout still WRITE all three, through the
-  // persists and setEmail. What is left is this screen's own collapse state,
-  // resolved before authHydrated, which gates the saved-list load, so the
-  // section never renders expanded and then snaps shut.
+  // is keyed on. Sign-in (lib/googleAuth.tsx) and logout (app/profile.tsx)
+  // still WRITE all three, through the persists and setEmail. What is left is
+  // this screen's own collapse state, resolved before authHydrated, which
+  // gates the saved-list load, so the section never renders expanded and then
+  // snaps shut.
   useEffect(() => {
     AsyncStorage.getItem('savedCollapsed').then(c => {
       if (c !== null) setSavedCollapsed(c === 'true');
@@ -1963,53 +1596,28 @@ export default function Index() {
   }, []);
 
   // First-run ask. Only after hydration, only when signed in, and only while
-  // displayName is still unset — which skipping also fills, so it asks once.
+  // displayName is still unset -- which skipping also fills, so it asks once.
+  // THE ASKING IS THE SHEET'S: it puts the name prompt up whenever it is open
+  // with no display name. This effect only gets it open.
   //
-  // NO GUARD REF, AND IT DOES NOT NEED ONE. Setting profileOpen twice is
-  // idempotent, which is what a modal buys over a route: the navigate this
-  // briefly became had to remember whether it had already asked, because
-  // navigating twice is not the same as navigating once.
+  // A GUARD REF, BECAUSE THIS IS A NAVIGATION AGAIN. Pushing a route twice is
+  // two sheets, so the username this has already opened for is remembered.
+  // And if the sheet is already up -- the sign-in was started from its own
+  // row -- it is left alone to ask, and marked as asked all the same.
+  //
+  // NO FOCUS EFFECT EITHER WAY. The sheet writes the same lib/account.tsx and
+  // lib/saved.tsx state this screen reads, so there is nothing to pick up on
+  // the way back and no read to race the hydration effect above.
+  const askedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!authHydrated) return;
     if (username === null) return;
     if (displayName !== null) return;
-    setProfileOpen(true);
-  }, [authHydrated, username, displayName]);
-
-  // AND NO FOCUS EFFECT. While the profile was a screen this file re-read
-  // username, email and displayName from storage every time home came back into
-  // focus, because the other screen owned its own copies and wrote them behind
-  // this one's back. A modal is inside this component and sets this component's
-  // state directly, so there is nothing to pick up on the way back and no read
-  // to race the hydration effect above.
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.onload = () => {
-      (window as any).google.accounts.id.initialize({
-        client_id: '970706733452-n7ki9no870k7ad1bpkb86eu7rec0an7d.apps.googleusercontent.com',
-        scope: 'profile email https://www.googleapis.com/auth/gmail.readonly',
-        callback: (credentialResponse: any) => {
-          const payload = JSON.parse(atob(credentialResponse.credential.split('.')[1]));
-          const firstName = (payload.email as string).split('@')[0].match(/^[a-zA-Z]+/)?.[0] || 'user';
-          const validEmail = typeof payload.email === 'string' && payload.email.trim() ? payload.email : null;
-          // Same order as the native sign-in: name, email, then setEmail.
-          void persistUsername(firstName);
-          if (validEmail) localStorage.setItem('email', validEmail);
-          if (validEmail) setEmail(validEmail);
-          clearResultView();
-          // Sheet stays open: displayName is null here, so the first-run ask
-          // effect takes over and it transitions in place.
-        },
-      });
-    };
-    document.head.appendChild(script);
-    return () => { document.head.removeChild(script); };
-  }, []);
-
+    if (askedFor.current === username) return;
+    askedFor.current = username;
+    if (pathname === '/profile') return;
+    router.push('/profile');
+  }, [authHydrated, username, displayName, pathname, router]);
 
   const badgePulse = useRef(new Animated.Value(1)).current;
   const refreshMsgOpacity = useRef(new Animated.Value(0)).current;
@@ -2329,6 +1937,20 @@ export default function Index() {
     setError("");
   };
 
+  // ── WHEN THE ACCOUNT CHANGES UNDER THIS SCREEN ────────────────────────────
+  //
+  // SIGN-IN AND LOGOUT USED TO DO THESE TWO RESETS THEMSELVES, in line, because
+  // both happened on this screen. Sign-in is lib/googleAuth.tsx's now and
+  // logout is the profile sheet's, and neither can reach this state. setEmail
+  // is the signal every other screen already watches for exactly this -- the
+  // search screen clears its query the same way -- so this screen watches it
+  // too. After clearResultView on purpose: the sign-in effect that used to do
+  // this sat above it and read it before it was declared.
+  useAccountChange(() => {
+    setGmailPull(IDLE_PULL);
+    clearResultView();
+  });
+
   // ── A PUSH CAN NAME THE CARD TO OPEN ──────────────────────────────────────
   //
   // THE ROOT LAYOUT SENDS `open`, A SAVED FLIGHT'S ID, AND `tap`, A NONCE, when a
@@ -2367,58 +1989,6 @@ export default function Index() {
 
   return (
     <View style={s.root}>
-      <ProfileModal
-        visible={profileOpen}
-        onClose={() => setProfileOpen(false)}
-        username={username}
-        email={email}
-        effectiveName={effectiveName}
-        askName={username !== null && displayName === null}
-        onSaveName={async (name) => { await persistDisplayName(name); setProfileOpen(false); }}
-        onSkipName={async () => { if (username) await persistDisplayName(username); setProfileOpen(false); }}
-        onLogout={async () => {
-          // THE SAME THREE DELETIONS IN THE SAME ORDER: username, email,
-          // displayName. The two persists clear the store and the state
-          // together; email is still this screen's to delete, and setEmail
-          // below is still the signal, fired after every store is clear.
-          await persistUsername(null);
-          if (Platform.OS === 'web') localStorage.removeItem('email');
-          else await SecureStore.deleteItemAsync('email');
-          await persistDisplayName(null);
-          // THE SERVER FIRST. Sign-out deletes the account's record, every
-          // session and the refresh token there, and revokes the grant at
-          // Google, so "disconnect" is true from Google's side too. Best
-          // effort: a phone with no signal still signs out locally, and the
-          // server's record dies with its next refresh or on the next sign-in.
-          if (session !== null && !session.startsWith('fixture:')) {
-            try {
-              await fetch(`${API_BASE}/auth/signout`, {
-                method: 'POST',
-                // An explicit empty body: Google's front end answers 411 to a
-                // POST that carries no Content-Length at all.
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session}` },
-                body: '{}',
-              });
-            } catch {
-              // See above.
-            }
-          }
-          await persistSession(null);
-          setGmailPull(IDLE_PULL);
-          setEmail(null);
-          clearResultView();
-          setProfileOpen(false);
-        }}
-        onGoogleSignIn={async () => {
-          console.log('Google sign in tapped, platform: ' + Platform.OS);
-          setProfileOpen(false);
-          if (Platform.OS === 'web') {
-            (window as any).google?.accounts?.id?.prompt();
-          } else {
-            promptAsync();
-          }
-        }}
-      />
       {/* ── DATE CALENDAR ── */}
       <Modal visible={archiveOpen} transparent animationType="none" onRequestClose={closeArchive}>
         <Pressable style={g.routeCalScrim} onPress={closeArchive}>
@@ -2644,11 +2214,11 @@ export default function Index() {
                 <Text style={{ fontFamily: MONO, fontSize: 15, color: 'rgba(226,226,226,0.4)', marginTop: 3 }}>{formatClock(now)}</Text>
               )}
             </View>
-            {/* The modal has its own TextInput and its own KeyboardAvoidingView
-                and will raise a keyboard of its own if it asks for a name; what
-                is dismissed here is the one that was already up behind it. */}
+            {/* THE SHEET IS A ROUTE: app/profile.tsx, presented over the tabs
+                by the root Stack. A keyboard already up would stay up under a
+                page sheet, so it is dismissed first. */}
             {username !== null && (
-              <TouchableOpacity style={s.profileBtn} onPress={() => { Keyboard.dismiss(); setProfileOpen(true); }}>
+              <TouchableOpacity style={s.profileBtn} onPress={() => { Keyboard.dismiss(); router.push('/profile'); }}>
                 <Text style={s.profileTxt}>{'>//'}</Text>
               </TouchableOpacity>
             )}
@@ -2671,13 +2241,7 @@ export default function Index() {
               </Text>
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => {
-                  if (Platform.OS === 'web') {
-                    (window as any).google?.accounts?.id?.prompt();
-                  } else {
-                    promptAsync();
-                  }
-                }}
+                onPress={signIn}
                 style={{ backgroundColor: '#131314', borderWidth: 1, borderColor: '#5f6368', borderRadius: 4, paddingVertical: 11, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center' }}
               >
                 <Svg width={18} height={18} viewBox="0 0 48 48" style={{ marginRight: 10 }}>
@@ -3074,155 +2638,4 @@ const gm = StyleSheet.create({
   // it is nested inside it -- with the trip view's tracking and nothing else;
   // the colour is applied at the call site because it comes from getStatusColor.
   legChip: { letterSpacing: 1 },
-});
-
-const pm = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    // The shared scrim, down from its own 0.72. That value was set when the
-    // sheet behind it was opaque and nothing had to be seen through it.
-    backgroundColor: SHEET_SCRIM,
-    justifyContent: 'flex-end',
-  },
-  // A BOTTOM sheet, which is the one structural difference from the others: it
-  // is flush with the bottom of the screen, so it has three edges rather than
-  // four and two rounded corners rather than four. "The same edge" therefore
-  // means the same colour and the same weight on the edges it actually has —
-  // a fourth line across the bottom would be an edge where the sheet does not
-  // end. The per-side WIDTHS stay as they are, and only the colour is shared:
-  // it is mismatched border COLOURS that make React Native abandon the corner
-  // radius and split each arc, and every side here still agrees on 0.08.
-  sheet: {
-    // NO backgroundColor: the blur samples what is behind it, and an ancestor's
-    // fill would be flattened into the result. GlassLayers carries both.
-    borderTopLeftRadius: SHEET_RADIUS,
-    borderTopRightRadius: SHEET_RADIUS,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: SHEET_EDGE,
-    // Clips the blur to the two rounded corners.
-    overflow: 'hidden',
-    paddingHorizontal: 28,
-    paddingTop: 40,
-    paddingBottom: 52,
-    alignItems: 'center',
-  },
-  // Drawn over GlassLayers and under the content, the same slot the shared
-  // tint occupies inside it.
-  tint: { backgroundColor: PROFILE_FILL },
-  closeBtn: {
-    position: 'absolute',
-    top: 20,
-    right: 24,
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeTxt: { color: '#4ade80', fontSize: 15, fontFamily: MONO },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 1.5,
-    borderColor: 'rgba(74,222,128,0.4)',
-    backgroundColor: 'rgba(74,222,128,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    marginTop: 4,
-  },
-  avatarTxt: { color: '#4ade80', fontSize: 20, fontFamily: MONO },
-  name: { fontSize: 20, color: '#ffffff', fontFamily: MONO },
-  sub: {
-    fontSize: 13,
-    color: 'rgba(226,226,226,0.4)',
-    fontFamily: MONO,
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  // A BUTTON ON THE PAGE, so SURFACE_1, and it already carried an edge of its
-  // own -- now the scale's. See lib/cards.ts.
-  authBtn: {
-    width: '100%',
-    backgroundColor: CARD_FILL,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: SURFACE_EDGE,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  authBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nameLabel: {
-    fontFamily: SANS,
-    fontSize: 11,
-    color: 'rgba(226,226,226,0.4)',
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', marginBottom: 8 },
-  nameInput: {
-    flex: 1,
-    fontFamily: MONO,
-    fontSize: 13,
-    color: '#ffffff',
-    borderWidth: 1,
-    borderColor: SURFACE_EDGE,
-    borderRadius: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  nameBtn: {
-    borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.4)',
-    borderRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  nameBtnTxt: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
-  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  pencil: { fontFamily: SANS, fontSize: 13, color: 'rgba(226,226,226,0.4)' },
-  authBtnTxt: { color: '#ffffff', fontSize: 15, fontFamily: MONO },
-  // ── THE NOTIFICATIONS ROW ─────────────────────────────────────────────────
-  //
-  // THE LABEL TAKES pm.sub's FACE AND TONE, because it is the same kind of
-  // statement about the account: a fact, quietly. The button is nameBtn's shape
-  // exactly -- the same border, radius and padding as `save` -- so the sheet has
-  // one secondary button rather than two that nearly match.
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 12,
-  },
-  rowLabel: { fontFamily: MONO, fontSize: 13, color: 'rgba(226,226,226,0.4)' },
-  rowBtn: {
-    borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.4)',
-    borderRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  rowBtnTxt: { fontFamily: MONO, fontSize: 13, color: '#4ade80' },
-  // ── THE FOOTER ────────────────────────────────────────────────────────────
-  //
-  // 20 ABOVE, matching the gap Log out takes from the block above it, so the
-  // two sit as one closing group rather than as a control and an afterthought.
-  legalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20 },
-  // SANS AT 11, which is nameLabel's size and the smallest type this sheet
-  // uses. The tone is pm.sub's, unchanged: these recede.
-  legalTxt: { fontFamily: SANS, fontSize: 11, color: 'rgba(226,226,226,0.4)' },
-  // MONO, because it is a version string and every other number in this app is
-  // set in it. A step quieter than the links above: they can be acted on and
-  // this cannot.
-  version: {
-    fontFamily: MONO,
-    fontSize: 11,
-    color: 'rgba(226,226,226,0.3)',
-    marginTop: 10,
-  },
 });

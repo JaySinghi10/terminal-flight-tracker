@@ -152,6 +152,12 @@ export const PAGE_BG = '#0a0a0a';
 // them is a separate pass with a much wider diff; this one removes the NAMES
 // that could come to disagree.
 export const DIM = 'rgba(226,226,226,0.4)';
+// THE GREEN. The accent every surface already sets by literal -- the close
+// glyph, the links, the countdown, the corridor -- and the one the profile
+// sheet's icon tiles, switch and Done item now read from here instead. The
+// literals elsewhere are not repointed by this; they can be, a file at a time,
+// which is what DIM's export was for.
+export const GREEN = '#4ade80';
 
 // THE PAGE, AS COMPONENTS RATHER THAN AS A HEX STRING.
 //

@@ -64,7 +64,7 @@ import { ChromeProvider } from "../lib/chrome";
 // navigator's scene background: the colour every screen is drawn onto, and the
 // colour a native container paints before a screen has rendered. A page colour
 // spelled twice is a page colour that can be changed once.
-import { PAGE_BG } from "../lib/cards";
+import { PAGE_BG, GREEN } from "../lib/cards";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -412,9 +412,13 @@ export default function Layout() {
   // account email from it) and ToastProvider (undo reaches the store).
   // ChromeProvider carries no ordering meaning. See each import's note above.
   //
-  // THE STACK HAS NO HEADER AND PAINTS THE PAGE. Its one screen today is the
-  // tab group. Sheets join it as siblings from Stage 2, each declaring its own
-  // presentation; nothing here needs to change for them to appear.
+  // THE STACK HAS NO HEADER BY DEFAULT AND PAINTS THE PAGE. The tab group is
+  // its first screen and the profile sheet its second, presented over the
+  // tabs as UIKit's page sheet with the native header the tabs do without.
+  // The presentation, the header, its title and its tint are declared here
+  // because a sheet's chrome is the presenter's to declare and must be known
+  // before the route mounts; the Done item is the route's own, through
+  // Stack.Toolbar. See app/profile.tsx.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={TERMINAL_THEME}>
@@ -426,6 +430,15 @@ export default function Layout() {
                   <StatusBar style="light" />
                   <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: PAGE_BG } }}>
                     <Stack.Screen name="(tabs)" />
+                    <Stack.Screen
+                      name="profile"
+                      options={{
+                        presentation: 'modal',
+                        headerShown: true,
+                        title: 'Profile',
+                        headerTintColor: GREEN,
+                      }}
+                    />
                   </Stack>
                   {/* INSIDE SavedProvider ON PURPOSE: it reads the saved list to
                       choose between My Flights and Home. See PendingTapSender. */}
