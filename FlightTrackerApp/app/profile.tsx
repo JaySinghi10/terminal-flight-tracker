@@ -41,7 +41,7 @@ import {
   HStack, Spacer,
 } from '@expo/ui/swift-ui';
 import {
-  tint, foregroundStyle, foregroundColor, font, padding, disabled, buttonStyle,
+  tint, foregroundStyle, foregroundColor, font, disabled, buttonStyle,
 } from '@expo/ui/swift-ui/modifiers';
 import { useAccount } from '../lib/account';
 import { useSaved, API_BASE } from '../lib/saved';
@@ -155,19 +155,32 @@ function Chevron() {
   );
 }
 
-// THE HEADER CARD. Settings > Apple Account's: the placeholder avatar on the
-// left and the name beside it, and nothing else -- the email was under it and
-// is gone, because the card is who you are and the address is a detail the
-// Gmail section already states. The Spacer makes the whole row the tap target
-// when a Button wraps it.
+// THE HEADER CARD, AND IT IS ONE ROW RATHER THAN A BLOCK. The placeholder
+// avatar on the left and the name beside it, and nothing else -- the email was
+// under it and is gone, because the card is who you are and the address is a
+// detail the Gmail section already states.
+//
+// 44pt, AND NO PADDING OF ITS OWN. A 58pt avatar with six points added above
+// and below made this nearly three standard rows tall for a name and a circle,
+// which read as a banner the list had to get past rather than as its first row.
+// 44 is the row height iOS builds lists out of, and the cell's own insets are
+// the only vertical space here now -- so this sits level with every row under
+// it instead of towering over them.
+//
+// AND THE NAME IS headline, NOT title2. At 22pt the name set the row's height
+// rather than the avatar did, which made this a heading with a list under it;
+// headline is the style iOS sets a row's PRIMARY LABEL in, so the name now sits
+// at the size every other row on the sheet uses, one weight up from them.
+//
+// The Spacer makes the whole row the tap target when a Button wraps it.
 function Card({ name }: { name: string }) {
   return (
-    <HStack spacing={14} modifiers={[padding({ vertical: 6 })]}>
+    <HStack spacing={12}>
       <Image
         systemName="person.crop.circle.fill"
-        modifiers={[font({ size: 58 }), foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}
+        modifiers={[font({ size: 44 }), foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}
       />
-      <Text modifiers={[font({ textStyle: 'title2' }), foregroundColor(WHITE)]}>{name}</Text>
+      <Text modifiers={[font({ textStyle: 'headline' }), foregroundColor(WHITE)]}>{name}</Text>
       <Spacer />
     </HStack>
   );

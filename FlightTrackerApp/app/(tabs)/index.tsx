@@ -21,6 +21,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // THE MARKER THAT NAMES THIS SCREEN'S SCROLL VIEW TO UIKit. See the block at
 // the marker itself for what it does and why the import path is a deep one.
 import { ScrollViewMarker } from 'react-native-screens/experimental';
+// THE PERSON ON THE PROFILE BUTTON. expo-symbols has been a dependency since
+// before any of this and had no reader until now; it renders a real SF Symbol
+// rather than a glyph drawn out of the mono font, which is what the button in
+// the header was doing. See s.profileBtn.
+import { SymbolView } from 'expo-symbols';
 import {
   Alert,
   View,
@@ -187,6 +192,12 @@ const SANS_SEMI = 'Inter_600SemiBold';
 
 // The same grey the bookmark outline uses on the flight card.
 const ARCHIVE_ICON = 'rgba(226,226,226,0.5)';
+
+// THE PERSON IN THE HEADER BUTTON. A step brighter than ARCHIVE_ICON, because
+// this glyph sits on a FILL rather than on the page: the archive icon is ink on
+// the background and reads at 0.5, and the same value inside a lit circle goes
+// muddy. See s.profileBtn.
+const PROFILE_GLYPH = 'rgba(226,226,226,0.75)';
 
 // Rows fade up as the sheet arrives, each a little after the one above it.
 // Expressed as FRACTIONS of the sheet's own 0->1 travel rather than as
@@ -2216,10 +2227,19 @@ export default function Index() {
             </View>
             {/* THE SHEET IS A ROUTE: app/profile.tsx, presented over the tabs
                 by the root Stack. A keyboard already up would stay up under a
-                page sheet, so it is dismissed first. */}
+                page sheet, so it is dismissed first.
+
+                accessibilityLabel BECAUSE THE BUTTON HAS NO TEXT LEFT. A glyph
+                is not a name, and ">//" never was one either -- it simply had
+                no label to lose. */}
             {username !== null && (
-              <TouchableOpacity style={s.profileBtn} onPress={() => { Keyboard.dismiss(); router.push('/profile'); }}>
-                <Text style={s.profileTxt}>{'>//'}</Text>
+              <TouchableOpacity
+                style={s.profileBtn}
+                onPress={() => { Keyboard.dismiss(); router.push('/profile'); }}
+                accessibilityRole="button"
+                accessibilityLabel="Profile"
+              >
+                <SymbolView name="person.fill" size={16} tintColor={PROFILE_GLYPH} />
               </TouchableOpacity>
             )}
           </View>
@@ -2490,17 +2510,31 @@ const s = StyleSheet.create({
   scroll: { paddingHorizontal: 20 },
 
   header: { marginBottom: 36, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  // RESTORED AT THE VALUES THEY HAD, recovered from the commit before the modal
-  // was retired rather than reconstructed by eye. 36 square on an 18 radius is a
-  // circle; the hairline is the scale's edge, which is what every bordered
-  // control in this app draws now. See SURFACE_EDGE in lib/cards.ts.
+  // ── THE PROFILE BUTTON ──────────────────────────────────────────────────
+  //
+  // 36 SQUARE ON AN 18 RADIUS IS A CIRCLE, and that geometry is unchanged --
+  // it is where the control has always been and what size it has always been.
+  // The hairline is the scale's edge, which is what every bordered control in
+  // this app draws. See SURFACE_EDGE in lib/cards.ts.
+  //
+  // WHAT CHANGED IS THAT IT IS FILLED AND HAS A PERSON IN IT. ">//" in the
+  // mono face was a piece of the terminal motif, and it read as a label rather
+  // than as something to press: a transparent circle with two characters in it
+  // does not look like a button, it looks like a status. A filled circle with
+  // a person in it is what every iOS app puts in this corner.
+  //
+  // SURFACE_2, WHICH IS THE SCALE'S OWN ANSWER and not a colour picked here.
+  // The scale names SURFACE_1 for a surface on the page and SURFACE_2 for a
+  // surface on a surface; this sits on the page but must read as LIT rather
+  // than as an outline, and SURFACE_2 is the step that does that without
+  // spending a new value. There is no other filled circular control in the app
+  // to copy -- this is the first -- so the scale decided it rather than an eye.
   profileBtn: {
     width: 36, height: 36, borderRadius: 18,
     borderWidth: 1, borderColor: SURFACE_EDGE,
-    backgroundColor: 'transparent',
+    backgroundColor: SURFACE_2,
     alignItems: 'center', justifyContent: 'center',
   },
-  profileTxt: { color: 'rgba(226,226,226,0.5)', fontSize: 11, fontFamily: MONO },
 
   // UNREFERENCED SINCE THE ROUTE WENT BARE. There is no card around it any
   // more: the row and its bar sit on the page. Left in place.

@@ -21,7 +21,7 @@ import { Stack, useRouter, useNavigationContainerRef, ThemeProvider, DarkTheme }
 import { StatusBar } from "expo-status-bar";
 // Text, FOR THE SHEET'S TITLE. iOS refuses to move a native header title off
 // centre -- headerTitleAlign is documented "Not supported on iOS. It's always
-// center and cannot be changed" -- so the title is a headerLeft view instead
+// center and cannot be changed" -- so the title is a header LEFT ITEM instead
 // and the native title is left empty. See the profile screen below.
 import { Platform, Text } from "react-native";
 import * as Notifications from "expo-notifications";
@@ -466,11 +466,37 @@ export default function Layout() {
                         // centres a native title and will not be told
                         // otherwise; the reference puts it on the left.
                         headerTitle: '',
-                        headerLeft: () => (
-                          <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '600' }}>
-                            Profile
-                          </Text>
-                        ),
+                        // ── THE TITLE, AND WHY IT IS NOT headerLeft ────────
+                        //
+                        // headerLeft PUT IT IN A GLASS PILL. That prop is
+                        // rendered as <ScreenStackHeaderLeftView>{element}</>
+                        // with no hidesSharedBackground prop at all, so the
+                        // subview takes the bar's SHARED background -- and on
+                        // iOS 26 a shared bar background is Liquid Glass. The
+                        // capsule was UIKit drawing a bar button item, which
+                        // is what that slot is for; nothing here asked for it.
+                        //
+                        // unstable_headerLeftItems IS THE SAME SLOT WITH THE
+                        // SWITCH EXPOSED. A 'custom' item is rendered as
+                        // <ScreenStackHeaderLeftView hidesSharedBackground=
+                        // {item.hidesSharedBackground}>, and that prop reaches
+                        // the native subview. So the text sits in the same
+                        // place with no fill behind it.
+                        //
+                        // THE unstable_ PREFIX IS THE LIBRARY'S, not a warning
+                        // about this use: it is the documented way to put items
+                        // in the bar, and it overrides headerLeft by design.
+                        unstable_headerLeftItems: () => [
+                          {
+                            type: 'custom',
+                            hidesSharedBackground: true,
+                            element: (
+                              <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '600' }}>
+                                Profile
+                              </Text>
+                            ),
+                          },
+                        ],
                         // WHITE, NOT THE APP'S GREEN. This is the colour bar
                         // items inherit, and the sheet's own accent is set on
                         // the two controls that actually want it.
