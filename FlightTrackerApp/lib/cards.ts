@@ -127,6 +127,32 @@ export const CARD_PAD = 14;
 // cannot be read.
 export const PAGE_BG = '#0a0a0a';
 
+// ── THE DIM TONE, AND WHY IT IS HERE RATHER THAN IN FOUR FILES ──────────────
+//
+// FOUR FILES DECLARED THIS EXACT STRING AS THEIR OWN `DIM` -- the My Flights
+// screen, the Deck, the corridor view and the booking-reference modal -- and a
+// fifth copy sat in c.detailsTitle below. Five spellings of one colour is how a
+// palette drifts: the next person to warm the greys by a hundredth changes the
+// one in front of them, and the app quietly ends up with two dim tones that are
+// nearly the same and never the same again.
+//
+// IT IS A TEXT COLOUR AND SO IT IS NOT ON THE ELEVATION SCALE. The note at
+// SURFACE_1 says what that scale is for -- what sits on what -- and lists text
+// among the things that answer a different question. This is that different
+// question: the ink for a label, a caption, a secondary line, anything that is
+// present and deliberately quiet.
+//
+// 0.4 OF #e2e2e2 ON THE PAGE. Not a grey of its own: the same ink every bright
+// line uses, at the opacity that puts it a step back without dropping it out of
+// the reading order.
+//
+// WHAT IS STILL SPELLED OUT ELSEWHERE, and knowingly: roughly thirty-eight
+// inline uses of the same rgba, most of them in components/FlightCard.tsx.
+// Those are literals in stylesheets rather than named constants, and collapsing
+// them is a separate pass with a much wider diff; this one removes the NAMES
+// that could come to disagree.
+export const DIM = 'rgba(226,226,226,0.4)';
+
 // THE PAGE, AS COMPONENTS RATHER THAN AS A HEX STRING.
 //
 // THREE FILLS ARE "THE PAGE AT SOME OPACITY" and a hex cannot serve them: the
@@ -198,7 +224,7 @@ export const GLASS_RADIUS = 16;
 // entries of any screen's own sheet.
 export const c = StyleSheet.create({
   detailsTitle: {
-    fontSize: 11, color: "rgba(226,226,226,0.4)", fontFamily: SANS_SEMI,
+    fontSize: 11, color: DIM, fontFamily: SANS_SEMI,
     marginBottom: 10, letterSpacing: 1, textTransform: "uppercase",
   },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

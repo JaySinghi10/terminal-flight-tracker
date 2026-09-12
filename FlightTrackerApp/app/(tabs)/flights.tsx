@@ -113,6 +113,10 @@ import {
 import {
   CARD_FILL, CARD_RADIUS, CARD_GAP, CARD_PAD, PAGE_BG, SURFACE_EDGE,
   SURFACE_1, SURFACE_2,
+  // THE DIM TONE, WHICH THIS FILE USED TO DECLARE. See its note there: four
+  // files spelled the same rgba as their own DIM, which is how two dim tones
+  // that are nearly the same come to exist.
+  DIM,
 } from '../../lib/cards';
 import {
   GlassLayers, g,
@@ -136,6 +140,10 @@ import { EXPAND_HAPTIC } from '../../components/swipe';
 // clock24 served the collapsed leg's departure clock and nothing else here; the
 // row has gone and so have they. See CollapsedLeg.
 import { FlightCard, flightDataFromSaved } from '../../components/FlightCard';
+// THE BOOKING REFERENCE, HELD UP TO BE READ. Shared with Home rather than
+// written twice: Home shows the same leg when nothing ties it to a journey, and
+// a screen may never be the place another screen imports from.
+import { BigPnr } from '../../components/BigPnr';
 
 // Declared here rather than imported from a screen or a component, exactly as
 // every module in lib/ declares its own. These are the family names _layout
@@ -149,7 +157,6 @@ const SANS_SEMI = 'Inter_600SemiBold';
 
 // getStatusColor('landed') exactly. A finished leg is grey; it is never green.
 const LANDED_GREY = '#8e8e93';
-const DIM = 'rgba(226,226,226,0.4)';
 
 // TWO OF THE CARD'S PROPS ARE UNREACHABLE UNDER tripVariant AND STILL REQUIRED.
 // handleToggleSave is the bookmark, which that variant's left panel does not
@@ -1087,8 +1094,18 @@ function UnpublishedLeg({ leg, open, onToggle }: {
     ? 'not checked yet'
     : `${leg.tries} check${leg.tries === 1 ? '' : 's'}, last ${routeDateLabel(localDayKey(leg.lastTriedAt))}`;
   const cancelled = leg.legStatus === 'cancelled';
+  // ── THE REFERENCE, FULL SCREEN ──────────────────────────────────────────
+  //
+  // THE CARD'S OWN STATE AND NOT THE JOURNEY'S, which is the opposite of `open`
+  // above and deliberately so. Which leg is expanded is a fact about the trip --
+  // at most one, so the trip holds it -- and this is a thing the user is doing
+  // with ONE leg's reference for as long as somebody is looking at it. Nothing
+  // else on the screen needs to know, and a second leg cannot have one open
+  // because the first would have to be collapsed to reach it.
+  const [bigPnr, setBigPnr] = useState(false);
 
   return (
+    <>
     <TouchableOpacity
       style={[st.compactLeg, st.unpubLeg]}
       activeOpacity={0.7}
@@ -1126,7 +1143,25 @@ function UnpublishedLeg({ leg, open, onToggle }: {
           {leg.pnr !== null && (
             <Text style={st.legIdentNum} numberOfLines={1}>
               {'Booking '}
-              <Text style={st.legNum}>{leg.pnr}</Text>
+              {/* ── THE TAP IS ON THE REFERENCE, NOT ON THE LINE ──────────
+                  A NESTED Text RATHER THAN A Pressable, because this sits
+                  inside a Text and a View in a Text breaks the line's layout.
+                  It is also what keeps the card open: a nested Text claims the
+                  touch responder, so the card's own onToggle does not fire as
+                  well and the leg does not collapse behind the modal.
+
+                  THE WORD "Booking" IS NOT PART OF THE TARGET. The value is
+                  what somebody aims at, and a label that opened a modal would
+                  make the whole line a control that does not look like one. */}
+              <Text
+                style={st.legNum}
+                onPress={() => setBigPnr(true)}
+                suppressHighlighting
+                accessibilityRole="button"
+                accessibilityHint="Shows the booking reference full screen"
+              >
+                {leg.pnr}
+              </Text>
             </Text>
           )}
           {/* THE STATE AND THE SENTENCE, at legIdentName's Inter 13 at DIM --
@@ -1140,6 +1175,19 @@ function UnpublishedLeg({ leg, open, onToggle }: {
         </>
       )}
     </TouchableOpacity>
+    {/* OUTSIDE THE CARD'S TouchableOpacity, so the page behind the modal is not
+        also a tap target for the toggle. leg.pnr is re-tested rather than
+        asserted: the flag can only be set from the branch above, and a cast
+        here would be an assertion this component does not need to make. */}
+    {bigPnr && leg.pnr !== null && (
+      <BigPnr
+        pnr={leg.pnr}
+        airline={airline}
+        route={`${from} → ${to}`}
+        onClose={() => setBigPnr(false)}
+      />
+    )}
+    </>
   );
 }
 

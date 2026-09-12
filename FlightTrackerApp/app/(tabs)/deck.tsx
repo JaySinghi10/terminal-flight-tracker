@@ -10,6 +10,8 @@ import { formatClock } from '../../lib/flightstatus';
 // THE PAGE AND THE ELEVATION SCALE. See lib/cards.ts.
 import {
   PAGE_BG, SURFACE_1, SURFACE_2, CARD_RADIUS, CARD_GAP, CARD_PAD,
+  // THE DIM TONE, WHICH THIS SCREEN USED TO DECLARE. See its note there.
+  DIM,
 } from '../../lib/cards';
 // THE DATASET. allDining is never called here: diningAt filters the one airport
 // on screen, and the picker reads the airport codes out of it once.
@@ -55,7 +57,6 @@ const SANS_SEMI = 'Inter_600SemiBold';
 
 const GREEN = '#4ade80';
 const INK = '#e2e2e2';
-const DIM = 'rgba(226,226,226,0.4)';
 const DIMMER = 'rgba(226,226,226,0.28)';
 const AMBER = '#fbbf24';
 

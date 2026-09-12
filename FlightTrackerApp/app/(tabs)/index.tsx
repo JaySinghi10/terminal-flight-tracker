@@ -171,6 +171,9 @@ import {
   airportFullLabel,
   flightDataFromApi,
 } from '../../components/FlightCard';
+// THE BOOKING REFERENCE, HELD UP TO BE READ. The same component My Flights
+// opens from a leg inside a journey; this screen shows the legs that have none.
+import { BigPnr } from '../../components/BigPnr';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
@@ -981,6 +984,10 @@ const PendingRow = memo(function PendingRow({
   const rowW = useSharedValue(0);
   const dragX = useSharedValue(0);
   const exitX = useSharedValue(0);
+  // THE REFERENCE, FULL SCREEN. The row's own state: nothing outside it needs
+  // to know, and only one row's reference can be up at a time because opening
+  // one covers the list.
+  const [bigPnr, setBigPnr] = useState(false);
   // Whether the drag went past the expand threshold, so releasing commits
   // rather than resting the panel open. A ref, not state: it is read once on
   // release and must never cause a render.
@@ -1066,20 +1073,46 @@ const PendingRow = memo(function PendingRow({
           {/* THE SAME CHIP THE TRIP VIEW SHOWS, in the same red, from the same
               helper. A leg the airline has cancelled must not read as one that
               is merely waiting to be published -- see UnpublishedLeg. */}
+          {/* ── THE JOIN CAME APART FOR THE REFERENCE ──────────────────
+              IT WAS ONE ENTRY IN A filter/join, which makes it a SUBSTRING and
+              a substring cannot carry a handler. Lifting it out is what lets it
+              be tapped. Nothing the join expressed is lost: the sentence at the
+              head is never null, so every separator below is unconditional --
+              which is exactly what join(' · ') produced when the other two
+              entries survived the filter. */}
           <Text style={gm.legSub} numberOfLines={1}>
             {leg.legStatus === 'cancelled' && (
               <Text style={[gm.legChip, { color: getStatusColor('cancelled') }]}>{'CANCELLED · '}</Text>
             )}
-            {[
-              leg.legStatus === 'cancelled'
-                ? 'airline has cancelled this flight'
-                : 'airline has not published it yet',
-              leg.pnr !== null ? `pnr ${leg.pnr}` : null,
-              leg.tries > 0 ? `tried ${leg.tries}×` : null,
-            ].filter(Boolean).join(' · ')}
+            {leg.legStatus === 'cancelled'
+              ? 'airline has cancelled this flight'
+              : 'airline has not published it yet'}
+            {leg.pnr !== null && (
+              <Text
+                onPress={() => setBigPnr(true)}
+                suppressHighlighting
+                accessibilityRole="button"
+                accessibilityHint="Shows the booking reference full screen"
+              >
+                {` · pnr ${leg.pnr}`}
+              </Text>
+            )}
+            {leg.tries > 0 && ` · tried ${leg.tries}×`}
           </Text>
         </View>
       </ReanimatedSwipeable>
+      {/* INSIDE THE EXIT WRAPPER AND OUTSIDE THE SWIPEABLE. A Modal is drawn in
+          its own host view rather than in place, so neither the row's
+          translation nor the swipe panel reaches it; what matters is only that
+          it unmounts with the row. */}
+      {bigPnr && leg.pnr !== null && (
+        <BigPnr
+          pnr={leg.pnr}
+          airline={leg.airline}
+          route={`${leg.origin ?? leg.originName ?? '?'} → ${leg.destination ?? leg.destinationName ?? '?'}`}
+          onClose={() => setBigPnr(false)}
+        />
+      )}
     </Reanimated.View>
   );
 });

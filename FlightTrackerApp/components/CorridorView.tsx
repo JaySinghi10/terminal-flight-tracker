@@ -36,13 +36,16 @@ import {
   drawablePiers, gatesOn, outletsOn, extentOf, sideOf, wayThere, metresWord,
   type PierGateRow, type PierOutlet,
 } from '../lib/piers';
+// THE DIM TONE. This file declared its own copy of the same rgba; see the note
+// in lib/cards for why one export replaced four declarations. It is the only
+// thing this view takes from there -- the corridor draws no cards.
+import { DIM } from '../lib/cards';
 
 const MONO = 'JetBrainsMono_400Regular';
 const MONO_BOLD = 'JetBrainsMono_700Bold';
 const SANS = 'Inter_400Regular';
 const SANS_SEMI = 'Inter_600SemiBold';
 const INK = '#e2e2e2';
-const DIM = 'rgba(226,226,226,0.4)';
 const DIMMER = 'rgba(226,226,226,0.28)';
 const GREEN = '#4ade80';
 const AMBER = '#fbbf24';
